@@ -10,7 +10,6 @@ use crate::organism::{GrowthChanceTable, GrowthStateKind};
 use crate::random::Pcg32;
 use crate::world::World;
 
-/// Every organism's cell centres, bucketed by `floor(center / CELL_WIDTH_PIXELS)`.
 struct CollisionIndex {
     collision_cells_by_bucket: BTreeMap<(i32, i32), Vec<CollisionCell>>,
 }
@@ -54,6 +53,7 @@ impl CollisionIndex {
                 let collides: bool = collision_cells.iter().any(|collision_cell| {
                     collision_cell.member_id != member_id && collision_cell.center.is_within_cell_collision(center)
                 });
+
                 if collides {
                     return true;
                 }
@@ -134,6 +134,7 @@ fn run_member_births(member: &mut Member, world: &World, rng: &mut Pcg32, collis
         let center: WorldPoint = organism.cell_center(site);
         let is_blocked: bool =
             !world.contains_cell(center) || collision_index.collides_with_other_member(member_id, center);
+
         if is_blocked {
             continue;
         }
@@ -141,6 +142,7 @@ fn run_member_births(member: &mut Member, world: &World, rng: &mut Pcg32, collis
         let draw: u32 = rng.next_u32();
         let distance_squared: i64 = center.distance_squared(organism.cursor);
         let passes: bool = chance_table.birth_passes(distance_squared, draw);
+
         if !passes || organism.cells.contains(site) {
             continue;
         }
@@ -268,10 +270,16 @@ mod tests {
         let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 150, y: 150 }]);
         let mut expected_rng: Pcg32 = state.rng.clone();
         let table: &GrowthChanceTable = growth_chance_table::GROWTH_CHANCE_TABLES.get(GrowthStateKind::Default);
-        let expected_births: Vec<LatticeCoordinate> = test_fixture::get_organism(&state, FIRST_MEMBER_ID)
+        let organism: &Organism = test_fixture::get_organism(&state, FIRST_MEMBER_ID);
+        let expected_births: Vec<LatticeCoordinate> = organism
             .adjacent_sites()
             .into_iter()
-            .filter(|_| table.birth_passes(36, expected_rng.next_u32()))
+            .filter(|site| {
+                let draw: u32 = expected_rng.next_u32();
+                let distance_squared: i64 = organism.cell_center(*site).distance_squared(organism.cursor);
+
+                table.birth_passes(distance_squared, draw)
+            })
             .collect();
 
         let cells_born: u32 = run_birth_phase(&mut state, Tick(1));

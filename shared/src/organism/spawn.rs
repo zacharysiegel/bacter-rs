@@ -38,6 +38,7 @@ pub fn spawn_member(
 ) -> Option<SimulationEvent> {
     let member: &Member = state.members.get(&member_id)?;
     let rejection: Option<SpawnRejectionKind> = get_spawn_rejection(state, member);
+
     if let Some(reason) = rejection {
         return Some(SimulationEvent::SpawnRejected { member_id, reason });
     }
@@ -80,8 +81,8 @@ pub fn find_spawn_position(rng: &mut Pcg32, world: &World, members: &BTreeMap<Me
     let spawn_range: SpawnRange = get_spawn_range(&world.bounds)?;
 
     for _ in 0..SPAWN_ATTEMPT_LIMIT {
-        let x: i64 = spawn_range.x_minimum + i64::from(rng.below(get_span(spawn_range.x_minimum, spawn_range.x_end)));
-        let y: i64 = spawn_range.y_minimum + i64::from(rng.below(get_span(spawn_range.y_minimum, spawn_range.y_end)));
+        let x: i64 = draw_coordinate(rng, spawn_range.x_minimum, spawn_range.x_end);
+        let y: i64 = draw_coordinate(rng, spawn_range.y_minimum, spawn_range.y_end);
         let candidate: WorldPoint = WorldPoint {
             x: i32::try_from(x).ok()?,
             y: i32::try_from(y).ok()?,
@@ -99,6 +100,7 @@ pub fn is_spawn_position_valid(world: &World, members: &BTreeMap<MemberId, Membe
     let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
     let is_outside_ellipse: bool =
         world.shape == WorldShapeKind::Ellipse && world.bounds.is_outside_ellipse(candidate_subpixels);
+
     if is_outside_ellipse {
         return false;
     }
@@ -144,6 +146,7 @@ fn get_spawn_range(bounds: &WorldBounds) -> Option<SpawnRange> {
         y_end: bottom_pixels - SPAWN_MARGIN_PIXELS,
     };
     let is_empty: bool = spawn_range.x_end <= spawn_range.x_minimum || spawn_range.y_end <= spawn_range.y_minimum;
+
     if is_empty {
         return None;
     }
@@ -159,8 +162,11 @@ fn get_pixels_rounded_down(subpixels: i64) -> i64 {
     subpixels.div_euclid(i64::from(geometry::SUBPIXELS_PER_PIXEL))
 }
 
-fn get_span(minimum: i64, end: i64) -> u32 {
-    u32::try_from(end - minimum).unwrap_or(u32::MAX)
+fn draw_coordinate(rng: &mut Pcg32, minimum: i64, end: i64) -> i64 {
+    let span: u32 = u32::try_from(end - minimum).unwrap_or(u32::MAX);
+    let drawn_offset: u32 = rng.below(span);
+
+    minimum + i64::from(drawn_offset)
 }
 
 fn collides_with_organism(organism: &Organism, candidate: WorldPoint) -> bool {
@@ -236,9 +242,9 @@ mod tests {
         test_fixture::get_organism_mut(state, HAZARD_OWNER_ID)
     }
 
-    fn offset(point: WorldPoint, dx: i32) -> WorldPoint {
+    fn get_point_offset_horizontally(point: WorldPoint, horizontal_offset_pixels: i32) -> WorldPoint {
         WorldPoint {
-            x: point.x + dx,
+            x: point.x + horizontal_offset_pixels,
             y: point.y,
         }
     }
@@ -334,12 +340,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 24),
+            get_point_offset_horizontally(HAZARD_CENTER, 24),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 25),
+            get_point_offset_horizontally(HAZARD_CENTER, 25),
         ));
     }
 
@@ -354,12 +360,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 12),
+            get_point_offset_horizontally(HAZARD_CENTER, 12),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 13),
+            get_point_offset_horizontally(HAZARD_CENTER, 13),
         ));
     }
 
@@ -377,12 +383,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 60),
+            get_point_offset_horizontally(HAZARD_CENTER, 60),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 61),
+            get_point_offset_horizontally(HAZARD_CENTER, 61),
         ));
     }
 
@@ -457,22 +463,43 @@ mod tests {
         );
     }
 
-    #[test]
-    fn spawn_member_rejects_while_a_round_is_in_progress() {
+    fn spawn_member_during_round_phase(phase: RoundPhase) -> Option<SimulationEvent> {
         let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
         state.round = Some(RoundState {
-            phase: RoundPhase::Playing,
+            phase,
             phase_started_at: Tick(0),
         });
         state.members.insert(SPAWNING_MEMBER_ID, test_fixture::create_participant(SPAWNING_MEMBER_ID));
 
-        assert_eq!(
-            spawn_member(&mut state, SPAWNING_MEMBER_ID, test_fixture::create_loadout(), None),
-            Some(SimulationEvent::SpawnRejected {
-                member_id: SPAWNING_MEMBER_ID,
-                reason: SpawnRejectionKind::RoundInProgress,
-            }),
-        );
+        spawn_member(&mut state, SPAWNING_MEMBER_ID, test_fixture::create_loadout(), None)
+    }
+
+    #[test]
+    fn spawn_member_rejects_while_a_round_is_in_progress() {
+        for phase in [RoundPhase::Playing, RoundPhase::PostRound] {
+            assert_eq!(
+                spawn_member_during_round_phase(phase),
+                Some(SimulationEvent::SpawnRejected {
+                    member_id: SPAWNING_MEMBER_ID,
+                    reason: SpawnRejectionKind::RoundInProgress,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn spawn_member_allows_spawning_before_a_round_starts() {
+        for phase in [RoundPhase::Waiting, RoundPhase::PreRound] {
+            let simulation_event: Option<SimulationEvent> = spawn_member_during_round_phase(phase);
+
+            assert!(matches!(
+                simulation_event,
+                Some(SimulationEvent::OrganismSpawned {
+                    member_id: SPAWNING_MEMBER_ID,
+                    ..
+                }),
+            ));
+        }
     }
 
     #[test]

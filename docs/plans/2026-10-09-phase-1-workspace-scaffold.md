@@ -1691,3 +1691,13 @@ web/src/main.rs
 - `docs/conventions/` (README, logging, conditional-compilation, shading, types, git-workflow, testing): Task 8.
 - `scripts/` skeleton with the scripts that already have something to run: Tasks 3, 5, 6, 7.
 - Done criteria (`cargo build --workspace`, `cargo test --workspace`, `./scripts/test/check-wasm.sh`): Task 10.
+
+## Deviations from the plan
+
+- Three extra commits from the per-task quality reviews: `task 2 quality fixes`, and `task 6 quality fixes` twice. Task 10's expected `git log` omits them.
+- `server/src/lib.rs`: the doc comment is `//! The game server.`; the plan's version listed the crate's future submodules.
+- `scripts/git/git-preconditions.sh`, `require_clean_working_tree`: runs `git update-index -q --refresh` before `git diff-index`, so files whose stat data changed but whose content did not are not reported as uncommitted changes.
+- `scripts/git/git-preconditions.sh`, `remote_branch_exists`: queries the exact ref `refs/heads/<name>`; the plan's `--heads <name>` is a suffix pattern, so `feature/<name>` on origin counted as `<name>` being present.
+- `setup.sh`, `recommend_program`: the note reads `` `<program>` is not installed and is needed by <consumer>; install it with: <hint> `` in place of the plan's `` `<program>` is not installed; <consumer> needs it; ... ``.
+- No other new files or functions. `check-wasm.sh`, `server.sh`, `branch-init.sh`, `cleanup-merged.sh`, `pr-integrate.sh`, the `docs/conventions/` files, `CLAUDE.md` and every manifest match the plan text; `logging.md`, `conditional-compilation.md` and `shading.md` are identical to eafora's.
+- Final verification ran Task 10's clean build in a fresh `CARGO_TARGET_DIR` under `/tmp` in place of `cargo clean`, leaving the repository's `target/` intact. It found no defects, so it made no fix commits.

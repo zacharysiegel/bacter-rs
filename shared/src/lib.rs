@@ -6,3 +6,4 @@ pub mod geometry;
 pub mod member;
 pub mod organism;
 pub mod random;
+pub mod world;

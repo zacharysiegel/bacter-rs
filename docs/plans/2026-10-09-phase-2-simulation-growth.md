@@ -7052,7 +7052,7 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 
 - Test counts: the `shared` library tests report 111 passed (plan: 106) and `forbidden_operations` 3 passed (plan: 1); the extra tests are listed below.
 - `shared/tests/forbidden_operations.rs`:
-  - `atanh` added to the float function list, which design's `atan*` covers.
+  - `atanh` added to the float function list; the design's `atan*` covers it.
   - Patterns `f64::<name>` and `f32::<name>` without the trailing `(`, so function paths such as `f64::sin` used as values are caught too.
   - Constants renamed or added: `FORBIDDEN_FLOAT_FUNCTION_NAMES`, `BITCODE_CRATE_NAME`.
   - Two self-tests of the scanner (`find_violations_reports_forbidden_operations_outside_permitted_directories`, `find_violations_permits_exempt_directories`) and their helper `create_source_file`.

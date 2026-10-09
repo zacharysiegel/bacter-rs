@@ -1,5 +1,9 @@
 use crate::world::WorldShapeKind;
 
+const FREE_FOR_ALL_CODE: &str = "ffa";
+const SKIRMISH_CODE: &str = "skm";
+const SURVIVAL_CODE: &str = "srv";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GameSettings {
     pub title: String,
@@ -26,9 +30,9 @@ pub enum GameModeKind {
 impl GameModeKind {
     pub fn code(self) -> &'static str {
         match self {
-            GameModeKind::FreeForAll => "ffa",
-            GameModeKind::Skirmish => "skm",
-            GameModeKind::Survival => "srv",
+            GameModeKind::FreeForAll => FREE_FOR_ALL_CODE,
+            GameModeKind::Skirmish => SKIRMISH_CODE,
+            GameModeKind::Survival => SURVIVAL_CODE,
         }
     }
 }
@@ -43,9 +47,9 @@ impl TryFrom<&str> for GameModeKind {
 
     fn try_from(code: &str) -> Result<GameModeKind, UnknownGameModeCode> {
         match code {
-            "ffa" => Ok(GameModeKind::FreeForAll),
-            "skm" => Ok(GameModeKind::Skirmish),
-            "srv" => Ok(GameModeKind::Survival),
+            FREE_FOR_ALL_CODE => Ok(GameModeKind::FreeForAll),
+            SKIRMISH_CODE => Ok(GameModeKind::Skirmish),
+            SURVIVAL_CODE => Ok(GameModeKind::Survival),
             _ => Err(UnknownGameModeCode {
                 code: String::from(code),
             }),
@@ -56,6 +60,13 @@ impl TryFrom<&str> for GameModeKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_gives_the_three_letter_mode_codes() {
+        assert_eq!(GameModeKind::FreeForAll.code(), "ffa");
+        assert_eq!(GameModeKind::Skirmish.code(), "skm");
+        assert_eq!(GameModeKind::Survival.code(), "srv");
+    }
 
     #[test]
     fn try_from_reads_every_code() {

@@ -155,6 +155,53 @@ fn run_member_births(member: &mut Member, world: &World, rng: &mut Pcg32, collis
     cells_born
 }
 
+/// Returns the number of cells removed.
+pub fn run_natural_death_phase(state: &mut GameState) -> u32 {
+    let mut cells_removed: u32 = 0;
+
+    for member in state.members.values_mut() {
+        cells_removed += run_member_natural_deaths(member, &state.world, &mut state.rng);
+    }
+
+    cells_removed
+}
+
+fn run_member_natural_deaths(member: &mut Member, world: &World, rng: &mut Pcg32) -> u32 {
+    let loadout: Option<&Loadout> = member.loadout.as_ref();
+    let Some(organism) = member.organism.as_mut() else {
+        return 0;
+    };
+
+    let is_immortal: bool = loadout.is_some_and(|loadout| organism.abilities.is_immortal(loadout));
+    if organism.abilities.is_frozen() || is_immortal {
+        return 0;
+    }
+
+    let growth_state: GrowthStateKind = get_growth_state(&organism.abilities, loadout);
+    let chance_table: &GrowthChanceTable = growth_chance_table::GROWTH_CHANCE_TABLES.get(growth_state);
+    let exposed_cells: Vec<LatticeCoordinate> = organism.exposed_cells();
+    let mut cells_removed: u32 = 0;
+
+    for lattice_coordinate in exposed_cells {
+        let center: WorldPoint = organism.cell_center(lattice_coordinate);
+        let distance_squared: i64 = center.distance_squared(organism.cursor);
+        let is_death_forced: bool = distance_squared > growth_state.range_squared() || !world.contains_cell(center);
+
+        if !is_death_forced {
+            let draw: u32 = rng.next_u32();
+            let passes: bool = chance_table.death_passes(distance_squared, draw);
+            if !passes {
+                continue;
+            }
+        }
+
+        organism.cells.remove(lattice_coordinate);
+        cells_removed += 1;
+    }
+
+    cells_removed
+}
+
 fn get_bucket(center: WorldPoint) -> (i32, i32) {
     (
         center.x.div_euclid(geometry::CELL_WIDTH_PIXELS),
@@ -362,5 +409,92 @@ mod tests {
 
         assert_eq!(state.rng, expected_rng);
         assert!(get_cells(&state, FIRST_MEMBER_ID).contains(&LatticeCoordinate { i: 1, j: 0 }));
+    }
+
+    #[test]
+    fn run_natural_death_phase_skips_frozen_and_immortal_organisms() {
+        let far_cursor: WorldPoint = WorldPoint { x: 250, y: 250 };
+        let mut state: GameState =
+            create_state_with_organisms(&[WorldPoint { x: 50, y: 50 }, WorldPoint { x: 150, y: 50 }]);
+        let frozen_organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
+        frozen_organism.cursor = far_cursor;
+        frozen_organism.abilities.frozen_until = Some(Tick(30));
+        let immortal_organism: &mut Organism = test_fixture::get_organism_mut(&mut state, SECOND_MEMBER_ID);
+        immortal_organism.cursor = far_cursor;
+        immortal_organism.abilities.second = AbilityPhase::Active { ends_at: Tick(30) };
+
+        assert_eq!(run_natural_death_phase(&mut state), 0);
+        assert_eq!(get_cells(&state, FIRST_MEMBER_ID).len(), 1);
+        assert_eq!(get_cells(&state, SECOND_MEMBER_ID).len(), 1);
+    }
+
+    #[test]
+    fn run_natural_death_phase_removes_cells_beyond_the_range_without_a_draw() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 100, y: 150 }]);
+        test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID).cursor = WorldPoint { x: 151, y: 150 };
+        let rng_before: Pcg32 = state.rng.clone();
+
+        assert_eq!(run_natural_death_phase(&mut state), 1);
+        assert_eq!(state.rng, rng_before);
+        assert!(test_fixture::get_organism(&state, FIRST_MEMBER_ID).cells.is_empty());
+    }
+
+    #[test]
+    fn run_natural_death_phase_draws_within_the_range() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 100, y: 150 }]);
+        test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID).cursor = WorldPoint { x: 150, y: 150 };
+        let expected_rng: Pcg32 = advance_rng(&state.rng, 1);
+
+        assert_eq!(run_natural_death_phase(&mut state), 1);
+        assert_eq!(state.rng, expected_rng);
+    }
+
+    #[test]
+    fn run_natural_death_phase_extended_range_reaches_further() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 100, y: 150 }]);
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
+        organism.cursor = WorldPoint { x: 160, y: 150 };
+        organism.abilities.first = AbilityPhase::Active { ends_at: Tick(30) };
+        let expected_rng: Pcg32 = advance_rng(&state.rng, 1);
+
+        run_natural_death_phase(&mut state);
+
+        assert_eq!(state.rng, expected_rng);
+    }
+
+    #[test]
+    fn run_natural_death_phase_removes_cells_outside_the_world_without_a_draw() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 6, y: 150 }]);
+        let rng_before: Pcg32 = state.rng.clone();
+
+        assert_eq!(run_natural_death_phase(&mut state), 1);
+        assert_eq!(state.rng, rng_before);
+    }
+
+    #[test]
+    fn run_natural_death_phase_keeps_a_cell_at_the_cursor() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 150, y: 150 }]);
+        let expected_rng: Pcg32 = advance_rng(&state.rng, 1);
+
+        assert_eq!(run_natural_death_phase(&mut state), 0);
+        assert_eq!(state.rng, expected_rng);
+    }
+
+    #[test]
+    fn run_natural_death_phase_never_removes_enclosed_cells() {
+        let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 100, y: 100 }]);
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
+        for j in -1..=1 {
+            for i in -1..=1 {
+                organism.cells.insert(LatticeCoordinate { i, j });
+            }
+        }
+        organism.cursor = WorldPoint { x: 250, y: 250 };
+
+        assert_eq!(run_natural_death_phase(&mut state), 8);
+        assert_eq!(
+            get_cells(&state, FIRST_MEMBER_ID),
+            vec![LatticeCoordinate { i: 0, j: 0 }],
+        );
     }
 }

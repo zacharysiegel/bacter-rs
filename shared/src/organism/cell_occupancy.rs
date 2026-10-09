@@ -1,5 +1,7 @@
 use crate::geometry::LatticeCoordinate;
 
+const BITS_PER_BYTE: usize = u8::BITS as usize;
+
 /// Equal cell sets are equal values once both are re-tightened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CellOccupancy {
@@ -80,7 +82,7 @@ impl CellOccupancy {
     }
 
     pub fn contains(&self, lattice_coordinate: LatticeCoordinate) -> bool {
-        let Some(bit_position) = self.get_bit_position(lattice_coordinate) else {
+        let Some(bit_position): Option<BitPosition> = self.get_bit_position(lattice_coordinate) else {
             return false;
         };
 
@@ -97,7 +99,7 @@ impl CellOccupancy {
     }
 
     pub fn remove(&mut self, lattice_coordinate: LatticeCoordinate) {
-        let Some(bit_position) = self.get_bit_position(lattice_coordinate) else {
+        let Some(bit_position): Option<BitPosition> = self.get_bit_position(lattice_coordinate) else {
             return;
         };
 
@@ -128,7 +130,7 @@ impl CellOccupancy {
     }
 
     pub fn retighten(&mut self) {
-        let Some(tight_box) = self.get_tight_box() else {
+        let Some(tight_box): Option<CellBox> = self.get_tight_box() else {
             *self = CellOccupancy::empty();
             return;
         };
@@ -206,13 +208,13 @@ impl CellOccupancy {
         let row_index: usize = usize::try_from(row).unwrap();
 
         Some(BitPosition {
-            byte_index: row_index * get_bytes_per_row(self.width) + column_index / 8,
-            mask: 1 << (column_index % 8),
+            byte_index: row_index * get_bytes_per_row(self.width) + column_index / BITS_PER_BYTE,
+            mask: 1 << (column_index % BITS_PER_BYTE),
         })
     }
 
     fn has_bits_past_width(&self) -> bool {
-        let used_bits_in_last_byte: u16 = self.width % 8;
+        let used_bits_in_last_byte: usize = usize::from(self.width) % BITS_PER_BYTE;
 
         if used_bits_in_last_byte == 0 {
             return false;
@@ -254,7 +256,7 @@ struct BitPosition {
 }
 
 fn get_bytes_per_row(width: u16) -> usize {
-    usize::from(width).div_ceil(8)
+    usize::from(width).div_ceil(BITS_PER_BYTE)
 }
 
 #[cfg(test)]

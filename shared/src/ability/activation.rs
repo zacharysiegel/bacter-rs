@@ -37,28 +37,13 @@ pub fn expire_timers(abilities: &mut OrganismAbilities, loadout: &Loadout, tick:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AbilityPhase, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, Projectile, ShotPhase, SporePhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, test_fixture};
-    use crate::geometry::WorldPoint;
+    use crate::geometry::{SubpixelPoint, SubpixelVector, WorldPoint};
     use crate::member::MemberId;
-    use crate::world::WorldShapeKind;
 
     const CASTER_ID: MemberId = MemberId(0);
     const TARGET_ID: MemberId = MemberId(1);
-
-    fn create_state_with_organisms(mode: GameModeKind, positions: &[WorldPoint]) -> GameState {
-        let mut state: GameState = test_fixture::create_state(mode, WorldShapeKind::Rectangle, 800);
-
-        for (index, position) in positions.iter().enumerate() {
-            let member_id: MemberId = MemberId(u32::try_from(index).unwrap());
-            state.members.insert(
-                member_id,
-                test_fixture::create_participant_with_organism(member_id, *position),
-            );
-        }
-
-        state
-    }
 
     fn get_abilities(state: &GameState, member_id: MemberId) -> &OrganismAbilities {
         &test_fixture::get_organism(state, member_id).abilities
@@ -80,6 +65,41 @@ mod tests {
         assert_eq!(abilities.second, AbilityPhase::Cooling { ready_at: Tick(136) });
         assert_eq!(abilities.third, AbilityPhase::Cooling { ready_at: Tick(136) });
         assert_eq!(abilities.third_center, None);
+    }
+
+    #[test]
+    fn expire_timers_cools_an_ended_spore_and_every_ended_shot() {
+        let loadout: Loadout = test_fixture::create_loadout();
+        let projectile: Projectile = Projectile {
+            position: SubpixelPoint { x: 0, y: 0 },
+            velocity: SubpixelVector { x: 1, y: 0 },
+        };
+        let mut abilities: OrganismAbilities = OrganismAbilities::all_ready();
+        abilities.spore = SporePhase::Secreting {
+            ends_at: Tick(50),
+            spores: vec![projectile],
+        };
+        abilities.shots = [
+            ShotPhase::Flying {
+                ends_at: Tick(50),
+                shot: projectile,
+            },
+            ShotPhase::Secreting {
+                ends_at: Tick(50),
+                center: SubpixelPoint { x: 0, y: 0 },
+            },
+        ];
+
+        expire_timers(&mut abilities, &loadout, Tick(50));
+
+        assert_eq!(abilities.spore, SporePhase::Cooling { ready_at: Tick(157) });
+        assert_eq!(
+            abilities.shots,
+            [
+                ShotPhase::Cooling { ready_at: Tick(79) },
+                ShotPhase::Cooling { ready_at: Tick(79) },
+            ],
+        );
     }
 
     #[test]
@@ -109,8 +129,9 @@ mod tests {
 
     #[test]
     fn run_timer_expiry_phase_advances_every_organism() {
-        let mut state: GameState = create_state_with_organisms(
+        let mut state: GameState = test_fixture::create_state_with_organisms(
             GameModeKind::FreeForAll,
+            800,
             &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 100 }],
         );
 

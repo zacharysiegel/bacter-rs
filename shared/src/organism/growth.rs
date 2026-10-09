@@ -219,23 +219,12 @@ mod tests {
     use crate::game::test_fixture;
     use crate::member::TeamKind;
     use crate::organism::Organism;
-    use crate::world::WorldShapeKind;
 
     const FIRST_MEMBER_ID: MemberId = MemberId(0);
     const SECOND_MEMBER_ID: MemberId = MemberId(1);
 
     fn create_state_with_organisms(positions: &[WorldPoint]) -> GameState {
-        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 300);
-
-        for (index, position) in positions.iter().enumerate() {
-            let member_id: MemberId = MemberId(u32::try_from(index).unwrap());
-            state.members.insert(
-                member_id,
-                test_fixture::create_participant_with_organism(member_id, *position),
-            );
-        }
-
-        state
+        test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 300, positions)
     }
 
     fn advance_rng(rng: &Pcg32, draw_count: u32) -> Pcg32 {

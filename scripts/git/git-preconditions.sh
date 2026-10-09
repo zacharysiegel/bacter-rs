@@ -17,8 +17,7 @@ function require_git_repository {
 
 function require_clean_working_tree {
     # Non-zero means some files differ from the index, which diff-index reports below.
-    local index_refresh_status=0
-    git update-index -q --refresh > /dev/null || index_refresh_status=$?
+    git update-index -q --refresh > /dev/null || true
 
     local working_tree_status=0
     git diff-index --quiet HEAD -- || working_tree_status=$?

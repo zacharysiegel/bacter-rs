@@ -128,6 +128,21 @@ impl AbilityPhase {
     pub fn is_ready(self) -> bool {
         self == AbilityPhase::Ready
     }
+
+    /// An ended Active phase cools for `cooldown_ticks` from `tick`; an ended Cooling phase becomes Ready.
+    pub fn expire(&mut self, tick: Tick, cooldown_ticks: u32) {
+        let next_phase: Option<AbilityPhase> = match *self {
+            AbilityPhase::Active { ends_at } if ends_at <= tick => Some(AbilityPhase::Cooling {
+                ready_at: tick.plus(cooldown_ticks),
+            }),
+            AbilityPhase::Cooling { ready_at } if ready_at <= tick => Some(AbilityPhase::Ready),
+            AbilityPhase::Ready | AbilityPhase::Active { .. } | AbilityPhase::Cooling { .. } => None,
+        };
+
+        if let Some(next_phase) = next_phase {
+            *self = next_phase;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,12 +153,55 @@ pub enum SporePhase {
     Cooling { ready_at: Tick },
 }
 
+impl SporePhase {
+    /// An ended flight or secretion drops its spores and cools; an ended Cooling phase becomes Ready.
+    pub fn expire(&mut self, tick: Tick) {
+        let next_phase: Option<SporePhase> = match self {
+            SporePhase::Flying { ends_at, .. } | SporePhase::Secreting { ends_at, .. } if *ends_at <= tick => {
+                Some(SporePhase::Cooling {
+                    ready_at: tick.plus(ability_constants::SPORE_COOLDOWN_TICKS),
+                })
+            }
+            SporePhase::Cooling { ready_at } if *ready_at <= tick => Some(SporePhase::Ready),
+            SporePhase::Ready
+            | SporePhase::Flying { .. }
+            | SporePhase::Secreting { .. }
+            | SporePhase::Cooling { .. } => None,
+        };
+
+        if let Some(next_phase) = next_phase {
+            *self = next_phase;
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShotPhase {
     Ready,
     Flying { ends_at: Tick, shot: Projectile },
     Secreting { ends_at: Tick, center: SubpixelPoint },
     Cooling { ready_at: Tick },
+}
+
+impl ShotPhase {
+    /// An ended flight or secretion cools; an ended Cooling phase becomes Ready.
+    pub fn expire(&mut self, tick: Tick) {
+        let next_phase: Option<ShotPhase> = match *self {
+            ShotPhase::Flying { ends_at, .. } | ShotPhase::Secreting { ends_at, .. } if ends_at <= tick => {
+                Some(ShotPhase::Cooling {
+                    ready_at: tick.plus(ability_constants::SHOT_COOLDOWN_TICKS),
+                })
+            }
+            ShotPhase::Cooling { ready_at } if ready_at <= tick => Some(ShotPhase::Ready),
+            ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Secreting { .. } | ShotPhase::Cooling { .. } => {
+                None
+            }
+        };
+
+        if let Some(next_phase) = next_phase {
+            *self = next_phase;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -418,5 +476,74 @@ mod tests {
     fn is_zero_holds_only_for_the_zero_vector() {
         assert!(AimVector { x: 0, y: 0 }.is_zero());
         assert!(!AimVector { x: 0, y: -1 }.is_zero());
+    }
+
+    #[test]
+    fn ability_phase_expire_cools_then_readies_on_the_deadline() {
+        let mut phase: AbilityPhase = AbilityPhase::Active { ends_at: Tick(64) };
+
+        phase.expire(Tick(63), 57);
+        assert_eq!(phase, AbilityPhase::Active { ends_at: Tick(64) });
+
+        phase.expire(Tick(64), 57);
+        assert_eq!(phase, AbilityPhase::Cooling { ready_at: Tick(121) });
+
+        phase.expire(Tick(120), 57);
+        assert_eq!(phase, AbilityPhase::Cooling { ready_at: Tick(121) });
+
+        phase.expire(Tick(121), 57);
+        assert_eq!(phase, AbilityPhase::Ready);
+    }
+
+    #[test]
+    fn spore_phase_expire_drops_the_spores_and_cools() {
+        let spore: Projectile = Projectile {
+            position: SubpixelPoint { x: 0, y: 0 },
+            velocity: SubpixelVector { x: 1, y: 0 },
+        };
+        let mut flying_phase: SporePhase = SporePhase::Flying {
+            ends_at: Tick(24),
+            spores: vec![spore],
+        };
+        let mut secreting_phase: SporePhase = SporePhase::Secreting {
+            ends_at: Tick(30),
+            spores: vec![spore],
+        };
+
+        flying_phase.expire(Tick(24));
+        secreting_phase.expire(Tick(30));
+
+        assert_eq!(flying_phase, SporePhase::Cooling { ready_at: Tick(131) });
+        assert_eq!(secreting_phase, SporePhase::Cooling { ready_at: Tick(137) });
+
+        flying_phase.expire(Tick(131));
+        assert_eq!(flying_phase, SporePhase::Ready);
+    }
+
+    #[test]
+    fn shot_phase_expire_cools_a_flight_or_a_secretion() {
+        let mut flying_phase: ShotPhase = ShotPhase::Flying {
+            ends_at: Tick(21),
+            shot: Projectile {
+                position: SubpixelPoint { x: 0, y: 0 },
+                velocity: SubpixelVector { x: 0, y: 1 },
+            },
+        };
+        let mut secreting_phase: ShotPhase = ShotPhase::Secreting {
+            ends_at: Tick(11),
+            center: SubpixelPoint { x: 0, y: 0 },
+        };
+
+        flying_phase.expire(Tick(20));
+        assert!(matches!(flying_phase, ShotPhase::Flying { .. }));
+
+        flying_phase.expire(Tick(21));
+        secreting_phase.expire(Tick(11));
+
+        assert_eq!(flying_phase, ShotPhase::Cooling { ready_at: Tick(50) });
+        assert_eq!(secreting_phase, ShotPhase::Cooling { ready_at: Tick(40) });
+
+        secreting_phase.expire(Tick(40));
+        assert_eq!(secreting_phase, ShotPhase::Ready);
     }
 }

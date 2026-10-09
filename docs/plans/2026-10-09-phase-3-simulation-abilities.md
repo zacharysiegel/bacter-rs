@@ -2537,6 +2537,8 @@ git commit -m "self-cast ability presses"
 Expected: before the commit, `git status --short` shows exactly the paths just added as staged (`A` or `M` in the first column) and no other staged or modified path.
 
 
+**Deviations:** two tests were added after the task: `press_third_keeps_the_active_field_centre` and `press_fourth_ignores_a_press_while_secreting_or_cooling`, so the Task 11 and later test counts are two higher. The member-order test is `run_ability_press_phase_applies_inputs_in_ascending_member_id` in Task 12, since self-cast presses alone cannot observe the order.
+
 ### Task 12: Shot slots and their effects
 
 **Files:**
@@ -8334,7 +8336,7 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 ## Roadmap coverage
 
 - `ability`:
-  - activation: Task 3 (press helpers, kind durations), Task 11 (extend, immortality, neutralize and toxin centred on the cursor, spore launch and secretion, member order), Task 12 (shot slots, pops, compress and freeze effects, key priority of the carried ability, miss, teammates, target's own neutralize);
+  - activation: Task 3 (press helpers, kind durations), Task 11 (extend, immortality, neutralize and toxin centred on the cursor, spore launch and secretion, the ignored presses of an Active field and a Secreting or Cooling spore), Task 12 (member order, shot slots, pops, compress and freeze effects, key priority of the carried ability, miss, teammates, target's own neutralize);
   - projectiles: Task 6 (centroid), Task 7 (spores with the progressive centroid, dropped zero-offset spore, last spore), Task 8 (shot selection with wraparound, ties and zero aim), Task 9 (flight distance);
   - damage: Task 13 (spore and shot acid, self acid, toxin owner skip, neutralize protection, teammate immunity, last hitter);
   - constants: Tasks 1 and 2; timer expiry: Tasks 4 and 10; icons: Task 20.

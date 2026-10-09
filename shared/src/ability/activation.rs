@@ -366,6 +366,22 @@ mod tests {
     }
 
     #[test]
+    fn press_third_keeps_the_active_field_centre() {
+        let mut state: GameState =
+            test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
+        get_loadout_mut(&mut state, CASTER_ID).third = ThirdAbilityKind::Toxin;
+        test_fixture::get_organism_mut(&mut state, CASTER_ID).cursor = WorldPoint { x: 120, y: 90 };
+        press(&mut state, CASTER_ID, AbilityPressSet::THIRD, None, PRESS_TICK);
+        test_fixture::get_organism_mut(&mut state, CASTER_ID).cursor = WorldPoint { x: 80, y: 110 };
+
+        press(&mut state, CASTER_ID, AbilityPressSet::THIRD, None, Tick(11));
+
+        let abilities: &OrganismAbilities = get_abilities(&state, CASTER_ID);
+        assert_eq!(abilities.third, AbilityPhase::Active { ends_at: Tick(67) });
+        assert_eq!(abilities.third_center, Some(WorldPoint { x: 120, y: 90 }));
+    }
+
+    #[test]
     fn press_fourth_launches_then_secretes_the_spores() {
         let mut state: GameState =
             test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
@@ -378,7 +394,7 @@ mod tests {
         assert_eq!(expected_spores.len(), 1);
         assert_eq!(
             test_fixture::get_organism(&state, CASTER_ID).cells,
-            expected_organism.cells
+            expected_organism.cells,
         );
         assert_eq!(
             get_abilities(&state, CASTER_ID).spore,
@@ -397,6 +413,36 @@ mod tests {
                 spores: expected_spores,
             },
         );
+    }
+
+    #[test]
+    fn press_fourth_ignores_a_press_while_secreting_or_cooling() {
+        let projectile: Projectile = Projectile {
+            position: SubpixelPoint { x: 0, y: 0 },
+            velocity: SubpixelVector { x: 1, y: 0 },
+        };
+        let ignored_spore_phases: [SporePhase; 2] = [
+            SporePhase::Secreting {
+                ends_at: Tick(20),
+                spores: vec![projectile],
+            },
+            SporePhase::Cooling { ready_at: Tick(20) },
+        ];
+
+        for ignored_spore_phase in ignored_spore_phases {
+            let mut state: GameState = test_fixture::create_state_with_organisms(
+                GameModeKind::FreeForAll,
+                800,
+                &[WorldPoint { x: 100, y: 100 }],
+            );
+            insert_cells(&mut state, CASTER_ID, &[(1, 0)]);
+            test_fixture::get_organism_mut(&mut state, CASTER_ID).abilities.spore = ignored_spore_phase;
+            let organism_before: Organism = test_fixture::get_organism(&state, CASTER_ID).clone();
+
+            press(&mut state, CASTER_ID, AbilityPressSet::FOURTH, None, PRESS_TICK);
+
+            assert_eq!(test_fixture::get_organism(&state, CASTER_ID), &organism_before);
+        }
     }
 
     #[test]

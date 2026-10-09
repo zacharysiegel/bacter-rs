@@ -1701,6 +1701,8 @@ git commit -m "shot cell selection and launch"
 
 Expected: before the commit, `git status --short` shows exactly the paths just added as staged (`A` or `M` in the first column) and no other staged or modified path.
 
+**Deviations:** `select_shot_cell` has no explicit zero-offset exclusion (simulation.md, shot launch). The rule holds without it: the exposed cell furthest along the aim has a dot product of at least the mean, 0, so a zero-offset cell can only tie at 0, which requires every cell on the perpendicular through the centroid, where an endpoint precedes the centroid cell in lattice order. An inline comment at the loop states this. The test `select_shot_cell_takes_a_centroid_cell_only_when_alone` became `select_shot_cell_takes_the_cell_of_a_single_cell_organism`; its dropped centred-organism assertion never exercised the exclusion.
+
 
 ### Task 9: Projectile flight
 

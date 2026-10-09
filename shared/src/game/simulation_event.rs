@@ -1,3 +1,4 @@
+use crate::ability::ShotEffectKind;
 use crate::geometry::WorldPoint;
 use crate::member::MemberId;
 
@@ -20,6 +21,11 @@ pub enum SimulationEvent {
     OrganismDied {
         member_id: MemberId,
         credited_to: Option<MemberId>,
+    },
+    EffectApplied {
+        target: MemberId,
+        caster: MemberId,
+        kind: ShotEffectKind,
     },
 }
 

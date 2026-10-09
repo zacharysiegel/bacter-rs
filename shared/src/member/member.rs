@@ -95,6 +95,11 @@ impl TeamKind {
     }
 }
 
+/// Members without a team are nobody's teammates.
+pub fn is_same_team(first_team: Option<TeamKind>, second_team: Option<TeamKind>) -> bool {
+    first_team.is_some() && first_team == second_team
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +143,12 @@ mod tests {
     fn next_saturates_at_the_maximum_id() {
         assert_eq!(MemberId(4).next(), MemberId(5));
         assert_eq!(MemberId(u32::MAX).next(), MemberId(u32::MAX));
+    }
+
+    #[test]
+    fn is_same_team_requires_one_team() {
+        assert!(is_same_team(Some(TeamKind::Green), Some(TeamKind::Green)));
+        assert!(!is_same_team(Some(TeamKind::Green), Some(TeamKind::Red)));
+        assert!(!is_same_team(None, None));
     }
 }

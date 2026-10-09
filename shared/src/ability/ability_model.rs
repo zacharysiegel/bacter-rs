@@ -1,3 +1,4 @@
+use crate::ability::ability_constants;
 use crate::game::Tick;
 use crate::geometry::{SubpixelPoint, SubpixelVector, WorldPoint};
 use crate::member::{Appearance, TeamKind};
@@ -27,16 +28,89 @@ pub enum FirstAbilityKind {
     Compress,
 }
 
+impl FirstAbilityKind {
+    /// Extend's own duration, or how long a compress caster's `first` stays Active after a hit.
+    pub fn active_ticks(self) -> u32 {
+        match self {
+            FirstAbilityKind::Extend => ability_constants::EXTEND_ACTIVE_TICKS,
+            FirstAbilityKind::Compress => ability_constants::COMPRESS_EFFECT_TICKS,
+        }
+    }
+
+    pub fn cooldown_ticks(self) -> u32 {
+        match self {
+            FirstAbilityKind::Extend => ability_constants::EXTEND_COOLDOWN_TICKS,
+            FirstAbilityKind::Compress => ability_constants::COMPRESS_COOLDOWN_TICKS,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SecondAbilityKind {
     Immortality,
     Freeze,
 }
 
+impl SecondAbilityKind {
+    /// Immortality's own duration, or how long a freeze caster's `second` stays Active after a hit.
+    pub fn active_ticks(self) -> u32 {
+        match self {
+            SecondAbilityKind::Immortality => ability_constants::IMMORTALITY_ACTIVE_TICKS,
+            SecondAbilityKind::Freeze => ability_constants::FREEZE_EFFECT_TICKS,
+        }
+    }
+
+    pub fn cooldown_ticks(self) -> u32 {
+        match self {
+            SecondAbilityKind::Immortality => ability_constants::IMMORTALITY_COOLDOWN_TICKS,
+            SecondAbilityKind::Freeze => ability_constants::FREEZE_COOLDOWN_TICKS,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThirdAbilityKind {
     Neutralize,
     Toxin,
+}
+
+impl ThirdAbilityKind {
+    pub fn active_ticks(self) -> u32 {
+        match self {
+            ThirdAbilityKind::Neutralize => ability_constants::NEUTRALIZE_ACTIVE_TICKS,
+            ThirdAbilityKind::Toxin => ability_constants::TOXIN_ACTIVE_TICKS,
+        }
+    }
+
+    pub fn cooldown_ticks(self) -> u32 {
+        match self {
+            ThirdAbilityKind::Neutralize => ability_constants::NEUTRALIZE_COOLDOWN_TICKS,
+            ThirdAbilityKind::Toxin => ability_constants::TOXIN_COOLDOWN_TICKS,
+        }
+    }
+}
+
+/// The effect a shot carries; each has its own shot slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShotEffectKind {
+    Compress,
+    Freeze,
+}
+
+impl ShotEffectKind {
+    pub fn slot_index(self) -> usize {
+        match self {
+            ShotEffectKind::Compress => 0,
+            ShotEffectKind::Freeze => 1,
+        }
+    }
+
+    pub fn effect_ticks(self) -> u32 {
+        match self {
+            ShotEffectKind::Compress => ability_constants::COMPRESS_EFFECT_TICKS,
+            ShotEffectKind::Freeze => ability_constants::FREEZE_EFFECT_TICKS,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +123,10 @@ pub enum AbilityPhase {
 impl AbilityPhase {
     pub fn is_active(self) -> bool {
         matches!(self, AbilityPhase::Active { .. })
+    }
+
+    pub fn is_ready(self) -> bool {
+        self == AbilityPhase::Ready
     }
 }
 
@@ -151,6 +229,16 @@ impl AbilityPressSet {
     pub fn bits(self) -> u8 {
         self.bits
     }
+
+    pub fn contains(self, press: AbilityPressSet) -> bool {
+        self.bits & press.bits == press.bits
+    }
+
+    pub fn with(self, press: AbilityPressSet) -> AbilityPressSet {
+        AbilityPressSet {
+            bits: self.bits | press.bits,
+        }
+    }
 }
 
 /// Mouse offset from the on-screen crosshair, in CSS px.
@@ -158,6 +246,12 @@ impl AbilityPressSet {
 pub struct AimVector {
     pub x: i16,
     pub y: i16,
+}
+
+impl AimVector {
+    pub fn is_zero(self) -> bool {
+        self.x == 0 && self.y == 0
+    }
 }
 
 #[cfg(test)]
@@ -282,5 +376,47 @@ mod tests {
         assert_eq!(team_loadout.second, SecondAbilityKind::Freeze);
         assert_eq!(team_loadout.third, ThirdAbilityKind::Toxin);
         assert_eq!(loadout.with_team_color(None), loadout);
+    }
+
+    #[test]
+    fn contains_and_with_combine_presses() {
+        let presses: AbilityPressSet = AbilityPressSet::FIRST.with(AbilityPressSet::FOURTH);
+
+        assert!(presses.contains(AbilityPressSet::FIRST));
+        assert!(presses.contains(AbilityPressSet::FOURTH));
+        assert!(!presses.contains(AbilityPressSet::SECOND));
+        assert_eq!(presses.bits(), 0b1001);
+    }
+
+    #[test]
+    fn active_ticks_and_cooldown_ticks_follow_each_kind() {
+        assert_eq!(FirstAbilityKind::Extend.active_ticks(), 64);
+        assert_eq!(FirstAbilityKind::Compress.active_ticks(), 50);
+        assert_eq!(FirstAbilityKind::Compress.cooldown_ticks(), 57);
+        assert_eq!(SecondAbilityKind::Immortality.active_ticks(), 50);
+        assert_eq!(SecondAbilityKind::Freeze.active_ticks(), 57);
+        assert_eq!(SecondAbilityKind::Freeze.cooldown_ticks(), 86);
+        assert_eq!(ThirdAbilityKind::Neutralize.cooldown_ticks(), 93);
+        assert_eq!(ThirdAbilityKind::Toxin.active_ticks(), 57);
+    }
+
+    #[test]
+    fn slot_index_gives_compress_slot_zero_and_freeze_slot_one() {
+        assert_eq!(ShotEffectKind::Compress.slot_index(), 0);
+        assert_eq!(ShotEffectKind::Freeze.slot_index(), 1);
+        assert_eq!(ShotEffectKind::Freeze.effect_ticks(), 57);
+    }
+
+    #[test]
+    fn is_ready_holds_only_for_ready() {
+        assert!(AbilityPhase::Ready.is_ready());
+        assert!(!AbilityPhase::Cooling { ready_at: Tick(3) }.is_ready());
+        assert!(!AbilityPhase::Active { ends_at: Tick(3) }.is_ready());
+    }
+
+    #[test]
+    fn is_zero_holds_only_for_the_zero_vector() {
+        assert!(AimVector { x: 0, y: 0 }.is_zero());
+        assert!(!AimVector { x: 0, y: -1 }.is_zero());
     }
 }

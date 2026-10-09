@@ -50,27 +50,19 @@ pub fn launch_shot(organism: &mut Organism, aim: AimVector) -> Option<Projectile
 }
 
 /// The exposed cell whose offset from the centroid has the largest cosine with `aim`, the first in lattice order
-/// on a tie; a cell at the centroid is chosen only when it is the only exposed cell.
+/// on a tie.
 pub fn select_shot_cell(organism: &Organism, aim: AimVector) -> Option<LatticeCoordinate> {
     let centroid: LatticeCentroid = organism.centroid();
     let exposed_cells: Vec<LatticeCoordinate> = organism.exposed_cells();
-    let offset_cells: Vec<(LatticeCoordinate, (i64, i64))> = exposed_cells
-        .iter()
-        .map(|lattice_coordinate| (*lattice_coordinate, centroid.get_scaled_offset(*lattice_coordinate)))
-        .filter(|(_, offset)| *offset != (0, 0))
-        .collect();
+    let (first_cell, remaining_cells): (&LatticeCoordinate, &[LatticeCoordinate]) = exposed_cells.split_first()?;
+    let mut best_offset_cell: (LatticeCoordinate, (i64, i64)) = (*first_cell, centroid.get_scaled_offset(*first_cell));
 
-    let Some(first_offset_cell) = offset_cells.first() else {
-        return exposed_cells.first().copied();
-    };
-
-    let mut best_offset_cell: (LatticeCoordinate, (i64, i64)) = *first_offset_cell;
-
-    for offset_cell in &offset_cells[1..] {
-        let alignment_ordering: Ordering = compare_alignment(offset_cell.1, best_offset_cell.1, aim);
+    for lattice_coordinate in remaining_cells {
+        let offset: (i64, i64) = centroid.get_scaled_offset(*lattice_coordinate);
+        let alignment_ordering: Ordering = compare_alignment(offset, best_offset_cell.1, aim);
 
         if alignment_ordering == Ordering::Greater {
-            best_offset_cell = *offset_cell;
+            best_offset_cell = (*lattice_coordinate, offset);
         }
     }
 
@@ -239,17 +231,12 @@ mod tests {
     }
 
     #[test]
-    fn select_shot_cell_takes_a_centroid_cell_only_when_alone() {
-        let single_cell_organism: Organism = create_organism(&[(4, 4)]);
-        let centered_organism: Organism = create_organism(&[(0, 0), (1, 0), (2, 0)]);
+    fn select_shot_cell_takes_the_cell_of_a_single_cell_organism() {
+        let organism: Organism = create_organism(&[(4, 4)]);
 
         assert_eq!(
-            select_shot_cell(&single_cell_organism, AimVector { x: 0, y: 1 }),
+            select_shot_cell(&organism, AimVector { x: 0, y: 1 }),
             Some(LatticeCoordinate { i: 4, j: 4 }),
-        );
-        assert_eq!(
-            select_shot_cell(&centered_organism, AimVector { x: 0, y: 1 }),
-            Some(LatticeCoordinate { i: 0, j: 0 }),
         );
     }
 

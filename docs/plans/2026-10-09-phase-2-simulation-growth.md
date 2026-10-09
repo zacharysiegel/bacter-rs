@@ -7047,3 +7047,29 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 - `step` with membership, cursors, births, deaths, death bookkeeping (deaths, kill credit for suicide and departed hitters, `OrganismDied`) and re-tightening: Tasks 15 and 16.
 - Forbidden-operations source scan: Task 1. Golden chance-table digest: Task 9. `Pcg32` reference vectors: Task 3.
 - Done criteria: every growth, border and collision unit test (Tasks 4 to 16) and the growth statistics test (Task 17), checked together in Task 18.
+
+## Deviations from the plan
+
+- Test counts: the `shared` library tests report 111 passed (plan: 106) and `forbidden_operations` 3 passed (plan: 1); the extra tests are listed below.
+- `shared/tests/forbidden_operations.rs`:
+  - `atanh` added to the float function list, which design's `atan*` covers.
+  - Patterns `f64::<name>` and `f32::<name>` without the trailing `(`, so function paths such as `f64::sin` used as values are caught too.
+  - Constants renamed or added: `FORBIDDEN_FLOAT_FUNCTION_NAMES`, `BITCODE_CRATE_NAME`.
+  - Two self-tests of the scanner (`find_violations_reports_forbidden_operations_outside_permitted_directories`, `find_violations_permits_exempt_directories`) and their helper `create_source_file`.
+- `geometry.rs`: private helpers `widened_axis_differences` and `widened_distance_squared`, shared by both `distance_squared` functions and `is_within_cell_collision`; extra test `world_point_distance_squared_sums_squared_axis_differences`.
+- `cell_occupancy.rs`: constant `BITS_PER_BYTE` in place of the literal 8; `Range` imported.
+- `organism.rs`: private `empty_neighbors` iterator shared by `exposed_cells` and `adjacent_sites`.
+- `world.rs`: `WorldBounds::right` and `WorldBounds::bottom` are `pub`, since the spawn range reads them.
+- `growth_chance_table.rs`: `DRAW_SPACE_SIZE` derived from `ALWAYS_PASSES_THRESHOLD`; constant `CERTAIN_CHANCE_PERCENT` in place of the literal 100; the threshold doc moved from the type onto each field.
+- `growth.rs`: the `CollisionIndex` doc comment dropped; `run_birth_phase_draws_once_per_site_in_order` computes each site's own distance instead of assuming 36 for every site.
+- `spawn.rs`:
+  - `SPAWN_MARGIN_PIXELS` derived from a new `SPAWN_BUFFER_PIXELS` and `CELL_WIDTH_PIXELS`.
+  - Helpers `get_pixels_rounded_up`, `get_pixels_rounded_down` and `draw_coordinate` in place of `get_span`.
+  - The hazard check split into `is_inside_spore_secretion`, `is_inside_shot_secretion` and `is_inside_toxin_field`.
+  - Extra tests: the empty spawn range gives `None` without drawing (`find_spawn_position` and `spawn_member`), and spawning before a round starts (`Waiting`, `PreRound`) is allowed; the round-in-progress test also covers `PostRound`.
+  - Test helpers renamed (`get_point_offset_horizontally`, `create_member_with_covering_organism`); the margin test derives its bounds from `SPAWN_MARGIN_PIXELS`.
+- `game_settings.rs`: the mode codes are constants shared by `code()` and `TryFrom<&str>`; extra test `code_gives_the_three_letter_mode_codes`.
+- `game_state.rs` tests: world sizes use `geometry::SUBPIXELS_PER_PIXEL`.
+- `step.rs`: blank lines only.
+- `growth_statistics.rs`: constant `MILLIPIXELS_PER_PIXEL` and helper `round_millipixels_to_pixels`. Measured means equal the plan's.
+- Commits: each task's review fixes sit in extra commits after the task (`task <n> quality fixes`, `format game state tests`), and the final review added `game mode code constants` and `phase 2 review style fixes`.

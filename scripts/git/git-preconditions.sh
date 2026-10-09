@@ -16,6 +16,10 @@ function require_git_repository {
 }
 
 function require_clean_working_tree {
+    # Non-zero means some files differ from the index, which diff-index reports below.
+    local index_refresh_status=0
+    git update-index -q --refresh > /dev/null || index_refresh_status=$?
+
     local working_tree_status=0
     git diff-index --quiet HEAD -- || working_tree_status=$?
 
@@ -41,7 +45,7 @@ function remote_branch_exists {
     local branch_name="$1"
 
     local ls_remote_status=0
-    git ls-remote --exit-code --heads origin "${branch_name}" > /dev/null || ls_remote_status=$?
+    git ls-remote --exit-code origin "refs/heads/${branch_name}" > /dev/null || ls_remote_status=$?
 
     if test "${ls_remote_status}" -eq 0; then
         echo "present"

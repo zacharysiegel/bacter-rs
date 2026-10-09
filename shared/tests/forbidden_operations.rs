@@ -1,12 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const FLOAT_FUNCTION_NAMES: [&str; 19] = [
+const FORBIDDEN_FLOAT_FUNCTION_NAMES: [&str; 20] = [
     "ln", "ln_1p", "log", "log2", "log10", "exp", "exp2", "exp_m1", "powf", "powi", "sin", "cos", "tan", "sin_cos",
-    "atan", "atan2", "hypot", "cbrt", "mul_add",
+    "atan", "atan2", "atanh", "hypot", "cbrt", "mul_add",
 ];
 const FORBIDDEN_COLLECTION_NAMES: [&str; 2] = ["HashMap", "HashSet"];
 const DETERMINISM_EXEMPT_DIRECTORY_NAMES: [&str; 2] = ["render", "play"];
+const BITCODE_CRATE_NAME: &str = "bitcode";
 const BITCODE_PERMITTED_DIRECTORY_NAME: &str = "protocol";
 
 #[derive(Debug)]
@@ -67,7 +68,10 @@ fn find_violations(source_file: &SourceFile) -> Vec<String> {
     }
 
     if !source_file.is_inside_directory(BITCODE_PERMITTED_DIRECTORY_NAME) {
-        violations.extend(find_pattern_violations(source_file, &[String::from("bitcode")]));
+        violations.extend(find_pattern_violations(
+            source_file,
+            &[String::from(BITCODE_CRATE_NAME)],
+        ));
     }
 
     violations
@@ -76,10 +80,10 @@ fn find_violations(source_file: &SourceFile) -> Vec<String> {
 fn get_determinism_patterns() -> Vec<String> {
     let mut patterns: Vec<String> = Vec::new();
 
-    for function_name in FLOAT_FUNCTION_NAMES {
+    for function_name in FORBIDDEN_FLOAT_FUNCTION_NAMES {
         patterns.push(format!(".{function_name}("));
-        patterns.push(format!("f64::{function_name}("));
-        patterns.push(format!("f32::{function_name}("));
+        patterns.push(format!("f64::{function_name}"));
+        patterns.push(format!("f32::{function_name}"));
     }
 
     for collection_name in FORBIDDEN_COLLECTION_NAMES {

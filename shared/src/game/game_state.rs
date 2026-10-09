@@ -55,6 +55,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::game::test_fixture;
+    use crate::geometry;
     use crate::geometry::{Subpixels, WorldPoint};
     use crate::world::WorldShapeKind;
 
@@ -79,8 +80,8 @@ mod tests {
         let state: GameState = GameState::new(settings, 0);
 
         assert_eq!(state.world.shape, WorldShapeKind::Ellipse);
-        assert_eq!(state.world.bounds.width, Subpixels(1200 * 1024));
-        assert_eq!(state.world.bounds.height, Subpixels(700 * 1024));
+        assert_eq!(state.world.bounds.width, Subpixels(1200 * geometry::SUBPIXELS_PER_PIXEL));
+        assert_eq!(state.world.bounds.height, Subpixels(700 * geometry::SUBPIXELS_PER_PIXEL));
         assert_eq!(state.world.initial_bounds, state.world.bounds);
     }
 

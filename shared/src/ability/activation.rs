@@ -1,7 +1,7 @@
 use crate::ability::ability_constants;
 use crate::ability::projectile;
 use crate::ability::{
-    AbilityPhase, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile, SecondAbilityKind,
+    AbilityActivation, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile, SecondAbilityKind,
     SporePhase,
 };
 use crate::game::{GameState, PlayerTickInput, SimulationEvent, Tick};
@@ -90,20 +90,14 @@ fn press_first(state: &mut GameState, player_input: &PlayerTickInput, tick: Tick
         return Vec::new();
     };
 
-    if !organism.abilities.first.is_ready() {
-        return Vec::new();
-    }
-
     match loadout.first {
         FirstAbilityKind::Extend => {
-            organism.abilities.first = AbilityPhase::Active {
-                ends_at: tick.plus(loadout.first.active_ticks()),
-            };
-
-            Vec::new()
+            organism.abilities.first.activate(tick, loadout.first.active_ticks());
         }
-        FirstAbilityKind::Compress => Vec::new(),
+        FirstAbilityKind::Compress => {}
     }
+
+    Vec::new()
 }
 
 fn press_second(state: &mut GameState, player_input: &PlayerTickInput, tick: Tick) -> Vec<SimulationEvent> {
@@ -111,20 +105,14 @@ fn press_second(state: &mut GameState, player_input: &PlayerTickInput, tick: Tic
         return Vec::new();
     };
 
-    if !organism.abilities.second.is_ready() {
-        return Vec::new();
-    }
-
     match loadout.second {
         SecondAbilityKind::Immortality => {
-            organism.abilities.second = AbilityPhase::Active {
-                ends_at: tick.plus(loadout.second.active_ticks()),
-            };
-
-            Vec::new()
+            organism.abilities.second.activate(tick, loadout.second.active_ticks());
         }
-        SecondAbilityKind::Freeze => Vec::new(),
+        SecondAbilityKind::Freeze => {}
     }
+
+    Vec::new()
 }
 
 fn press_third(state: &mut GameState, member_id: MemberId, tick: Tick) {
@@ -132,14 +120,12 @@ fn press_third(state: &mut GameState, member_id: MemberId, tick: Tick) {
         return;
     };
 
-    if !organism.abilities.third.is_ready() {
-        return;
-    }
+    let activation: AbilityActivation = organism.abilities.third.activate(tick, loadout.third.active_ticks());
 
-    organism.abilities.third = AbilityPhase::Active {
-        ends_at: tick.plus(loadout.third.active_ticks()),
-    };
-    organism.abilities.third_center = Some(organism.cursor);
+    match activation {
+        AbilityActivation::Started => organism.abilities.third_center = Some(organism.cursor),
+        AbilityActivation::NotReady => {}
+    }
 }
 
 fn press_fourth(state: &mut GameState, member_id: MemberId, tick: Tick) {
@@ -179,7 +165,7 @@ fn get_loadout_and_organism(state: &mut GameState, member_id: MemberId) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AimVector, ShotPhase, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, AimVector, ShotPhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, WorldPoint};
     use crate::world::WorldShapeKind;

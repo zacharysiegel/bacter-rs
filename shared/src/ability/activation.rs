@@ -37,7 +37,7 @@ pub fn expire_timers(abilities: &mut OrganismAbilities, loadout: &Loadout, tick:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AbilityPhase, FirstAbilityKind};
+    use crate::ability::{AbilityPhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, test_fixture};
     use crate::geometry::WorldPoint;
     use crate::member::MemberId;
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn expire_timers_uses_the_cooldown_of_the_chosen_kind() {
         let mut loadout: Loadout = test_fixture::create_loadout();
-        loadout.first = FirstAbilityKind::Compress;
+        loadout.third = ThirdAbilityKind::Toxin;
         let mut abilities: OrganismAbilities = OrganismAbilities::all_ready();
         abilities.first = AbilityPhase::Active { ends_at: Tick(50) };
         abilities.second = AbilityPhase::Active { ends_at: Tick(50) };
@@ -78,7 +78,7 @@ mod tests {
 
         assert_eq!(abilities.first, AbilityPhase::Cooling { ready_at: Tick(107) });
         assert_eq!(abilities.second, AbilityPhase::Cooling { ready_at: Tick(136) });
-        assert_eq!(abilities.third, AbilityPhase::Cooling { ready_at: Tick(143) });
+        assert_eq!(abilities.third, AbilityPhase::Cooling { ready_at: Tick(136) });
         assert_eq!(abilities.third_center, None);
     }
 

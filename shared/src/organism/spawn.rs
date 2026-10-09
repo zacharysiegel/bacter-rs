@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::ability::ability_constants;
+use crate::ability;
 use crate::ability::{Loadout, ShotPhase, SporePhase};
 use crate::game::{GameState, SimulationEvent, SpawnRejectionKind};
 use crate::geometry;
@@ -186,10 +186,9 @@ fn is_inside_spore_secretion(organism: &Organism, candidate: WorldPoint) -> bool
     let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
 
     match &organism.abilities.spore {
-        SporePhase::Secreting { spores, .. } => spores.iter().any(|spore| {
-            spore.position.distance_squared(candidate_subpixels)
-                <= ability_constants::SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS
-        }),
+        SporePhase::Secreting { spores, .. } => {
+            spores.iter().any(|spore| ability::is_inside_spore_secretion(spore.position, candidate_subpixels))
+        }
         SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => false,
     }
 }
@@ -198,21 +197,16 @@ fn is_inside_shot_secretion(organism: &Organism, candidate: WorldPoint) -> bool 
     let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
 
     organism.abilities.shots.iter().any(|shot| match shot {
-        ShotPhase::Secreting { center, .. } => {
-            center.distance_squared(candidate_subpixels) <= ability_constants::SHOT_SECRETION_RADIUS_SQUARED_SUBPIXELS
-        }
+        ShotPhase::Secreting { center, .. } => ability::is_inside_shot_secretion(*center, candidate_subpixels),
         ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => false,
     })
 }
 
 fn is_inside_toxin_field(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
-    let is_toxin_field_active: bool =
-        member.loadout.as_ref().is_some_and(|loadout| organism.abilities.is_toxin_field_active(loadout));
+    let toxin_field_center: Option<WorldPoint> =
+        member.loadout.as_ref().and_then(|loadout| organism.abilities.get_toxin_field_center(loadout));
 
-    is_toxin_field_active
-        && organism.abilities.third_center.is_some_and(|third_center| {
-            third_center.distance_squared(candidate) <= ability_constants::FIELD_RADIUS_SQUARED_PIXELS
-        })
+    toxin_field_center.is_some_and(|field_center| ability::is_inside_field(field_center, candidate))
 }
 
 #[cfg(test)]

@@ -253,6 +253,14 @@ impl OrganismAbilities {
         self.third.is_active() && loadout.third == ThirdAbilityKind::Toxin
     }
 
+    pub fn get_neutralize_field_center(&self, loadout: &Loadout) -> Option<WorldPoint> {
+        self.third_center.filter(|_| self.is_neutralize_field_active(loadout))
+    }
+
+    pub fn get_toxin_field_center(&self, loadout: &Loadout) -> Option<WorldPoint> {
+        self.third_center.filter(|_| self.is_toxin_field_active(loadout))
+    }
+
     pub fn is_compressed(&self) -> bool {
         self.compressed_until.is_some()
     }
@@ -310,6 +318,18 @@ impl AimVector {
     pub fn is_zero(self) -> bool {
         self.x == 0 && self.y == 0
     }
+}
+
+pub fn is_inside_field(field_center: WorldPoint, point: WorldPoint) -> bool {
+    field_center.distance_squared(point) <= ability_constants::FIELD_RADIUS_SQUARED_PIXELS
+}
+
+pub fn is_inside_spore_secretion(spore_position: SubpixelPoint, point: SubpixelPoint) -> bool {
+    spore_position.distance_squared(point) <= ability_constants::SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS
+}
+
+pub fn is_inside_shot_secretion(shot_center: SubpixelPoint, point: SubpixelPoint) -> bool {
+    shot_center.distance_squared(point) <= ability_constants::SHOT_SECRETION_RADIUS_SQUARED_SUBPIXELS
 }
 
 #[cfg(test)]
@@ -545,5 +565,53 @@ mod tests {
 
         secreting_phase.expire(Tick(40));
         assert_eq!(secreting_phase, ShotPhase::Ready);
+    }
+
+    #[test]
+    fn get_field_centers_follow_the_third_ability_kind() {
+        let mut abilities: OrganismAbilities = create_active_abilities();
+        abilities.third_center = Some(WorldPoint { x: 5, y: 6 });
+        let neutralize_loadout: Loadout = create_loadout(
+            FirstAbilityKind::Extend,
+            SecondAbilityKind::Immortality,
+            ThirdAbilityKind::Neutralize,
+        );
+        let toxin_loadout: Loadout = create_loadout(
+            FirstAbilityKind::Extend,
+            SecondAbilityKind::Immortality,
+            ThirdAbilityKind::Toxin,
+        );
+
+        assert_eq!(
+            abilities.get_neutralize_field_center(&neutralize_loadout),
+            Some(WorldPoint { x: 5, y: 6 }),
+        );
+        assert_eq!(abilities.get_toxin_field_center(&neutralize_loadout), None);
+        assert_eq!(
+            abilities.get_toxin_field_center(&toxin_loadout),
+            Some(WorldPoint { x: 5, y: 6 }),
+        );
+
+        abilities.third = AbilityPhase::Cooling { ready_at: Tick(90) };
+
+        assert_eq!(abilities.get_toxin_field_center(&toxin_loadout), None);
+    }
+
+    #[test]
+    fn is_inside_field_includes_the_radius() {
+        let field_center: WorldPoint = WorldPoint { x: 100, y: 100 };
+
+        assert!(is_inside_field(field_center, WorldPoint { x: 160, y: 100 }));
+        assert!(!is_inside_field(field_center, WorldPoint { x: 161, y: 100 }));
+    }
+
+    #[test]
+    fn is_inside_secretion_includes_the_radius() {
+        let center: SubpixelPoint = SubpixelPoint { x: 0, y: 0 };
+
+        assert!(is_inside_spore_secretion(center, SubpixelPoint { x: 25_197, y: 0 }));
+        assert!(!is_inside_spore_secretion(center, SubpixelPoint { x: 25_198, y: 0 }));
+        assert!(is_inside_shot_secretion(center, SubpixelPoint { x: 12_598, y: 0 }));
+        assert!(!is_inside_shot_secretion(center, SubpixelPoint { x: 12_599, y: 0 }));
     }
 }

@@ -28,11 +28,9 @@ pub const SHOT_COOLDOWN_TICKS: u32 = tick::get_ticks_from_milliseconds(2000);
 pub const SHOT_SECRETION_TICKS: u32 = tick::get_ticks_from_milliseconds(800);
 
 pub const SPORE_SPEED_SUBPIXELS_PER_TICK: i32 =
-    ORIGINAL_SPORE_PIXELS_PER_PACKET * geometry::SUBPIXELS_PER_PIXEL * tick::TICK_PERIOD_MILLISECONDS as i32
-        / ORIGINAL_PACKET_PERIOD_MILLISECONDS;
+    get_subpixels_per_tick_from_original_pixels_per_packet(ORIGINAL_SPORE_PIXELS_PER_PACKET);
 pub const SHOT_SPEED_SUBPIXELS_PER_TICK: i32 =
-    ORIGINAL_SHOT_PIXELS_PER_PACKET * geometry::SUBPIXELS_PER_PIXEL * tick::TICK_PERIOD_MILLISECONDS as i32
-        / ORIGINAL_PACKET_PERIOD_MILLISECONDS;
+    get_subpixels_per_tick_from_original_pixels_per_packet(ORIGINAL_SHOT_PIXELS_PER_PACKET);
 
 /// Floor of `72 * 2.9²` px² in subpixel²; the comparison is `<=`.
 pub const SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS: i64 = 634_933_739;
@@ -40,6 +38,11 @@ pub const SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS: i64 = 634_933_739;
 pub const SHOT_SECRETION_RADIUS_SQUARED_SUBPIXELS: i64 = 158_733_434;
 /// Neutralize and toxin, 60 px; the comparison is `<=`.
 pub const FIELD_RADIUS_SQUARED_PIXELS: i64 = 3600;
+
+const fn get_subpixels_per_tick_from_original_pixels_per_packet(pixels_per_packet: i32) -> i32 {
+    pixels_per_packet * geometry::SUBPIXELS_PER_PIXEL * tick::TICK_PERIOD_MILLISECONDS as i32
+        / ORIGINAL_PACKET_PERIOD_MILLISECONDS
+}
 
 #[cfg(test)]
 mod tests {

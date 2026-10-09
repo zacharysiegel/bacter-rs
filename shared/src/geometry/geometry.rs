@@ -20,16 +20,12 @@ pub struct WorldPoint {
 
 impl WorldPoint {
     pub fn distance_squared(self, other: WorldPoint) -> i64 {
-        let dx: i64 = i64::from(self.x) - i64::from(other.x);
-        let dy: i64 = i64::from(self.y) - i64::from(other.y);
-
-        dx * dx + dy * dy
+        widened_distance_squared(self.x, self.y, other.x, other.y)
     }
 
     /// Whether two cell centres are close enough to collide, touching edges included.
     pub fn is_within_cell_collision(self, other: WorldPoint) -> bool {
-        let dx: i64 = i64::from(self.x) - i64::from(other.x);
-        let dy: i64 = i64::from(self.y) - i64::from(other.y);
+        let (dx, dy): (i64, i64) = widened_axis_differences(self.x, self.y, other.x, other.y);
         let collision_extent: i64 = i64::from(CELL_WIDTH_PIXELS);
 
         dx.abs() <= collision_extent && dy.abs() <= collision_extent
@@ -51,10 +47,7 @@ pub struct SubpixelPoint {
 
 impl SubpixelPoint {
     pub fn distance_squared(self, other: SubpixelPoint) -> i64 {
-        let dx: i64 = i64::from(self.x) - i64::from(other.x);
-        let dy: i64 = i64::from(self.y) - i64::from(other.y);
-
-        dx * dx + dy * dy
+        widened_distance_squared(self.x, self.y, other.x, other.y)
     }
 }
 
@@ -120,6 +113,19 @@ impl NeighborDirection {
     }
 }
 
+fn widened_axis_differences(first_x: i32, first_y: i32, second_x: i32, second_y: i32) -> (i64, i64) {
+    let dx: i64 = i64::from(first_x) - i64::from(second_x);
+    let dy: i64 = i64::from(first_y) - i64::from(second_y);
+
+    (dx, dy)
+}
+
+fn widened_distance_squared(first_x: i32, first_y: i32, second_x: i32, second_y: i32) -> i64 {
+    let (dx, dy): (i64, i64) = widened_axis_differences(first_x, first_y, second_x, second_y);
+
+    dx * dx + dy * dy
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +187,10 @@ mod tests {
         let second: SubpixelPoint = SubpixelPoint { x: 1 << 28, y: 1 << 28 };
 
         assert_eq!(first.distance_squared(second), 1_i64 << 59);
+    }
+
+    #[test]
+    fn world_point_distance_squared_sums_squared_axis_differences() {
         assert_eq!(
             WorldPoint { x: 3, y: -4 }.distance_squared(WorldPoint { x: 0, y: 0 }),
             25,

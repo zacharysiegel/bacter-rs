@@ -26,6 +26,7 @@ pub fn step(state: &mut GameState, bundle: &InputBundle) -> Result<Vec<Simulatio
 
 fn check_bundle(state: &GameState, bundle: &InputBundle) -> Result<(), StepError> {
     let expected_tick: Tick = state.tick.next();
+
     if bundle.tick != expected_tick {
         return Err(StepError::TickMismatch {
             expected: expected_tick,
@@ -171,6 +172,7 @@ mod tests {
             &create_bundle(1, vec![create_joined_event(MemberId(3), None)]),
         )
         .unwrap();
+
         let state_before: GameState = state.clone();
 
         let result: Result<Vec<SimulationEvent>, StepError> = step(
@@ -298,6 +300,7 @@ mod tests {
         .unwrap();
 
         let cursor: WorldPoint = test_fixture::get_organism(&state, MemberId(0)).cursor;
+
         assert_eq!(
             simulation_events,
             vec![
@@ -351,6 +354,7 @@ mod tests {
             &create_bundle(1, vec![create_joined_event(MemberId(0), None)]),
         )
         .unwrap();
+
         let appearance: Appearance = Appearance {
             color: OrganismColorKind::Royal,
             skin: SkinKind::Ghost,

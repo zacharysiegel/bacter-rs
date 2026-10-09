@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::geometry::LatticeCoordinate;
 
 const BITS_PER_BYTE: usize = u8::BITS as usize;
@@ -116,10 +118,10 @@ impl CellOccupancy {
 
     /// Ascending `LatticeCoordinate` order.
     pub fn iter(&self) -> impl Iterator<Item = LatticeCoordinate> + '_ {
-        let rows: std::ops::Range<i32> = 0..i32::from(self.height);
+        let rows: Range<i32> = 0..i32::from(self.height);
 
         rows.flat_map(move |row| {
-            let columns: std::ops::Range<i32> = 0..i32::from(self.width);
+            let columns: Range<i32> = 0..i32::from(self.width);
 
             columns.map(move |column| LatticeCoordinate {
                 i: self.origin.i + column,

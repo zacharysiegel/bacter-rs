@@ -47,11 +47,11 @@ impl WorldBounds {
             >= width * width * height * height
     }
 
-    fn right(&self) -> i64 {
+    pub fn right(&self) -> i64 {
         i64::from(self.left.0) + i64::from(self.width.0)
     }
 
-    fn bottom(&self) -> i64 {
+    pub fn bottom(&self) -> i64 {
         i64::from(self.top.0) + i64::from(self.height.0)
     }
 }

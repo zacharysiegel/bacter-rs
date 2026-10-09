@@ -28,6 +28,7 @@
 - `#![recursion_limit = "512"]` carries a one-line comment rather than eafora's block comments, which `cargo fmt` re-indents at the top of a file.
 - Scripts in this phase are the ones whose target already exists: `scripts/test/check-wasm.sh`, `scripts/dev/server.sh` (the `server` binary exists, as `fn main() {}`), and the three git scripts. The others arrive with their targets: `scripts/dev/web.sh` needs the ssr `serve()` and `style/main.scss` (shell, phase 8); the build and run scripts are phase 8; `test-wasm.sh`, `test-shaders.sh`, `test-replay-wasm.sh`, `test-growth-statistics.sh` and `regenerate-replay-fixtures.sh` arrive with the tests they run.
 - The three git scripts share their precondition checks through a sourced `scripts/git/git-preconditions.sh` (not run directly), rather than repeating them in each script.
+- `scripts/dev/server.sh` ("`cargo run -p server` with `.env`") leaves loading `.env` to the server's dotenvy call and refuses to start when `./.env` is missing, so a dev run never silently falls back to the `ServerConfig` defaults.
 - `origin/HEAD` is not set in this repository (it was created with `git remote add`, not cloned). The git scripts read the default branch from it as the design requires, and exit with the hint `git remote set-head origin --auto` when it is missing; this plan does not change the repository's remote configuration.
 - `.gitignore` already holds `/target/` and `.env` (overview.md: "target/, .env") and is not modified.
 
@@ -457,7 +458,7 @@ Run: `cargo check -p web --features ssr`
 Expected: ends with `Finished`.
 
 Run: `cargo tree -p server -e normal -i wgpu`
-Expected: `error: package ID specification `wgpu` did not match any packages` (the server's own dependency graph never links wgpu).
+Expected: `error: package ID specification `wgpu` did not match any packages`, followed by a `help:` line suggesting a similarly named package (the server's own dependency graph never links wgpu).
 
 Run: `cargo tree -p shared -e normal --depth 1`
 Expected:
@@ -489,7 +490,7 @@ git commit -m "workspace and empty crate shells"
 
 ```bash
 #!/usr/bin/env bash
-# Type-checks the wasm32 builds: shared with and without the renderer, and the web client's hydrate build.
+# Type-checks the wasm32 builds.
 
 set -euo pipefail
 
@@ -529,7 +530,7 @@ git commit -m "wasm32 check script"
 Variables and defaults from `docs/architecture/server.md` (process); optional variables stay commented out so they are unset.
 
 ```sh
-# Non-secret server settings. setup.sh copies this file to .env when .env is absent.
+# Non-secret server settings.
 
 BACTER_BIND_ADDRESS=127.0.0.1
 BACTER_PORT=3100
@@ -904,8 +905,7 @@ Adapted from eafora's scripts: the default branch comes from `origin/HEAD` inste
 ```bash
 #!/usr/bin/env bash
 # Deletes merged branches from origin and locally, then prunes stale remote-tracking refs.
-# Integration rebases, so a merged branch's tip is unreachable from the default branch and `git branch -d`
-# would refuse; this deletes with -D.
+# Deletes with -D: a branch integrated from another clone keeps a pre-rebase local tip here.
 #
 # Usage:
 #   ./scripts/git/cleanup-merged.sh <branch-name> [<branch-name>...]
@@ -1464,7 +1464,7 @@ Singularity parity unless a divergence is recorded below.
 - Integration tests sit in `<crate>/tests/`. A helper used by two or more test files lives in `tests/helpers/<concern>.rs`; a helper with one consumer stays a private function in that test file.
 - Test names: `<function_under_test>_<scenario>`, for example `from_parts_rejects_even_increment`.
 - No messages in assertions.
-- A test which needs a GPU, a browser, wasmtime or a long run is `#[ignore]` and runs through a script in `scripts/test/`.
+- A test which needs a GPU or a long run is `#[ignore]` and runs through a script in `scripts/test/`; browser and wasmtime runs also go through `scripts/test/`.
 - `#[wasm_bindgen_test]` only for behaviour which exists only in a browser. Target-agnostic logic is covered by the host `#[test]` plus `./scripts/test/check-wasm.sh`.
 - A simulation change or a wire-type change keeps the replay fixtures passing, or regenerates the fixtures and their checksums deliberately.
 
@@ -1640,6 +1640,7 @@ Expected, newest first (hashes vary):
 <hash> wasm32 check script
 <hash> workspace and empty crate shells
 <hash> toolchain and rustfmt configuration
+<hash> phase 1 plan review
 <hash> phase 1 plan
 ```
 

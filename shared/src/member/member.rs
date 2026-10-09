@@ -1,0 +1,124 @@
+/// Never reused within a game.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MemberId(pub u32);
+
+impl MemberId {
+    pub fn next(self) -> MemberId {
+        MemberId(self.0.saturating_add(1))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemberRoleKind {
+    Participant,
+    Spectator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Appearance {
+    pub color: OrganismColorKind,
+    pub skin: SkinKind,
+}
+
+impl Appearance {
+    /// A team member's colour is always its team's colour.
+    pub fn with_team_color(self, team: Option<TeamKind>) -> Appearance {
+        let Some(team) = team else {
+            return self;
+        };
+
+        Appearance {
+            color: team.forced_color(),
+            skin: self.skin,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrganismColorKind {
+    Fire,
+    Camel,
+    Clay,
+    Sun,
+    Leaf,
+    Lime,
+    Sky,
+    Lake,
+    Ocean,
+    Royal,
+    Petal,
+    Hot,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkinKind {
+    Grid,
+    Circles,
+    Ghost,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TeamKind {
+    Red,
+    Blue,
+    Green,
+    Pink,
+}
+
+impl TeamKind {
+    pub fn forced_color(self) -> OrganismColorKind {
+        match self {
+            TeamKind::Red => OrganismColorKind::Fire,
+            TeamKind::Blue => OrganismColorKind::Sky,
+            TeamKind::Green => OrganismColorKind::Lime,
+            TeamKind::Pink => OrganismColorKind::Petal,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_team_color_forces_the_team_color_and_keeps_the_skin() {
+        let appearance: Appearance = Appearance {
+            color: OrganismColorKind::Camel,
+            skin: SkinKind::Ghost,
+        };
+
+        assert_eq!(
+            appearance.with_team_color(Some(TeamKind::Blue)),
+            Appearance {
+                color: OrganismColorKind::Sky,
+                skin: SkinKind::Ghost,
+            },
+        );
+        assert_eq!(appearance.with_team_color(None), appearance);
+    }
+
+    #[test]
+    fn forced_color_maps_each_team() {
+        let forced_colors: Vec<OrganismColorKind> = [TeamKind::Red, TeamKind::Blue, TeamKind::Green, TeamKind::Pink]
+            .iter()
+            .map(|team| team.forced_color())
+            .collect();
+
+        assert_eq!(
+            forced_colors,
+            vec![
+                OrganismColorKind::Fire,
+                OrganismColorKind::Sky,
+                OrganismColorKind::Lime,
+                OrganismColorKind::Petal,
+            ],
+        );
+    }
+
+    #[test]
+    fn next_saturates_at_the_maximum_id() {
+        assert_eq!(MemberId(4).next(), MemberId(5));
+        assert_eq!(MemberId(u32::MAX).next(), MemberId(u32::MAX));
+    }
+}

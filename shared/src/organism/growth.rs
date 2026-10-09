@@ -173,6 +173,7 @@ fn run_member_natural_deaths(member: &mut Member, world: &World, rng: &mut Pcg32
     };
 
     let is_immortal: bool = loadout.is_some_and(|loadout| organism.abilities.is_immortal(loadout));
+
     if organism.abilities.is_frozen() || is_immortal {
         return 0;
     }
@@ -190,6 +191,7 @@ fn run_member_natural_deaths(member: &mut Member, world: &World, rng: &mut Pcg32
         if !is_death_forced {
             let draw: u32 = rng.next_u32();
             let passes: bool = chance_table.death_passes(distance_squared, draw);
+
             if !passes {
                 continue;
             }
@@ -419,6 +421,7 @@ mod tests {
         let frozen_organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
         frozen_organism.cursor = far_cursor;
         frozen_organism.abilities.frozen_until = Some(Tick(30));
+
         let immortal_organism: &mut Organism = test_fixture::get_organism_mut(&mut state, SECOND_MEMBER_ID);
         immortal_organism.cursor = far_cursor;
         immortal_organism.abilities.second = AbilityPhase::Active { ends_at: Tick(30) };
@@ -484,11 +487,13 @@ mod tests {
     fn run_natural_death_phase_never_removes_enclosed_cells() {
         let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 100, y: 100 }]);
         let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
+
         for j in -1..=1 {
             for i in -1..=1 {
                 organism.cells.insert(LatticeCoordinate { i, j });
             }
         }
+
         organism.cursor = WorldPoint { x: 250, y: 250 };
 
         assert_eq!(run_natural_death_phase(&mut state), 8);

@@ -43,6 +43,8 @@
 - Growth statistics: cursor x `50_000 + round(2.975 * (t + 1))` px in integers (the reference moved the cursor before births), seeds 1 to 8, release build. Measured with this plan's code (cells, changes per tick): Default still 64.0, 6.22; moving 42.7, 7.78. Compress still 37.7, 0.79; moving 23.4, 4.45. Extend still 124.1, 7.97; moving 82.1, 10.40.
 - Unit-test fixtures shared by `game_state`, `growth`, `spawn` and `step` live in `game/test_fixture.rs`, declared `#[cfg(test)]`.
 - The natural death phase selects the growth state as the birth phase does.
+- `spawn::place_organism` returns `Result<(), PlacementError>` (`PlacementError::MemberNotFound`); the design gives it no return type.
+- `scripts/test/test-growth-statistics.sh` is created here although the roadmap lists the growth statistics script under phase 9: phase 2 is done only when the ignored statistics test passes, and ignored tests run through a `scripts/test/` script.
 
 ## File structure
 
@@ -126,7 +128,8 @@ fn read_source_files(source_root: &Path, directory: &Path) -> Vec<SourceFile> {
     entry_paths.sort();
 
     for entry_path in entry_paths {
-        if entry_path.is_dir() {
+        let is_directory: bool = entry_path.is_dir();
+        if is_directory {
             source_files.extend(read_source_files(source_root, &entry_path));
             continue;
         }
@@ -188,7 +191,7 @@ fn find_pattern_violations(source_file: &SourceFile, patterns: &[String]) -> Vec
                     "{}:{}: {}",
                     source_file.relative_path.display(),
                     line_index + 1,
-                    pattern
+                    pattern,
                 ));
             }
         }
@@ -330,7 +333,7 @@ mod tests {
         assert_eq!(first.distance_squared(second), 1_i64 << 59);
         assert_eq!(
             WorldPoint { x: 3, y: -4 }.distance_squared(WorldPoint { x: 0, y: 0 }),
-            25
+            25,
         );
     }
 
@@ -548,7 +551,7 @@ mod tests {
         assert_eq!(first.distance_squared(second), 1_i64 << 59);
         assert_eq!(
             WorldPoint { x: 3, y: -4 }.distance_squared(WorldPoint { x: 0, y: 0 }),
-            25
+            25,
         );
     }
 
@@ -632,7 +635,7 @@ mod tests {
 
         assert_eq!(
             draws,
-            vec![0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e]
+            vec![0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e],
         );
     }
 
@@ -644,8 +647,8 @@ mod tests {
         assert_eq!(
             draws,
             vec![
-                0x683ae4b0, 0x465b94e2, 0x8e78504b, 0x716c5c5d, 0x086b6029, 0x1aa1bf3a, 0x32af10fa, 0xa01c2abc
-            ]
+                0x683ae4b0, 0x465b94e2, 0x8e78504b, 0x716c5c5d, 0x086b6029, 0x1aa1bf3a, 0x32af10fa, 0xa01c2abc,
+            ],
         );
     }
 
@@ -766,7 +769,7 @@ mod tests {
 
         assert_eq!(
             draws,
-            vec![0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e]
+            vec![0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e],
         );
     }
 
@@ -778,8 +781,8 @@ mod tests {
         assert_eq!(
             draws,
             vec![
-                0x683ae4b0, 0x465b94e2, 0x8e78504b, 0x716c5c5d, 0x086b6029, 0x1aa1bf3a, 0x32af10fa, 0xa01c2abc
-            ]
+                0x683ae4b0, 0x465b94e2, 0x8e78504b, 0x716c5c5d, 0x086b6029, 0x1aa1bf3a, 0x32af10fa, 0xa01c2abc,
+            ],
         );
     }
 
@@ -1758,7 +1761,7 @@ mod tests {
     }
 
     #[test]
-    fn field_predicates_follow_the_third_ability_kind() {
+    fn is_neutralize_field_active_and_is_toxin_field_active_follow_the_third_ability_kind() {
         let abilities: OrganismAbilities = create_active_abilities();
         let neutralize_loadout: Loadout = create_loadout(
             FirstAbilityKind::Extend,
@@ -1778,7 +1781,7 @@ mod tests {
     }
 
     #[test]
-    fn received_effect_predicates_follow_their_deadlines() {
+    fn is_compressed_and_is_frozen_hold_while_a_deadline_is_set() {
         let mut abilities: OrganismAbilities = OrganismAbilities::all_ready();
 
         assert!(!abilities.is_compressed());
@@ -1795,7 +1798,7 @@ mod tests {
     fn from_bits_rejects_unknown_bits() {
         assert_eq!(
             AbilityPressSet::from_bits(0b1111).map(AbilityPressSet::bits),
-            Some(0b1111)
+            Some(0b1111),
         );
         assert_eq!(AbilityPressSet::from_bits(0b1_0000), None);
         assert_eq!(AbilityPressSet::from_bits(0), Some(AbilityPressSet::NONE));
@@ -2056,7 +2059,7 @@ mod tests {
     }
 
     #[test]
-    fn field_predicates_follow_the_third_ability_kind() {
+    fn is_neutralize_field_active_and_is_toxin_field_active_follow_the_third_ability_kind() {
         let abilities: OrganismAbilities = create_active_abilities();
         let neutralize_loadout: Loadout = create_loadout(
             FirstAbilityKind::Extend,
@@ -2076,7 +2079,7 @@ mod tests {
     }
 
     #[test]
-    fn received_effect_predicates_follow_their_deadlines() {
+    fn is_compressed_and_is_frozen_hold_while_a_deadline_is_set() {
         let mut abilities: OrganismAbilities = OrganismAbilities::all_ready();
 
         assert!(!abilities.is_compressed());
@@ -2093,7 +2096,7 @@ mod tests {
     fn from_bits_rejects_unknown_bits() {
         assert_eq!(
             AbilityPressSet::from_bits(0b1111).map(AbilityPressSet::bits),
-            Some(0b1111)
+            Some(0b1111),
         );
         assert_eq!(AbilityPressSet::from_bits(0b1_0000), None);
         assert_eq!(AbilityPressSet::from_bits(0), Some(AbilityPressSet::NONE));
@@ -2185,11 +2188,11 @@ mod tests {
         assert_eq!(organism.cursor, WorldPoint { x: 40, y: 70 });
         assert_eq!(
             organism.cells.iter().collect::<Vec<LatticeCoordinate>>(),
-            vec![LatticeCoordinate { i: 0, j: 0 }]
+            vec![LatticeCoordinate { i: 0, j: 0 }],
         );
         assert_eq!(
             organism.cell_center(LatticeCoordinate { i: 0, j: 0 }),
-            WorldPoint { x: 40, y: 70 }
+            WorldPoint { x: 40, y: 70 },
         );
         assert_eq!(organism.abilities, OrganismAbilities::all_ready());
         assert_eq!(organism.last_hitter, None);
@@ -2223,7 +2226,7 @@ mod tests {
     }
 
     #[test]
-    fn adjacent_sites_repeat_a_site_once_per_neighbouring_cell() {
+    fn adjacent_sites_repeat_a_site_once_per_neighboring_cell() {
         let organism: Organism = create_organism(&[(0, 0), (2, 0), (1, 1)]);
         let adjacent_sites: Vec<LatticeCoordinate> = organism.adjacent_sites();
 
@@ -2334,11 +2337,11 @@ mod tests {
         assert_eq!(organism.cursor, WorldPoint { x: 40, y: 70 });
         assert_eq!(
             organism.cells.iter().collect::<Vec<LatticeCoordinate>>(),
-            vec![LatticeCoordinate { i: 0, j: 0 }]
+            vec![LatticeCoordinate { i: 0, j: 0 }],
         );
         assert_eq!(
             organism.cell_center(LatticeCoordinate { i: 0, j: 0 }),
-            WorldPoint { x: 40, y: 70 }
+            WorldPoint { x: 40, y: 70 },
         );
         assert_eq!(organism.abilities, OrganismAbilities::all_ready());
         assert_eq!(organism.last_hitter, None);
@@ -2372,7 +2375,7 @@ mod tests {
     }
 
     #[test]
-    fn adjacent_sites_repeat_a_site_once_per_neighbouring_cell() {
+    fn adjacent_sites_repeat_a_site_once_per_neighboring_cell() {
         let organism: Organism = create_organism(&[(0, 0), (2, 0), (1, 1)]);
         let adjacent_sites: Vec<LatticeCoordinate> = organism.adjacent_sites();
 
@@ -2410,7 +2413,7 @@ git commit -m "organism with exposed and adjacent enumeration"
 - Modify: `shared/src/lib.rs`
 - Test: inline `mod tests` in `shared/src/world/world.rs`
 
-Worked values used by the tests: an 800 px circle has centre (400, 400) and radius 400; the cell at (400, 6) has the corner (394, 0), and `6² + 400² >= 400²` puts it outside, while (400, 7) has the corner (394, 1) with `6² + 399² = 159237 < 160000`. After 1000 shrinks `left = 143_000` subpixels; a cell at x = 145 has `145 * 1024 - 6144 = 142336 <= 143000` (outside) and x = 146 has `143360` (inside).
+Worked values used by the tests: an 800 px circle has centre (400, 400) and radius 400; the cell at (400, 6) has the corner (394, 0), and `6² + 400² >= 400²` puts it outside, while (400, 7) has the corner (394, 1) with `6² + 399² = 159237 < 160000`. After 1000 shrinks `left = 143_000` subpixels; a cell at x = 145 has `145 * 1024 - 6144 = 142336 <= 143000` (outside) and x = 146 has `143360` (inside). The 800 px ellipse after 1000 shrinks has `left = top = 143_000` and `width = height = 533_200` subpixels about the unchanged centre `409_600`; the cell at (400, 145) has a top corner with `2dy = 2 * 142336 - 819200 = -534528`, past the semi-axis (outside), while (400, 146) gives `12288² + 532480² = 283_685_945_344 < 533200² = 284_302_240_000` (inside).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2494,7 +2497,7 @@ mod tests {
     }
 
     #[test]
-    fn contains_cell_ellipse_is_centred_on_offset_bounds() {
+    fn contains_cell_ellipse_is_centered_on_offset_bounds() {
         let world: World = create_world(WorldShapeKind::Ellipse, 1000, 800, 800);
 
         assert!(world.contains_cell(WorldPoint { x: 1400, y: 7 }));
@@ -2510,6 +2513,19 @@ mod tests {
         assert!(!world.contains_cell(WorldPoint { x: 400, y: 6 }));
         assert!(world.contains_cell(WorldPoint { x: 7, y: 200 }));
         assert!(!world.contains_cell(WorldPoint { x: 6, y: 200 }));
+    }
+
+    #[test]
+    fn contains_cell_ellipse_follows_shrunk_subpixel_bounds() {
+        let mut world: World = create_world(WorldShapeKind::Ellipse, 0, 800, 800);
+        let is_inside_before_shrinking: bool = world.contains_cell(WorldPoint { x: 400, y: 145 });
+        for _ in 0..1000 {
+            world.shrink();
+        }
+
+        assert!(is_inside_before_shrinking);
+        assert!(!world.contains_cell(WorldPoint { x: 400, y: 145 }));
+        assert!(world.contains_cell(WorldPoint { x: 400, y: 146 }));
     }
 
     #[test]
@@ -2579,8 +2595,7 @@ Replace the whole of `shared/src/world/world.rs` with:
 use crate::geometry;
 use crate::geometry::{SubpixelPoint, Subpixels, WorldPoint};
 
-/// 200 px.
-pub const SURVIVAL_SHRINK_MINIMUM_SUBPIXELS: i32 = 204_800;
+pub const SURVIVAL_SHRINK_MINIMUM_SUBPIXELS: i32 = 200 * geometry::SUBPIXELS_PER_PIXEL;
 pub const SURVIVAL_SHRINK_SUBPIXELS_PER_TICK: i32 = 286;
 const CELL_EXTENT_SUBPIXELS: i64 = (geometry::CELL_WIDTH_PIXELS * geometry::SUBPIXELS_PER_PIXEL) as i64;
 const CELL_CORNER_SIGNS: [(i64, i64); 4] = [(-1, -1), (1, -1), (1, 1), (-1, 1)];
@@ -2764,7 +2779,7 @@ mod tests {
     }
 
     #[test]
-    fn contains_cell_ellipse_is_centred_on_offset_bounds() {
+    fn contains_cell_ellipse_is_centered_on_offset_bounds() {
         let world: World = create_world(WorldShapeKind::Ellipse, 1000, 800, 800);
 
         assert!(world.contains_cell(WorldPoint { x: 1400, y: 7 }));
@@ -2780,6 +2795,19 @@ mod tests {
         assert!(!world.contains_cell(WorldPoint { x: 400, y: 6 }));
         assert!(world.contains_cell(WorldPoint { x: 7, y: 200 }));
         assert!(!world.contains_cell(WorldPoint { x: 6, y: 200 }));
+    }
+
+    #[test]
+    fn contains_cell_ellipse_follows_shrunk_subpixel_bounds() {
+        let mut world: World = create_world(WorldShapeKind::Ellipse, 0, 800, 800);
+        let is_inside_before_shrinking: bool = world.contains_cell(WorldPoint { x: 400, y: 145 });
+        for _ in 0..1000 {
+            world.shrink();
+        }
+
+        assert!(is_inside_before_shrinking);
+        assert!(!world.contains_cell(WorldPoint { x: 400, y: 145 }));
+        assert!(world.contains_cell(WorldPoint { x: 400, y: 146 }));
     }
 
     #[test]
@@ -2839,7 +2867,7 @@ mod tests {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared world::world`
-Expected: the `shared` library tests report `test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -2912,7 +2940,7 @@ mod tests {
     }
 
     #[test]
-    fn tables_have_the_designed_lengths() {
+    fn build_gives_the_designed_lengths() {
         let lengths: Vec<(usize, usize)> = GROWTH_STATES
             .iter()
             .map(|growth_state| {
@@ -2928,12 +2956,12 @@ mod tests {
     }
 
     #[test]
-    fn tables_match_the_golden_digest() {
+    fn build_matches_the_golden_digest() {
         assert_eq!(get_tables_digest(&GROWTH_CHANCE_TABLES), GOLDEN_TABLE_DIGEST);
     }
 
     #[test]
-    fn birth_table_ends_at_the_last_non_negative_chance() {
+    fn birth_table_last_distance_squared_is_the_last_non_negative_chance() {
         for growth_state in GROWTH_STATES {
             let table: &GrowthChanceTable = GROWTH_CHANCE_TABLES.get(growth_state);
 
@@ -3177,7 +3205,7 @@ mod tests {
     }
 
     #[test]
-    fn tables_have_the_designed_lengths() {
+    fn build_gives_the_designed_lengths() {
         let lengths: Vec<(usize, usize)> = GROWTH_STATES
             .iter()
             .map(|growth_state| {
@@ -3193,12 +3221,12 @@ mod tests {
     }
 
     #[test]
-    fn tables_match_the_golden_digest() {
+    fn build_matches_the_golden_digest() {
         assert_eq!(get_tables_digest(&GROWTH_CHANCE_TABLES), GOLDEN_TABLE_DIGEST);
     }
 
     #[test]
-    fn birth_table_ends_at_the_last_non_negative_chance() {
+    fn birth_table_last_distance_squared_is_the_last_non_negative_chance() {
         for growth_state in GROWTH_STATES {
             let table: &GrowthChanceTable = GROWTH_CHANCE_TABLES.get(growth_state);
 
@@ -3255,7 +3283,7 @@ mod tests {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared growth_chance_table`
-Expected: the `shared` library tests report `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -3406,7 +3434,7 @@ mod tests {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared game_settings`
-Expected: the `shared` library tests report `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -3513,7 +3541,7 @@ pub use member::*;
 pub use scoreboard::*;
 ```
 
-`shared/src/member/member.rs`: insert at the top of the file, above `/// Never reused within a game.`:
+`shared/src/member/member.rs`: insert at the top of the file, above `/// Never reused within a game.`, followed by one blank line:
 
 ```rust
 use crate::ability::Loadout;
@@ -3828,7 +3856,7 @@ mod tests {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test -p shared game_state`
-Expected: the `shared` library tests report `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 54 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -3921,7 +3949,7 @@ mod tests {
         abilities.compressed_until = Some(Tick(30));
         assert_eq!(
             get_growth_state(&abilities, Some(&loadout)),
-            GrowthStateKind::Compressed
+            GrowthStateKind::Compressed,
         );
 
         abilities.first = AbilityPhase::Active { ends_at: Tick(30) };
@@ -3952,11 +3980,11 @@ mod tests {
 
         assert_eq!(
             get_birth_order(&state.members, Tick(4)),
-            vec![MemberId(1), MemberId(2), MemberId(0)]
+            vec![MemberId(1), MemberId(2), MemberId(0)],
         );
         assert_eq!(
             get_birth_order(&state.members, Tick(6)),
-            vec![MemberId(0), MemberId(1), MemberId(2)]
+            vec![MemberId(0), MemberId(1), MemberId(2)],
         );
     }
 
@@ -3970,7 +3998,7 @@ mod tests {
         assert_eq!(state.rng, rng_before);
         assert_eq!(
             get_cells(&state, FIRST_MEMBER_ID),
-            vec![LatticeCoordinate { i: 0, j: 0 }]
+            vec![LatticeCoordinate { i: 0, j: 0 }],
         );
     }
 
@@ -4005,7 +4033,7 @@ mod tests {
         assert!(
             !test_fixture::get_organism(&state, FIRST_MEMBER_ID)
                 .cells
-                .contains(LatticeCoordinate { i: -1, j: 0 })
+                .contains(LatticeCoordinate { i: -1, j: 0 }),
         );
     }
 
@@ -4054,7 +4082,7 @@ mod tests {
     }
 
     #[test]
-    fn run_birth_phase_rolls_a_shared_site_once_per_neighbouring_cell() {
+    fn run_birth_phase_rolls_a_shared_site_once_per_neighboring_cell() {
         let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 150, y: 150 }]);
         let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
         organism.cells.insert(LatticeCoordinate { i: 2, j: 0 });
@@ -4291,7 +4319,7 @@ mod tests {
         abilities.compressed_until = Some(Tick(30));
         assert_eq!(
             get_growth_state(&abilities, Some(&loadout)),
-            GrowthStateKind::Compressed
+            GrowthStateKind::Compressed,
         );
 
         abilities.first = AbilityPhase::Active { ends_at: Tick(30) };
@@ -4322,11 +4350,11 @@ mod tests {
 
         assert_eq!(
             get_birth_order(&state.members, Tick(4)),
-            vec![MemberId(1), MemberId(2), MemberId(0)]
+            vec![MemberId(1), MemberId(2), MemberId(0)],
         );
         assert_eq!(
             get_birth_order(&state.members, Tick(6)),
-            vec![MemberId(0), MemberId(1), MemberId(2)]
+            vec![MemberId(0), MemberId(1), MemberId(2)],
         );
     }
 
@@ -4340,7 +4368,7 @@ mod tests {
         assert_eq!(state.rng, rng_before);
         assert_eq!(
             get_cells(&state, FIRST_MEMBER_ID),
-            vec![LatticeCoordinate { i: 0, j: 0 }]
+            vec![LatticeCoordinate { i: 0, j: 0 }],
         );
     }
 
@@ -4375,7 +4403,7 @@ mod tests {
         assert!(
             !test_fixture::get_organism(&state, FIRST_MEMBER_ID)
                 .cells
-                .contains(LatticeCoordinate { i: -1, j: 0 })
+                .contains(LatticeCoordinate { i: -1, j: 0 }),
         );
     }
 
@@ -4424,7 +4452,7 @@ mod tests {
     }
 
     #[test]
-    fn run_birth_phase_rolls_a_shared_site_once_per_neighbouring_cell() {
+    fn run_birth_phase_rolls_a_shared_site_once_per_neighboring_cell() {
         let mut state: GameState = create_state_with_organisms(&[WorldPoint { x: 150, y: 150 }]);
         let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, FIRST_MEMBER_ID);
         organism.cells.insert(LatticeCoordinate { i: 2, j: 0 });
@@ -4442,7 +4470,7 @@ mod tests {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared organism::growth::`
-Expected: the `shared` library tests report `test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -4551,7 +4579,7 @@ In `shared/src/organism/growth.rs`, append these tests at the end of `mod tests`
         assert_eq!(run_natural_death_phase(&mut state), 8);
         assert_eq!(
             get_cells(&state, FIRST_MEMBER_ID),
-            vec![LatticeCoordinate { i: 0, j: 0 }]
+            vec![LatticeCoordinate { i: 0, j: 0 }],
         );
     }
 ```
@@ -4617,7 +4645,7 @@ fn run_member_natural_deaths(member: &mut Member, world: &World, rng: &mut Pcg32
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared organism::growth::`
-Expected: the `shared` library tests report `test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -4828,12 +4856,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 112, y: 106 }
+            WorldPoint { x: 112, y: 106 },
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 113, y: 106 }
+            WorldPoint { x: 113, y: 106 },
         ));
     }
 
@@ -4844,12 +4872,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 60, y: 60 }
+            WorldPoint { x: 60, y: 60 },
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 400, y: 400 }
+            WorldPoint { x: 400, y: 400 },
         ));
     }
 
@@ -4867,12 +4895,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 24)
+            offset(HAZARD_CENTER, 24),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 25)
+            offset(HAZARD_CENTER, 25),
         ));
     }
 
@@ -4887,12 +4915,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 12)
+            offset(HAZARD_CENTER, 12),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 13)
+            offset(HAZARD_CENTER, 13),
         ));
     }
 
@@ -4910,12 +4938,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 60)
+            offset(HAZARD_CENTER, 60),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 61)
+            offset(HAZARD_CENTER, 61),
         ));
     }
 
@@ -5029,7 +5057,7 @@ mod tests {
 
         assert_eq!(
             spawn_member(&mut state, MemberId(9), test_fixture::create_loadout(), None),
-            None
+            None,
         );
     }
 
@@ -5041,7 +5069,7 @@ mod tests {
 
         assert_eq!(
             place_organism(&mut state, SPAWNING_MEMBER_ID, WorldPoint { x: 9, y: 9 }),
-            Ok(())
+            Ok(()),
         );
         assert_eq!(state.rng, rng_before);
         assert_eq!(
@@ -5349,12 +5377,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 112, y: 106 }
+            WorldPoint { x: 112, y: 106 },
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 113, y: 106 }
+            WorldPoint { x: 113, y: 106 },
         ));
     }
 
@@ -5365,12 +5393,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 60, y: 60 }
+            WorldPoint { x: 60, y: 60 },
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            WorldPoint { x: 400, y: 400 }
+            WorldPoint { x: 400, y: 400 },
         ));
     }
 
@@ -5388,12 +5416,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 24)
+            offset(HAZARD_CENTER, 24),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 25)
+            offset(HAZARD_CENTER, 25),
         ));
     }
 
@@ -5408,12 +5436,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 12)
+            offset(HAZARD_CENTER, 12),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 13)
+            offset(HAZARD_CENTER, 13),
         ));
     }
 
@@ -5431,12 +5459,12 @@ mod tests {
         assert!(!is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 60)
+            offset(HAZARD_CENTER, 60),
         ));
         assert!(is_spawn_position_valid(
             &state.world,
             &state.members,
-            offset(HAZARD_CENTER, 61)
+            offset(HAZARD_CENTER, 61),
         ));
     }
 
@@ -5550,7 +5578,7 @@ mod tests {
 
         assert_eq!(
             spawn_member(&mut state, MemberId(9), test_fixture::create_loadout(), None),
-            None
+            None,
         );
     }
 
@@ -5562,7 +5590,7 @@ mod tests {
 
         assert_eq!(
             place_organism(&mut state, SPAWNING_MEMBER_ID, WorldPoint { x: 9, y: 9 }),
-            Ok(())
+            Ok(()),
         );
         assert_eq!(state.rng, rng_before);
         assert_eq!(
@@ -5586,7 +5614,7 @@ mod tests {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test -p shared organism::spawn`
-Expected: the `shared` library tests report `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 75 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 76 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -5769,7 +5797,7 @@ mod tests {
         assert_eq!(
             step(
                 &mut state,
-                &create_bundle(2, vec![create_joined_event(MemberId(2), None)])
+                &create_bundle(2, vec![create_joined_event(MemberId(2), None)]),
             ),
             Err(StepError::MemberIdOutOfOrder {
                 minimum: MemberId(4),
@@ -5798,7 +5826,7 @@ mod tests {
 
         assert_eq!(
             simulation_events,
-            vec![SimulationEvent::MemberJoined { member_id: MemberId(4) }]
+            vec![SimulationEvent::MemberJoined { member_id: MemberId(4) }],
         );
         assert_eq!(state.next_member_id, MemberId(5));
         assert_eq!(state.members[&MemberId(4)].screen_name, "player 4");
@@ -5818,7 +5846,7 @@ mod tests {
 
         assert_eq!(
             state.members[&MemberId(0)].loadout.unwrap().appearance.color,
-            OrganismColorKind::Fire
+            OrganismColorKind::Fire,
         );
     }
 
@@ -5845,7 +5873,7 @@ mod tests {
 
         assert_eq!(
             simulation_events,
-            vec![SimulationEvent::MemberLeft { member_id: MemberId(0) }]
+            vec![SimulationEvent::MemberLeft { member_id: MemberId(0) }],
         );
         assert!(state.members.is_empty());
         assert_eq!(state.next_member_id, MemberId(1));
@@ -6154,7 +6182,7 @@ mod tests {
         assert_eq!(
             step(
                 &mut state,
-                &create_bundle(2, vec![create_joined_event(MemberId(2), None)])
+                &create_bundle(2, vec![create_joined_event(MemberId(2), None)]),
             ),
             Err(StepError::MemberIdOutOfOrder {
                 minimum: MemberId(4),
@@ -6183,7 +6211,7 @@ mod tests {
 
         assert_eq!(
             simulation_events,
-            vec![SimulationEvent::MemberJoined { member_id: MemberId(4) }]
+            vec![SimulationEvent::MemberJoined { member_id: MemberId(4) }],
         );
         assert_eq!(state.next_member_id, MemberId(5));
         assert_eq!(state.members[&MemberId(4)].screen_name, "player 4");
@@ -6203,7 +6231,7 @@ mod tests {
 
         assert_eq!(
             state.members[&MemberId(0)].loadout.unwrap().appearance.color,
-            OrganismColorKind::Fire
+            OrganismColorKind::Fire,
         );
     }
 
@@ -6230,7 +6258,7 @@ mod tests {
 
         assert_eq!(
             simulation_events,
-            vec![SimulationEvent::MemberLeft { member_id: MemberId(0) }]
+            vec![SimulationEvent::MemberLeft { member_id: MemberId(0) }],
         );
         assert!(state.members.is_empty());
         assert_eq!(state.next_member_id, MemberId(1));
@@ -6335,7 +6363,7 @@ mod tests {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test -p shared game::step`
-Expected: the `shared` library tests report `test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 91 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -6425,7 +6453,7 @@ and append these helpers and tests at the end of `mod tests`, after a blank line
 
         assert_eq!(
             test_fixture::get_organism(&state, MemberId(0)).cursor,
-            WorldPoint { x: 140, y: 90 }
+            WorldPoint { x: 140, y: 90 },
         );
         assert_eq!(state.members[&MemberId(1)].organism, None);
     }
@@ -6628,7 +6656,7 @@ fn retighten_cell_occupancies(state: &mut GameState) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p shared game::step`
-Expected: the `shared` library tests report `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out`.
+Expected: the `shared` library tests report `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 91 filtered out`.
 
 Run: `cargo fmt -p shared -- --check`
 Expected: no output, exit status 0.
@@ -6669,7 +6697,6 @@ use shared::world::WorldShapeKind;
 
 const WORLD_SIZE_PIXELS: u32 = 100_000;
 const START_POSITION: WorldPoint = WorldPoint { x: 50_000, y: 50_000 };
-/// 2.975 px per tick, in thousandths of a pixel.
 const CURSOR_SPEED_MILLIPIXELS_PER_TICK: i64 = 2975;
 const TICK_COUNT: u32 = 3000;
 const DISCARDED_TICK_COUNT: u32 = 200;
@@ -6968,7 +6995,7 @@ Expected: no output, exit status 0.
 - [ ] **Step 2: Build and test the workspace**
 
 Run: `cargo build --workspace && cargo test --workspace; echo "exit=$?"`
-Expected: no warnings; the `shared` library tests report `test result: ok. 105 passed; 0 failed; 0 ignored`, `forbidden_operations` reports `1 passed`, `growth_statistics` reports `0 passed; 0 failed; 1 ignored`, every other `test result:` line is `ok`, then `exit=0`.
+Expected: no warnings; the `shared` library tests report `test result: ok. 106 passed; 0 failed; 0 ignored`, `forbidden_operations` reports `1 passed`, `growth_statistics` reports `0 passed; 0 failed; 1 ignored`, every other `test result:` line is `ok`, then `exit=0`.
 
 - [ ] **Step 3: wasm32 type check**
 
@@ -6990,6 +7017,7 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 
 ```text
 <hash> phase 2 plan
+<hash> phase 2 plan review
 <hash> forbidden operations source scan
 <hash> geometry types
 <hash> Pcg32 random number generator

@@ -72,3 +72,14 @@ pub fn get_organism(state: &GameState, member_id: MemberId) -> &Organism {
 pub fn get_organism_mut(state: &mut GameState, member_id: MemberId) -> &mut Organism {
     state.members.get_mut(&member_id).unwrap().organism.as_mut().unwrap()
 }
+
+pub fn create_state_with_organisms(mode: GameModeKind, world_size_pixels: u32, positions: &[WorldPoint]) -> GameState {
+    let mut state: GameState = create_state(mode, WorldShapeKind::Rectangle, world_size_pixels);
+
+    for (index, position) in positions.iter().enumerate() {
+        let member_id: MemberId = MemberId(u32::try_from(index).unwrap());
+        state.members.insert(member_id, create_participant_with_organism(member_id, *position));
+    }
+
+    state
+}

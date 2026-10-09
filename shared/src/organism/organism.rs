@@ -34,29 +34,22 @@ impl Organism {
     pub fn exposed_cells(&self) -> Vec<LatticeCoordinate> {
         self.cells
             .iter()
-            .filter(|lattice_coordinate| {
-                geometry::NEIGHBOR_DIRECTIONS
-                    .iter()
-                    .any(|direction| !self.cells.contains(lattice_coordinate.neighbor(*direction)))
-            })
+            .filter(|lattice_coordinate| self.empty_neighbors(*lattice_coordinate).next().is_some())
             .collect()
     }
 
     /// For each cell in lattice order, each empty neighbour in direction order; a site next to k cells appears k
     /// times.
     pub fn adjacent_sites(&self) -> Vec<LatticeCoordinate> {
-        let mut adjacent_sites: Vec<LatticeCoordinate> = Vec::new();
+        self.cells.iter().flat_map(|lattice_coordinate| self.empty_neighbors(lattice_coordinate)).collect()
+    }
 
-        for lattice_coordinate in self.cells.iter() {
-            for direction in geometry::NEIGHBOR_DIRECTIONS {
-                let neighbor: LatticeCoordinate = lattice_coordinate.neighbor(direction);
-                if !self.cells.contains(neighbor) {
-                    adjacent_sites.push(neighbor);
-                }
-            }
-        }
-
-        adjacent_sites
+    /// In direction order.
+    fn empty_neighbors(&self, lattice_coordinate: LatticeCoordinate) -> impl Iterator<Item = LatticeCoordinate> + '_ {
+        geometry::NEIGHBOR_DIRECTIONS
+            .into_iter()
+            .map(move |direction| lattice_coordinate.neighbor(direction))
+            .filter(|neighbor| !self.cells.contains(*neighbor))
     }
 }
 

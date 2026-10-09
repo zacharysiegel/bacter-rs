@@ -57,8 +57,9 @@ pub fn select_shot_cell(organism: &Organism, aim: AimVector) -> Option<LatticeCo
     let (first_cell, remaining_cells): (&LatticeCoordinate, &[LatticeCoordinate]) = exposed_cells.split_first()?;
     let mut best_offset_cell: (LatticeCoordinate, (i64, i64)) = (*first_cell, centroid.get_scaled_offset(*first_cell));
 
-    /* A zero-offset cell needs no exclusion: the best dot product is at least the mean, 0, and on a tie at 0 every
-    cell lies on the perpendicular through the centroid, where an endpoint precedes the centroid cell in lattice order. */
+    /* A zero-offset cell wins only when alone: the cell with the largest dot product over all cells is exposed and
+    non-negative (offsets sum to 0), and a tie at 0 puts every cell on one line, whose first cell in lattice order is
+    an endpoint. */
     for lattice_coordinate in remaining_cells {
         let offset: (i64, i64) = centroid.get_scaled_offset(*lattice_coordinate);
         let alignment_ordering: Ordering = compare_alignment(offset, best_offset_cell.1, aim);

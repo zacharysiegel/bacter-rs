@@ -217,6 +217,8 @@ fn is_inside_toxin_field(member: &Member, organism: &Organism, candidate: WorldP
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
+
     use super::*;
     use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind};
     use crate::game::{GameModeKind, Tick, test_fixture};
@@ -249,7 +251,7 @@ mod tests {
         }
     }
 
-    fn create_covering_organism(member_id: MemberId) -> Member {
+    fn create_member_with_covering_organism(member_id: MemberId) -> Member {
         let mut member: Member = test_fixture::create_participant_with_organism(member_id, WorldPoint { x: 53, y: 53 });
         let organism: &mut Organism = member.organism.as_mut().unwrap();
 
@@ -264,21 +266,50 @@ mod tests {
 
     #[test]
     fn find_spawn_position_stays_inside_the_margin() {
-        let state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 300);
+        const WORLD_SIZE_PIXELS: u32 = 300;
+
+        let state: GameState =
+            test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, WORLD_SIZE_PIXELS);
         let mut rng: Pcg32 = state.rng.clone();
+        let allowed_range: Range<i64> = SPAWN_MARGIN_PIXELS..i64::from(WORLD_SIZE_PIXELS) - SPAWN_MARGIN_PIXELS;
 
         for _ in 0..500 {
             let position: WorldPoint = find_spawn_position(&mut rng, &state.world, &state.members).unwrap();
 
-            assert!((53..247).contains(&position.x));
-            assert!((53..247).contains(&position.y));
+            assert!(allowed_range.contains(&i64::from(position.x)));
+            assert!(allowed_range.contains(&i64::from(position.y)));
         }
+    }
+
+    #[test]
+    fn find_spawn_position_gives_up_without_drawing_when_the_world_is_narrower_than_both_margins() {
+        let state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 100);
+        let mut rng: Pcg32 = state.rng.clone();
+
+        assert_eq!(find_spawn_position(&mut rng, &state.world, &state.members), None);
+        assert_eq!(rng, state.rng);
+    }
+
+    #[test]
+    fn spawn_member_reports_no_position_when_the_world_is_narrower_than_both_margins() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 100);
+        state.members.insert(SPAWNING_MEMBER_ID, test_fixture::create_participant(SPAWNING_MEMBER_ID));
+        let rng_before: Pcg32 = state.rng.clone();
+
+        assert_eq!(
+            spawn_member(&mut state, SPAWNING_MEMBER_ID, test_fixture::create_loadout(), None),
+            Some(SimulationEvent::SpawnRejected {
+                member_id: SPAWNING_MEMBER_ID,
+                reason: SpawnRejectionKind::PositionNotFound,
+            }),
+        );
+        assert_eq!(state.rng, rng_before);
     }
 
     #[test]
     fn find_spawn_position_gives_up_after_the_attempt_limit() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 300);
-        state.members.insert(MemberId(0), create_covering_organism(MemberId(0)));
+        state.members.insert(MemberId(0), create_member_with_covering_organism(MemberId(0)));
         let mut rng: Pcg32 = state.rng.clone();
         let mut expected_rng: Pcg32 = state.rng.clone();
 
@@ -505,7 +536,7 @@ mod tests {
     #[test]
     fn spawn_member_reports_no_position_and_stays_without_an_organism() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 300);
-        state.members.insert(HAZARD_OWNER_ID, create_covering_organism(HAZARD_OWNER_ID));
+        state.members.insert(HAZARD_OWNER_ID, create_member_with_covering_organism(HAZARD_OWNER_ID));
         state.members.insert(SPAWNING_MEMBER_ID, test_fixture::create_participant(SPAWNING_MEMBER_ID));
 
         assert_eq!(

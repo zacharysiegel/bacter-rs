@@ -1,6 +1,7 @@
-use crate::game::{GameState, InputBundle, MemberEvent, SimulationEvent, Tick};
+use crate::game::{GameState, InputBundle, MemberEvent, PlayerTickInput, SimulationEvent, Tick};
 use crate::member::{Appearance, Member, MemberId, Score};
-use crate::organism::spawn;
+use crate::organism::Organism;
+use crate::organism::{growth, spawn};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepError {
@@ -19,6 +20,14 @@ pub fn step(state: &mut GameState, bundle: &InputBundle) -> Result<Vec<Simulatio
         simulation_events.extend(simulation_event);
     }
 
+    apply_cursor_updates(state, &bundle.player_inputs);
+    growth::run_birth_phase(state, bundle.tick);
+    growth::run_natural_death_phase(state);
+
+    let death_events: Vec<SimulationEvent> = record_deaths(state);
+    simulation_events.extend(death_events);
+
+    retighten_cell_occupancies(state);
     state.tick = bundle.tick;
 
     Ok(simulation_events)
@@ -114,12 +123,69 @@ fn change_appearance(state: &mut GameState, member_id: MemberId, appearance: App
     loadout.appearance = appearance.with_team_color(member.team);
 }
 
+/// Inputs of members without an organism are ignored.
+fn apply_cursor_updates(state: &mut GameState, player_inputs: &[PlayerTickInput]) {
+    for player_input in player_inputs {
+        let organism: Option<&mut Organism> =
+            state.members.get_mut(&player_input.member_id).and_then(|member| member.organism.as_mut());
+        let Some(organism) = organism else {
+            continue;
+        };
+
+        organism.cursor = player_input.cursor;
+    }
+}
+
+/// Kill credit goes to the last hitter unless it is the victim or no longer a member.
+fn record_deaths(state: &mut GameState) -> Vec<SimulationEvent> {
+    let dead_member_ids: Vec<MemberId> = state
+        .members
+        .values()
+        .filter(|member| member.organism.as_ref().is_some_and(|organism| organism.cells.is_empty()))
+        .map(|member| member.member_id)
+        .collect();
+    let mut death_events: Vec<SimulationEvent> = Vec::new();
+
+    for member_id in dead_member_ids {
+        let Some(member) = state.members.get_mut(&member_id) else {
+            continue;
+        };
+
+        let last_hitter: Option<MemberId> = member.organism.take().and_then(|organism| organism.last_hitter);
+        member.score.deaths += 1;
+
+        let credited_to: Option<MemberId> =
+            last_hitter.filter(|hitter_id| *hitter_id != member_id && state.members.contains_key(hitter_id));
+        let killer: Option<&mut Member> = credited_to.and_then(|killer_id| state.members.get_mut(&killer_id));
+
+        if let Some(killer) = killer {
+            killer.score.kills += 1;
+        }
+
+        death_events.push(SimulationEvent::OrganismDied { member_id, credited_to });
+    }
+
+    death_events
+}
+
+fn retighten_cell_occupancies(state: &mut GameState) {
+    for member in state.members.values_mut() {
+        let Some(organism) = member.organism.as_mut() else {
+            continue;
+        };
+
+        organism.cells.retighten();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::AbilityPressSet;
     use crate::game::{GameModeKind, test_fixture};
-    use crate::geometry::WorldPoint;
+    use crate::geometry::{LatticeCoordinate, WorldPoint};
     use crate::member::{MemberRoleKind, OrganismColorKind, SkinKind, TeamKind};
+    use crate::organism::CellOccupancy;
     use crate::world::WorldShapeKind;
 
     fn create_bundle(tick: u32, member_events: Vec<MemberEvent>) -> InputBundle {
@@ -373,5 +439,147 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.members[&MemberId(0)].loadout.unwrap().appearance, appearance);
+    }
+
+    fn create_state_with_organisms(member_ids: &[MemberId]) -> GameState {
+        let mut state: GameState = create_state();
+
+        for (index, member_id) in member_ids.iter().enumerate() {
+            let x: i32 = 100 + 200 * i32::try_from(index).unwrap();
+            state.members.insert(
+                *member_id,
+                test_fixture::create_participant_with_organism(*member_id, WorldPoint { x, y: 100 }),
+            );
+            state.next_member_id = member_id.next();
+        }
+
+        state
+    }
+
+    fn freeze(state: &mut GameState, member_id: MemberId) {
+        test_fixture::get_organism_mut(state, member_id).abilities.frozen_until = Some(Tick(u32::MAX));
+    }
+
+    fn kill(state: &mut GameState, member_id: MemberId, last_hitter: Option<MemberId>) {
+        let organism: &mut Organism = test_fixture::get_organism_mut(state, member_id);
+        organism.cells = CellOccupancy::empty();
+        organism.last_hitter = last_hitter;
+    }
+
+    #[test]
+    fn step_moves_cursors_of_alive_organisms() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0)]);
+        state.members.insert(MemberId(1), test_fixture::create_participant(MemberId(1)));
+        let mut bundle: InputBundle = create_bundle(1, Vec::new());
+        bundle.player_inputs = [MemberId(0), MemberId(1)]
+            .iter()
+            .map(|member_id| PlayerTickInput {
+                member_id: *member_id,
+                cursor: WorldPoint { x: 140, y: 90 },
+                ability_presses: AbilityPressSet::NONE,
+                aim: None,
+            })
+            .collect();
+
+        step(&mut state, &bundle).unwrap();
+
+        assert_eq!(
+            test_fixture::get_organism(&state, MemberId(0)).cursor,
+            WorldPoint { x: 140, y: 90 },
+        );
+        assert_eq!(state.members[&MemberId(1)].organism, None);
+    }
+
+    #[test]
+    fn step_runs_births_then_natural_deaths() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0), MemberId(1)]);
+        let mut expected_state: GameState = state.clone();
+        growth::run_birth_phase(&mut expected_state, Tick(1));
+        growth::run_natural_death_phase(&mut expected_state);
+
+        for member_id in [MemberId(0), MemberId(1)] {
+            test_fixture::get_organism_mut(&mut expected_state, member_id).cells.retighten();
+        }
+
+        step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(state.rng, expected_state.rng);
+        assert_eq!(state.members, expected_state.members);
+    }
+
+    #[test]
+    fn step_records_a_death_with_kill_credit() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0), MemberId(1)]);
+        kill(&mut state, MemberId(0), Some(MemberId(1)));
+
+        let simulation_events: Vec<SimulationEvent> = step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![SimulationEvent::OrganismDied {
+                member_id: MemberId(0),
+                credited_to: Some(MemberId(1)),
+            }],
+        );
+        assert_eq!(state.members[&MemberId(0)].organism, None);
+        assert_eq!(state.members[&MemberId(0)].score.deaths, 1);
+        assert_eq!(state.members[&MemberId(1)].score.kills, 1);
+    }
+
+    #[test]
+    fn step_gives_no_credit_for_a_suicide() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0)]);
+        kill(&mut state, MemberId(0), Some(MemberId(0)));
+
+        let simulation_events: Vec<SimulationEvent> = step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![SimulationEvent::OrganismDied {
+                member_id: MemberId(0),
+                credited_to: None,
+            }],
+        );
+        assert_eq!(state.members[&MemberId(0)].score.kills, 0);
+        assert_eq!(state.members[&MemberId(0)].score.deaths, 1);
+    }
+
+    #[test]
+    fn step_gives_no_credit_to_a_departed_hitter() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0), MemberId(1)]);
+        kill(&mut state, MemberId(0), Some(MemberId(1)));
+
+        let simulation_events: Vec<SimulationEvent> = step(
+            &mut state,
+            &create_bundle(1, vec![MemberEvent::Left { member_id: MemberId(1) }]),
+        )
+        .unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::MemberLeft { member_id: MemberId(1) },
+                SimulationEvent::OrganismDied {
+                    member_id: MemberId(0),
+                    credited_to: None,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn step_retightens_cell_occupancies() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0)]);
+        freeze(&mut state, MemberId(0));
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, MemberId(0));
+        organism.cells.insert(LatticeCoordinate { i: 5, j: 5 });
+        organism.cells.remove(LatticeCoordinate { i: 5, j: 5 });
+
+        step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            test_fixture::get_organism(&state, MemberId(0)).cells,
+            CellOccupancy::with_cell(LatticeCoordinate { i: 0, j: 0 }),
+        );
     }
 }

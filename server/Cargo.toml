@@ -1,0 +1,31 @@
+[package]
+name = "server"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+shared = { workspace = true }
+actix-web = { workspace = true, features = ["rustls-0_23"] }
+rustls = { workspace = true }
+actix-ws = { workspace = true }
+actix-files = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+dashmap = { workspace = true }
+bcrypt = { workspace = true }
+getrandom = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+dotenvy = { workspace = true }
+minimer = { workspace = true }
+
+[dev-dependencies]
+tokio-tungstenite = { workspace = true }

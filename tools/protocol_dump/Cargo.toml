@@ -1,0 +1,12 @@
+[package]
+name = "protocol_dump"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+shared = { workspace = true }
+clap = { workspace = true }
+minimer = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

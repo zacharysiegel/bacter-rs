@@ -2,9 +2,10 @@ use std::sync::LazyLock;
 
 pub static GROWTH_CHANCE_TABLES: LazyLock<GrowthChanceTables> = LazyLock::new(GrowthChanceTables::build);
 
-const DRAW_SPACE_SIZE: f64 = 4_294_967_296.0;
 const ALWAYS_PASSES_THRESHOLD: u64 = 1 << 32;
 const NEVER_PASSES_THRESHOLD: u64 = 0;
+const DRAW_SPACE_SIZE: f64 = ALWAYS_PASSES_THRESHOLD as f64;
+const CERTAIN_CHANCE_PERCENT: f64 = 100.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrowthStateKind {
@@ -44,10 +45,11 @@ impl GrowthStateKind {
     }
 }
 
-/// Exclusive u32 draw thresholds indexed by `distance_squared`: a draw `u` passes when `u < threshold`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GrowthChanceTable {
+    /// Indexed by `distance_squared`; exclusive, so a u32 draw passes when it is below the threshold.
     birth_thresholds: Vec<u64>,
+    /// Indexed by `distance_squared`; exclusive, so a u32 draw passes when it is below the threshold.
     death_thresholds: Vec<u64>,
 }
 
@@ -118,7 +120,7 @@ impl GrowthChanceTables {
 fn get_birth_chance(growth_state: GrowthStateKind, distance_squared: i64) -> f64 {
     let distance: f64 = libm::sqrt(distance_squared as f64);
 
-    growth_state.coefficient() * libm::log(distance + 1.0) + 100.0
+    growth_state.coefficient() * libm::log(distance + 1.0) + CERTAIN_CHANCE_PERCENT
 }
 
 /// The original's `coefficient * ln(range + 1 - r) + 100`, in percent.
@@ -126,7 +128,7 @@ fn get_death_chance(growth_state: GrowthStateKind, distance_squared: i64) -> f64
     let distance: f64 = libm::sqrt(distance_squared as f64);
     let range: f64 = growth_state.range_pixels() as f64;
 
-    growth_state.coefficient() * libm::log(range + 1.0 - distance) + 100.0
+    growth_state.coefficient() * libm::log(range + 1.0 - distance) + CERTAIN_CHANCE_PERCENT
 }
 
 /// The original passes when `random * 100 <= chance`; scaled to u32 draws that is `u <= floor(chance / 100 * 2^32)`.
@@ -135,7 +137,7 @@ fn get_threshold(chance: f64) -> u64 {
         return NEVER_PASSES_THRESHOLD;
     }
 
-    let largest_passing_draw: f64 = libm::floor(chance / 100.0 * DRAW_SPACE_SIZE);
+    let largest_passing_draw: f64 = libm::floor(chance / CERTAIN_CHANCE_PERCENT * DRAW_SPACE_SIZE);
 
     (largest_passing_draw as u64 + 1).min(ALWAYS_PASSES_THRESHOLD)
 }

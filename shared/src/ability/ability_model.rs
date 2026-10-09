@@ -120,6 +120,12 @@ pub enum AbilityPhase {
     Cooling { ready_at: Tick },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AbilityActivation {
+    Started,
+    NotReady,
+}
+
 impl AbilityPhase {
     pub fn is_active(self) -> bool {
         matches!(self, AbilityPhase::Active { .. })
@@ -142,6 +148,18 @@ impl AbilityPhase {
         if let Some(next_phase) = next_phase {
             *self = next_phase;
         }
+    }
+
+    pub fn activate(&mut self, tick: Tick, active_ticks: u32) -> AbilityActivation {
+        if !self.is_ready() {
+            return AbilityActivation::NotReady;
+        }
+
+        *self = AbilityPhase::Active {
+            ends_at: tick.plus(active_ticks),
+        };
+
+        AbilityActivation::Started
     }
 }
 
@@ -490,6 +508,30 @@ mod tests {
         assert!(AbilityPhase::Ready.is_ready());
         assert!(!AbilityPhase::Cooling { ready_at: Tick(3) }.is_ready());
         assert!(!AbilityPhase::Active { ends_at: Tick(3) }.is_ready());
+    }
+
+    #[test]
+    fn activate_starts_a_ready_phase() {
+        let mut phase: AbilityPhase = AbilityPhase::Ready;
+
+        let activation: AbilityActivation = phase.activate(Tick(10), 64);
+
+        assert_eq!(activation, AbilityActivation::Started);
+        assert_eq!(phase, AbilityPhase::Active { ends_at: Tick(74) });
+    }
+
+    #[test]
+    fn activate_leaves_an_active_or_cooling_phase_unchanged() {
+        let mut active_phase: AbilityPhase = AbilityPhase::Active { ends_at: Tick(20) };
+        let mut cooling_phase: AbilityPhase = AbilityPhase::Cooling { ready_at: Tick(30) };
+
+        let active_activation: AbilityActivation = active_phase.activate(Tick(10), 64);
+        let cooling_activation: AbilityActivation = cooling_phase.activate(Tick(10), 64);
+
+        assert_eq!(active_activation, AbilityActivation::NotReady);
+        assert_eq!(cooling_activation, AbilityActivation::NotReady);
+        assert_eq!(active_phase, AbilityPhase::Active { ends_at: Tick(20) });
+        assert_eq!(cooling_phase, AbilityPhase::Cooling { ready_at: Tick(30) });
     }
 
     #[test]

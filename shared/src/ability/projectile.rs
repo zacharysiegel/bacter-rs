@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
 use crate::ability::ability_constants;
-use crate::ability::{AimVector, Projectile};
+use crate::ability::{AimVector, Projectile, ShotPhase, SporePhase};
+use crate::game::GameState;
 use crate::geometry::{LatticeCoordinate, SubpixelVector};
 use crate::organism::{LatticeCentroid, Organism};
 
@@ -72,6 +73,29 @@ pub fn select_shot_cell(organism: &Organism, aim: AimVector) -> Option<LatticeCo
     Some(best_offset_cell.0)
 }
 
+pub fn run_flight_phase(state: &mut GameState) {
+    for member in state.members.values_mut() {
+        let Some(organism) = member.organism.as_mut() else {
+            continue;
+        };
+
+        if let SporePhase::Flying { spores, .. } = &mut organism.abilities.spore {
+            spores.iter_mut().for_each(advance_projectile);
+        }
+
+        for shot_phase in &mut organism.abilities.shots {
+            if let ShotPhase::Flying { shot, .. } = shot_phase {
+                advance_projectile(shot);
+            }
+        }
+    }
+}
+
+pub fn advance_projectile(projectile: &mut Projectile) {
+    projectile.position.x += projectile.velocity.x;
+    projectile.position.y += projectile.velocity.y;
+}
+
 /// `speed` along the non-zero `(x, y)`, each component rounded once.
 pub fn get_scaled_direction(x: i64, y: i64, speed: i32) -> SubpixelVector {
     // Exact: offsets and aims are far below 2^53.
@@ -120,8 +144,12 @@ fn get_length_squared(offset: (i64, i64)) -> i128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::OrganismAbilities;
+    use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::{SubpixelPoint, WorldPoint};
+    use crate::member::{Member, MemberId};
     use crate::organism::CellOccupancy;
+    use crate::world::WorldShapeKind;
 
     fn create_organism(lattice_coordinates: &[(i32, i32)]) -> Organism {
         let mut organism: Organism = Organism::new(WorldPoint { x: 100, y: 100 });
@@ -276,5 +304,83 @@ mod tests {
 
         assert!(launch_shot(&mut organism, AimVector { x: 3, y: 0 }).is_some());
         assert!(organism.cells.is_empty());
+    }
+
+    #[test]
+    fn advance_projectile_covers_speed_times_flight_ticks() {
+        let mut spore: Projectile = Projectile {
+            position: SubpixelPoint { x: 0, y: 0 },
+            velocity: get_scaled_direction(1, 0, ability_constants::SPORE_SPEED_SUBPIXELS_PER_TICK),
+        };
+        let mut shot: Projectile = Projectile {
+            position: SubpixelPoint { x: 0, y: 0 },
+            velocity: get_scaled_direction(0, 1, ability_constants::SHOT_SPEED_SUBPIXELS_PER_TICK),
+        };
+
+        for _ in 0..ability_constants::SPORE_FLIGHT_TICKS {
+            advance_projectile(&mut spore);
+        }
+
+        for _ in 0..ability_constants::SHOT_FLIGHT_TICKS {
+            advance_projectile(&mut shot);
+        }
+
+        assert_eq!(spore.position, SubpixelPoint { x: 24 * 10_752, y: 0 });
+        assert_eq!(shot.position, SubpixelPoint { x: 0, y: 21 * 8960 });
+    }
+
+    #[test]
+    fn run_flight_phase_moves_only_flying_projectiles() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 800);
+        let mut member: Member =
+            test_fixture::create_participant_with_organism(MemberId(0), WorldPoint { x: 100, y: 100 });
+        let projectile: Projectile = Projectile {
+            position: SubpixelPoint { x: 10, y: 20 },
+            velocity: SubpixelVector { x: 3, y: -4 },
+        };
+        let abilities: &mut OrganismAbilities = &mut member.organism.as_mut().unwrap().abilities;
+        abilities.spore = SporePhase::Flying {
+            ends_at: Tick(24),
+            spores: vec![projectile],
+        };
+        abilities.shots = [
+            ShotPhase::Flying {
+                ends_at: Tick(21),
+                shot: projectile,
+            },
+            ShotPhase::Secreting {
+                ends_at: Tick(11),
+                center: projectile.position,
+            },
+        ];
+        state.members.insert(MemberId(0), member);
+
+        run_flight_phase(&mut state);
+
+        let moved: Projectile = Projectile {
+            position: SubpixelPoint { x: 13, y: 16 },
+            velocity: projectile.velocity,
+        };
+        let abilities: &OrganismAbilities = &test_fixture::get_organism(&state, MemberId(0)).abilities;
+        assert_eq!(
+            abilities.spore,
+            SporePhase::Flying {
+                ends_at: Tick(24),
+                spores: vec![moved],
+            },
+        );
+        assert_eq!(
+            abilities.shots,
+            [
+                ShotPhase::Flying {
+                    ends_at: Tick(21),
+                    shot: moved,
+                },
+                ShotPhase::Secreting {
+                    ends_at: Tick(11),
+                    center: projectile.position,
+                },
+            ],
+        );
     }
 }

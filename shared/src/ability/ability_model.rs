@@ -120,12 +120,6 @@ pub enum AbilityPhase {
     Cooling { ready_at: Tick },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AbilityActivation {
-    Started,
-    NotReady,
-}
-
 impl AbilityPhase {
     pub fn is_active(self) -> bool {
         matches!(self, AbilityPhase::Active { .. })
@@ -161,6 +155,12 @@ impl AbilityPhase {
 
         AbilityActivation::Started
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AbilityActivation {
+    Started,
+    NotReady,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

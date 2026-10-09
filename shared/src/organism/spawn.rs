@@ -12,8 +12,8 @@ use crate::round::RoundPhase;
 use crate::world::{World, WorldBounds, WorldShapeKind};
 
 pub const SPAWN_ATTEMPT_LIMIT: u32 = 64;
-/// The original's 50 px buffer plus half a cell.
-pub const SPAWN_MARGIN_PIXELS: i64 = 53;
+const SPAWN_BUFFER_PIXELS: i64 = 50;
+pub const SPAWN_MARGIN_PIXELS: i64 = SPAWN_BUFFER_PIXELS + (geometry::CELL_WIDTH_PIXELS / 2) as i64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlacementError {
@@ -132,13 +132,10 @@ fn get_spawn_rejection(state: &GameState, member: &Member) -> Option<SpawnReject
 }
 
 fn get_spawn_range(bounds: &WorldBounds) -> Option<SpawnRange> {
-    let subpixels_per_pixel: i64 = i64::from(geometry::SUBPIXELS_PER_PIXEL);
-    let left: i64 = i64::from(bounds.left.0);
-    let top: i64 = i64::from(bounds.top.0);
-    let left_pixels: i64 = -(-left).div_euclid(subpixels_per_pixel);
-    let top_pixels: i64 = -(-top).div_euclid(subpixels_per_pixel);
-    let right_pixels: i64 = (left + i64::from(bounds.width.0)).div_euclid(subpixels_per_pixel);
-    let bottom_pixels: i64 = (top + i64::from(bounds.height.0)).div_euclid(subpixels_per_pixel);
+    let left_pixels: i64 = get_pixels_rounded_up(i64::from(bounds.left.0));
+    let top_pixels: i64 = get_pixels_rounded_up(i64::from(bounds.top.0));
+    let right_pixels: i64 = get_pixels_rounded_down(bounds.right());
+    let bottom_pixels: i64 = get_pixels_rounded_down(bounds.bottom());
 
     let spawn_range: SpawnRange = SpawnRange {
         x_minimum: left_pixels + SPAWN_MARGIN_PIXELS,
@@ -154,6 +151,14 @@ fn get_spawn_range(bounds: &WorldBounds) -> Option<SpawnRange> {
     Some(spawn_range)
 }
 
+fn get_pixels_rounded_up(subpixels: i64) -> i64 {
+    -get_pixels_rounded_down(-subpixels)
+}
+
+fn get_pixels_rounded_down(subpixels: i64) -> i64 {
+    subpixels.div_euclid(i64::from(geometry::SUBPIXELS_PER_PIXEL))
+}
+
 fn get_span(minimum: i64, end: i64) -> u32 {
     u32::try_from(end - minimum).unwrap_or(u32::MAX)
 }
@@ -166,28 +171,42 @@ fn collides_with_organism(organism: &Organism, candidate: WorldPoint) -> bool {
 }
 
 fn is_inside_hazard(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
+    is_inside_spore_secretion(organism, candidate)
+        || is_inside_shot_secretion(organism, candidate)
+        || is_inside_toxin_field(member, organism, candidate)
+}
+
+fn is_inside_spore_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
     let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
-    let is_inside_spore_secretion: bool = match &organism.abilities.spore {
+
+    match &organism.abilities.spore {
         SporePhase::Secreting { spores, .. } => spores.iter().any(|spore| {
             spore.position.distance_squared(candidate_subpixels)
                 <= ability_constants::SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS
         }),
         SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => false,
-    };
-    let is_inside_shot_secretion: bool = organism.abilities.shots.iter().any(|shot| match shot {
+    }
+}
+
+fn is_inside_shot_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
+    let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
+
+    organism.abilities.shots.iter().any(|shot| match shot {
         ShotPhase::Secreting { center, .. } => {
             center.distance_squared(candidate_subpixels) <= ability_constants::SHOT_SECRETION_RADIUS_SQUARED_SUBPIXELS
         }
         ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => false,
-    });
+    })
+}
+
+fn is_inside_toxin_field(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
     let is_toxin_field_active: bool =
         member.loadout.as_ref().is_some_and(|loadout| organism.abilities.is_toxin_field_active(loadout));
-    let is_inside_toxin_field: bool = is_toxin_field_active
+
+    is_toxin_field_active
         && organism.abilities.third_center.is_some_and(|third_center| {
             third_center.distance_squared(candidate) <= ability_constants::FIELD_RADIUS_SQUARED_PIXELS
-        });
-
-    is_inside_spore_secretion || is_inside_shot_secretion || is_inside_toxin_field
+        })
 }
 
 #[cfg(test)]
@@ -256,6 +275,7 @@ mod tests {
         state.members.insert(MemberId(0), create_covering_organism(MemberId(0)));
         let mut rng: Pcg32 = state.rng.clone();
         let mut expected_rng: Pcg32 = state.rng.clone();
+
         for _ in 0..2 * SPAWN_ATTEMPT_LIMIT {
             expected_rng.next_u32();
         }
@@ -418,13 +438,14 @@ mod tests {
     fn spawn_member_rejects_at_the_player_cap() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 800);
         state.settings.player_cap = 2;
-        for (index, x) in [100, 300].iter().enumerate() {
-            let member_id: MemberId = MemberId(u32::try_from(index).unwrap() + 1);
+
+        for (member_id, x) in [(MemberId(1), 100), (MemberId(2), 300)] {
             state.members.insert(
                 member_id,
-                test_fixture::create_participant_with_organism(member_id, WorldPoint { x: *x, y: 100 }),
+                test_fixture::create_participant_with_organism(member_id, WorldPoint { x, y: 100 }),
             );
         }
+
         state.members.insert(SPAWNING_MEMBER_ID, test_fixture::create_participant(SPAWNING_MEMBER_ID));
 
         assert_eq!(

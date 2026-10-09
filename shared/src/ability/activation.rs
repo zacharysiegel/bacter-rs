@@ -1,11 +1,14 @@
+use crate::ability;
 use crate::ability::ability_constants;
 use crate::ability::projectile;
 use crate::ability::{
-    AbilityActivation, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile, SecondAbilityKind,
-    SporePhase,
+    AbilityActivation, AbilityPhase, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile,
+    SecondAbilityKind, ShotEffectKind, ShotPhase, SporePhase,
 };
 use crate::game::{GameState, PlayerTickInput, SimulationEvent, Tick};
-use crate::member::{Member, MemberId};
+use crate::geometry::{SubpixelPoint, WorldPoint};
+use crate::member;
+use crate::member::{Member, MemberId, TeamKind};
 use crate::organism::Organism;
 
 pub fn run_timer_expiry_phase(state: &mut GameState, tick: Tick) {
@@ -93,11 +96,14 @@ fn press_first(state: &mut GameState, player_input: &PlayerTickInput, tick: Tick
     match loadout.first {
         FirstAbilityKind::Extend => {
             organism.abilities.first.activate(tick, loadout.first.active_ticks());
-        }
-        FirstAbilityKind::Compress => {}
-    }
 
-    Vec::new()
+            Vec::new()
+        }
+        FirstAbilityKind::Compress if organism.abilities.first.is_ready() => {
+            press_shot_slot(state, player_input, ShotEffectKind::Compress, tick)
+        }
+        FirstAbilityKind::Compress => Vec::new(),
+    }
 }
 
 fn press_second(state: &mut GameState, player_input: &PlayerTickInput, tick: Tick) -> Vec<SimulationEvent> {
@@ -108,11 +114,14 @@ fn press_second(state: &mut GameState, player_input: &PlayerTickInput, tick: Tic
     match loadout.second {
         SecondAbilityKind::Immortality => {
             organism.abilities.second.activate(tick, loadout.second.active_ticks());
-        }
-        SecondAbilityKind::Freeze => {}
-    }
 
-    Vec::new()
+            Vec::new()
+        }
+        SecondAbilityKind::Freeze if organism.abilities.second.is_ready() => {
+            press_shot_slot(state, player_input, ShotEffectKind::Freeze, tick)
+        }
+        SecondAbilityKind::Freeze => Vec::new(),
+    }
 }
 
 fn press_third(state: &mut GameState, member_id: MemberId, tick: Tick) {
@@ -154,6 +163,125 @@ fn press_fourth(state: &mut GameState, member_id: MemberId, tick: Tick) {
     }
 }
 
+fn press_shot_slot(
+    state: &mut GameState,
+    player_input: &PlayerTickInput,
+    effect: ShotEffectKind,
+    tick: Tick,
+) -> Vec<SimulationEvent> {
+    let slot_index: usize = effect.slot_index();
+
+    let Some((_, organism)) = get_loadout_and_organism(state, player_input.member_id) else {
+        return Vec::new();
+    };
+
+    match organism.abilities.shots[slot_index] {
+        ShotPhase::Ready => {
+            let shot: Option<Projectile> = player_input.aim.and_then(|aim| projectile::launch_shot(organism, aim));
+
+            if let Some(shot) = shot {
+                organism.abilities.shots[slot_index] = ShotPhase::Flying {
+                    ends_at: tick.plus(ability_constants::SHOT_FLIGHT_TICKS),
+                    shot,
+                };
+            }
+
+            Vec::new()
+        }
+        ShotPhase::Flying { shot, .. } => {
+            organism.abilities.shots[slot_index] = ShotPhase::Secreting {
+                ends_at: tick.plus(ability_constants::SHOT_SECRETION_TICKS),
+                center: shot.position,
+            };
+
+            apply_shot_effect(state, player_input.member_id, effect, shot.position, tick)
+        }
+        ShotPhase::Secreting { .. } | ShotPhase::Cooling { .. } => Vec::new(),
+    }
+}
+
+/// Only a hit starts the caster's carried ability timer.
+fn apply_shot_effect(
+    state: &mut GameState,
+    caster_id: MemberId,
+    effect: ShotEffectKind,
+    center: SubpixelPoint,
+    tick: Tick,
+) -> Vec<SimulationEvent> {
+    let caster_team: Option<TeamKind> = state.members.get(&caster_id).and_then(|caster| caster.team);
+    let target_ids: Vec<MemberId> = state
+        .members
+        .values()
+        .filter(|member| is_shot_target(member, caster_id, caster_team, center))
+        .map(|member| member.member_id)
+        .collect();
+    let effect_until: Option<Tick> = Some(tick.plus(effect.effect_ticks()));
+    let mut simulation_events: Vec<SimulationEvent> = Vec::new();
+
+    for target_id in &target_ids {
+        let Some((_, target_organism)) = get_loadout_and_organism(state, *target_id) else {
+            continue;
+        };
+
+        match effect {
+            ShotEffectKind::Compress => target_organism.abilities.compressed_until = effect_until,
+            ShotEffectKind::Freeze => target_organism.abilities.frozen_until = effect_until,
+        }
+
+        simulation_events.push(SimulationEvent::EffectApplied {
+            target: *target_id,
+            caster: caster_id,
+            kind: effect,
+        });
+    }
+
+    if !target_ids.is_empty() {
+        start_carried_ability_timer(state, caster_id, effect, tick);
+    }
+
+    simulation_events
+}
+
+/// Only the target's own neutralize field protects it from a shot.
+fn is_shot_target(member: &Member, caster_id: MemberId, caster_team: Option<TeamKind>, center: SubpixelPoint) -> bool {
+    if member.member_id == caster_id || member::is_same_team(member.team, caster_team) {
+        return false;
+    }
+
+    let (Some(loadout), Some(organism)) = (member.loadout.as_ref(), member.organism.as_ref()) else {
+        return false;
+    };
+
+    let neutralize_field_center: Option<WorldPoint> = organism.abilities.get_neutralize_field_center(loadout);
+
+    organism.cells.iter().any(|lattice_coordinate| {
+        let cell_center: WorldPoint = organism.cell_center(lattice_coordinate);
+        let is_neutralized: bool =
+            neutralize_field_center.is_some_and(|field_center| ability::is_inside_field(field_center, cell_center));
+
+        !is_neutralized && ability::is_inside_shot_secretion(center, cell_center.to_subpixel_point())
+    })
+}
+
+fn start_carried_ability_timer(state: &mut GameState, caster_id: MemberId, effect: ShotEffectKind, tick: Tick) {
+    let Some((loadout, caster_organism)) = get_loadout_and_organism(state, caster_id) else {
+        return;
+    };
+
+    match effect {
+        ShotEffectKind::Compress => {
+            caster_organism.abilities.first = AbilityPhase::Active {
+                ends_at: tick.plus(loadout.first.active_ticks()),
+            };
+        }
+        ShotEffectKind::Freeze => {
+            caster_organism.abilities.second = AbilityPhase::Active {
+                ends_at: tick.plus(loadout.second.active_ticks()),
+            };
+        }
+    }
+}
+
 fn get_loadout_and_organism(state: &mut GameState, member_id: MemberId) -> Option<(Loadout, &mut Organism)> {
     let member: &mut Member = state.members.get_mut(&member_id)?;
     let loadout: Loadout = member.loadout?;
@@ -165,13 +293,14 @@ fn get_loadout_and_organism(state: &mut GameState, member_id: MemberId) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AbilityPhase, AimVector, ShotPhase, ThirdAbilityKind};
+    use crate::ability::{AimVector, ThirdAbilityKind};
     use crate::game::{GameModeKind, test_fixture};
-    use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, WorldPoint};
+    use crate::geometry::{LatticeCoordinate, SubpixelVector};
     use crate::world::WorldShapeKind;
 
     const CASTER_ID: MemberId = MemberId(0);
     const TARGET_ID: MemberId = MemberId(1);
+    const OTHER_TARGET_ID: MemberId = MemberId(2);
     const PRESS_TICK: Tick = Tick(10);
 
     fn get_abilities(state: &GameState, member_id: MemberId) -> &OrganismAbilities {
@@ -207,6 +336,16 @@ mod tests {
         for (i, j) in lattice_coordinates {
             organism.cells.insert(LatticeCoordinate { i: *i, j: *j });
         }
+    }
+
+    fn set_flying_shot(state: &mut GameState, member_id: MemberId, effect: ShotEffectKind, position: WorldPoint) {
+        test_fixture::get_organism_mut(state, member_id).abilities.shots[effect.slot_index()] = ShotPhase::Flying {
+            ends_at: Tick(30),
+            shot: Projectile {
+                position: position.to_subpixel_point(),
+                velocity: SubpixelVector { x: 0, y: 0 },
+            },
+        };
     }
 
     #[test]
@@ -446,5 +585,319 @@ mod tests {
         );
 
         assert_eq!(state, state_before);
+    }
+
+    #[test]
+    fn run_ability_press_phase_applies_inputs_in_ascending_member_id() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 130, y: 100 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        get_loadout_mut(&mut state, TARGET_ID).first = FirstAbilityKind::Compress;
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 130, y: 100 },
+        );
+        set_flying_shot(
+            &mut state,
+            TARGET_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 100, y: 100 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> = run_ability_press_phase(
+            &mut state,
+            &[
+                create_input(TARGET_ID, AbilityPressSet::FIRST, None),
+                create_input(CASTER_ID, AbilityPressSet::FIRST, None),
+            ],
+            PRESS_TICK,
+        );
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::EffectApplied {
+                    target: TARGET_ID,
+                    caster: CASTER_ID,
+                    kind: ShotEffectKind::Compress,
+                },
+                SimulationEvent::EffectApplied {
+                    target: CASTER_ID,
+                    caster: TARGET_ID,
+                    kind: ShotEffectKind::Compress,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn press_shot_slot_launches_along_a_non_zero_aim() {
+        let mut state: GameState =
+            test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        insert_cells(&mut state, CASTER_ID, &[(1, 0)]);
+
+        press(
+            &mut state,
+            CASTER_ID,
+            AbilityPressSet::FIRST,
+            Some(AimVector { x: 0, y: 0 }),
+            PRESS_TICK,
+        );
+        press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(get_abilities(&state, CASTER_ID).shots[0], ShotPhase::Ready);
+
+        press(
+            &mut state,
+            CASTER_ID,
+            AbilityPressSet::FIRST,
+            Some(AimVector { x: 5, y: 0 }),
+            PRESS_TICK,
+        );
+
+        let abilities: &OrganismAbilities = get_abilities(&state, CASTER_ID);
+        assert_eq!(
+            abilities.shots[0],
+            ShotPhase::Flying {
+                ends_at: Tick(31),
+                shot: Projectile {
+                    position: WorldPoint { x: 106, y: 100 }.to_subpixel_point(),
+                    velocity: SubpixelVector { x: 8960, y: 0 },
+                },
+            },
+        );
+        assert_eq!(abilities.first, AbilityPhase::Ready);
+    }
+
+    #[test]
+    fn press_shot_slot_pops_and_compresses_each_target_once() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[
+                WorldPoint { x: 100, y: 100 },
+                WorldPoint { x: 300, y: 300 },
+                WorldPoint { x: 308, y: 300 },
+            ],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        insert_cells(&mut state, TARGET_ID, &[(1, 0)]);
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 304, y: 300 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> =
+            press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::EffectApplied {
+                    target: TARGET_ID,
+                    caster: CASTER_ID,
+                    kind: ShotEffectKind::Compress,
+                },
+                SimulationEvent::EffectApplied {
+                    target: OTHER_TARGET_ID,
+                    caster: CASTER_ID,
+                    kind: ShotEffectKind::Compress,
+                },
+            ],
+        );
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, Some(Tick(60)));
+        assert_eq!(get_abilities(&state, OTHER_TARGET_ID).compressed_until, Some(Tick(60)));
+        assert_eq!(
+            get_abilities(&state, CASTER_ID).first,
+            AbilityPhase::Active { ends_at: Tick(60) },
+        );
+        assert_eq!(
+            get_abilities(&state, CASTER_ID).shots[0],
+            ShotPhase::Secreting {
+                ends_at: Tick(21),
+                center: WorldPoint { x: 304, y: 300 }.to_subpixel_point(),
+            },
+        );
+    }
+
+    #[test]
+    fn press_shot_slot_freezes_from_slot_one() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).second = SecondAbilityKind::Freeze;
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Freeze,
+            WorldPoint { x: 300, y: 312 },
+        );
+
+        press(&mut state, CASTER_ID, AbilityPressSet::SECOND, None, PRESS_TICK);
+
+        assert_eq!(get_abilities(&state, TARGET_ID).frozen_until, Some(Tick(67)));
+        assert_eq!(
+            get_abilities(&state, CASTER_ID).second,
+            AbilityPhase::Active { ends_at: Tick(67) },
+        );
+    }
+
+    #[test]
+    fn press_shot_slot_restarts_the_compression_of_a_target() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        test_fixture::get_organism_mut(&mut state, TARGET_ID).abilities.compressed_until = Some(Tick(12));
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 300 },
+        );
+
+        press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, Some(Tick(60)));
+    }
+
+    #[test]
+    fn press_shot_slot_miss_keeps_the_carried_ability_ready() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 313 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> =
+            press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(simulation_events, Vec::new());
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, None);
+        assert_eq!(get_abilities(&state, CASTER_ID).first, AbilityPhase::Ready);
+        assert!(matches!(
+            get_abilities(&state, CASTER_ID).shots[0],
+            ShotPhase::Secreting { .. },
+        ));
+    }
+
+    #[test]
+    fn press_shot_slot_spares_teammates_and_the_caster() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::Skirmish,
+            800,
+            &[WorldPoint { x: 300, y: 294 }, WorldPoint { x: 300, y: 300 }],
+        );
+
+        for member in state.members.values_mut() {
+            member.team = Some(TeamKind::Blue);
+        }
+
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 297 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> =
+            press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(simulation_events, Vec::new());
+        assert_eq!(get_abilities(&state, CASTER_ID).compressed_until, None);
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, None);
+    }
+
+    #[test]
+    fn press_shot_slot_spares_cells_inside_the_targets_own_neutralize_field() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        let target_abilities: &mut OrganismAbilities =
+            &mut test_fixture::get_organism_mut(&mut state, TARGET_ID).abilities;
+        target_abilities.third = AbilityPhase::Active { ends_at: Tick(40) };
+        target_abilities.third_center = Some(WorldPoint { x: 300, y: 340 });
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 300 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> =
+            press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(simulation_events, Vec::new());
+    }
+
+    #[test]
+    fn press_first_does_not_reach_the_shot_while_a_compress_casters_timer_runs() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        test_fixture::get_organism_mut(&mut state, CASTER_ID).abilities.first =
+            AbilityPhase::Active { ends_at: Tick(40) };
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 300 },
+        );
+
+        press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert!(matches!(
+            get_abilities(&state, CASTER_ID).shots[0],
+            ShotPhase::Flying { .. }
+        ));
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, None);
+    }
+
+    #[test]
+    fn press_shot_slot_ignores_a_secreting_slot() {
+        let mut state: GameState =
+            test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        let secreting_phase: ShotPhase = ShotPhase::Secreting {
+            ends_at: Tick(15),
+            center: SubpixelPoint { x: 0, y: 0 },
+        };
+        test_fixture::get_organism_mut(&mut state, CASTER_ID).abilities.shots[0] = secreting_phase;
+
+        press(
+            &mut state,
+            CASTER_ID,
+            AbilityPressSet::FIRST,
+            Some(AimVector { x: 1, y: 1 }),
+            PRESS_TICK,
+        );
+
+        assert_eq!(get_abilities(&state, CASTER_ID).shots[0], secreting_phase);
     }
 }

@@ -3247,6 +3247,8 @@ git commit -m "shot slots and their effects"
 Expected: before the commit, `git status --short` shows exactly the paths just added as staged (`A` or `M` in the first column) and no other staged or modified path.
 
 
+**Deviations:** Task 11's quality fixes moved the readiness check into `AbilityPhase::activate`, so `press_first` and `press_second` check `is_ready` in a match guard on the Compress and Freeze arms before `press_shot_slot`; the tests call `test_fixture::create_state_with_organisms` with the world size 800 and import `ShotPhase`, `AbilityPhase`, `SubpixelPoint` and `WorldPoint` through `super::*`; `effect_until` is computed once before the target loop. The Step 4 counts are `26 passed; 144 filtered out` and `170 passed`, after the tests added by earlier review fixes.
+
 ### Task 13: Damage phase
 
 **Files:**

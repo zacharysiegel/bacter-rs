@@ -31,6 +31,46 @@ fn shared_source_uses_no_forbidden_operations() {
     assert_eq!(violations, Vec::<String>::new());
 }
 
+#[test]
+fn find_violations_reports_forbidden_operations_outside_permitted_directories() {
+    let source_file: SourceFile = create_source_file(
+        "simulation/growth.rs",
+        "let a: f64 = x.ln();\nlet b: fn(f64) -> f64 = f64::sin;\nlet c: HashMap<u32, u32> = HashMap::new();\nuse bitcode::Encode;\nlet d: f64 = libm::log(x);\n",
+    );
+
+    let violations: Vec<String> = find_violations(&source_file);
+
+    assert_eq!(
+        violations,
+        vec![
+            String::from("simulation/growth.rs:1: .ln("),
+            String::from("simulation/growth.rs:2: f64::sin"),
+            String::from("simulation/growth.rs:3: HashMap"),
+            String::from("simulation/growth.rs:4: bitcode"),
+        ],
+    );
+}
+
+#[test]
+fn find_violations_permits_exempt_directories() {
+    let source_files: Vec<SourceFile> = vec![
+        create_source_file("render/sprite.rs", "let a: f64 = x.ln();\n"),
+        create_source_file("play/input.rs", "let b: fn(f64) -> f64 = f64::sin;\n"),
+        create_source_file("protocol/message.rs", "use bitcode::Encode;\n"),
+    ];
+
+    let violations: Vec<String> = source_files.iter().flat_map(find_violations).collect();
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+fn create_source_file(relative_path: &str, contents: &str) -> SourceFile {
+    SourceFile {
+        relative_path: PathBuf::from(relative_path),
+        contents: String::from(contents),
+    }
+}
+
 fn read_source_files(source_root: &Path, directory: &Path) -> Vec<SourceFile> {
     let mut source_files: Vec<SourceFile> = Vec::new();
     let mut entry_paths: Vec<PathBuf> = fs::read_dir(directory).unwrap().map(|entry| entry.unwrap().path()).collect();

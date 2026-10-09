@@ -1,3 +1,21 @@
+use crate::ability::Loadout;
+use crate::member::Score;
+use crate::organism::Organism;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Member {
+    pub member_id: MemberId,
+    pub screen_name: String,
+    pub role: MemberRoleKind,
+    /// Some for a Participant.
+    pub loadout: Option<Loadout>,
+    /// Some only in skirmish.
+    pub team: Option<TeamKind>,
+    pub score: Score,
+    /// None when dead, awaiting spawn, or spectating.
+    pub organism: Option<Organism>,
+}
+
 /// Never reused within a game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MemberId(pub u32);

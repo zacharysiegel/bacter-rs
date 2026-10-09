@@ -72,7 +72,7 @@ impl World {
         }
     }
 
-    /// Whether the cell's box, centre ±6 px, lies strictly inside the world.
+    /// Whether the cell's box, centre ± one cell width, lies strictly inside the world.
     pub fn contains_cell(&self, center: WorldPoint) -> bool {
         let center_x: i64 = i64::from(center.x) * i64::from(geometry::SUBPIXELS_PER_PIXEL);
         let center_y: i64 = i64::from(center.y) * i64::from(geometry::SUBPIXELS_PER_PIXEL);
@@ -87,6 +87,7 @@ impl World {
     pub fn shrink(&mut self) {
         let is_above_minimum: bool = self.bounds.width.0 > SURVIVAL_SHRINK_MINIMUM_SUBPIXELS
             && self.bounds.height.0 > SURVIVAL_SHRINK_MINIMUM_SUBPIXELS;
+
         if !is_above_minimum {
             return;
         }
@@ -165,6 +166,7 @@ mod tests {
     #[test]
     fn contains_cell_rectangle_follows_shrunk_subpixel_bounds() {
         let mut world: World = create_world(WorldShapeKind::Rectangle, 0, 800, 800);
+
         for _ in 0..1000 {
             world.shrink();
         }
@@ -207,6 +209,7 @@ mod tests {
     fn contains_cell_ellipse_follows_shrunk_subpixel_bounds() {
         let mut world: World = create_world(WorldShapeKind::Ellipse, 0, 800, 800);
         let is_inside_before_shrinking: bool = world.contains_cell(WorldPoint { x: 400, y: 145 });
+
         for _ in 0..1000 {
             world.shrink();
         }

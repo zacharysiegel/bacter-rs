@@ -11,6 +11,7 @@ use shared::world::WorldShapeKind;
 const WORLD_SIZE_PIXELS: u32 = 100_000;
 const START_POSITION: WorldPoint = WorldPoint { x: 50_000, y: 50_000 };
 const CURSOR_SPEED_MILLIPIXELS_PER_TICK: i64 = 2975;
+const MILLIPIXELS_PER_PIXEL: i64 = 1000;
 const TICK_COUNT: u32 = 3000;
 const DISCARDED_TICK_COUNT: u32 = 200;
 const SEEDS: [u64; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -173,7 +174,7 @@ fn get_cursor(cursor_motion: CursorMotionKind, tick_index: u32) -> WorldPoint {
         CursorMotionKind::Still => START_POSITION,
         CursorMotionKind::Moving => {
             let travelled_millipixels: i64 = CURSOR_SPEED_MILLIPIXELS_PER_TICK * (i64::from(tick_index) + 1);
-            let travelled_pixels: i32 = i32::try_from((travelled_millipixels + 500) / 1000).unwrap();
+            let travelled_pixels: i32 = round_millipixels_to_pixels(travelled_millipixels);
 
             WorldPoint {
                 x: START_POSITION.x + travelled_pixels,
@@ -181,6 +182,10 @@ fn get_cursor(cursor_motion: CursorMotionKind, tick_index: u32) -> WorldPoint {
             }
         }
     }
+}
+
+fn round_millipixels_to_pixels(millipixels: i64) -> i32 {
+    i32::try_from((millipixels + MILLIPIXELS_PER_PIXEL / 2) / MILLIPIXELS_PER_PIXEL).unwrap()
 }
 
 fn apply_growth_state(member: &mut Member, growth_state: ReferenceGrowthStateKind) {

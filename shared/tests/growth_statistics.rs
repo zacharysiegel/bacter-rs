@@ -113,6 +113,7 @@ fn growth_statistics_match_the_original_rules() {
             reference_measurement.mean_changes_per_tick,
             CHANGE_RATE_TOLERANCE_PROPORTION,
         );
+
         if !is_cell_count_close || !is_change_rate_close {
             deviations.push(format!(
                 "{:?} {:?}: {:?}",

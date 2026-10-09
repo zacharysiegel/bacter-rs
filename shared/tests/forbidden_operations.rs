@@ -78,12 +78,14 @@ fn read_source_files(source_root: &Path, directory: &Path) -> Vec<SourceFile> {
 
     for entry_path in entry_paths {
         let is_directory: bool = entry_path.is_dir();
+
         if is_directory {
             source_files.extend(read_source_files(source_root, &entry_path));
             continue;
         }
 
         let is_rust_file: bool = entry_path.extension().is_some_and(|extension| extension == "rs");
+
         if !is_rust_file {
             continue;
         }

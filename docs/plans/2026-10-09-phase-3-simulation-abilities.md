@@ -17,7 +17,7 @@
 - Never switch branches, push, rebase or amend. Stage by explicit path, run `git status` before each commit, one-line commit messages without attribution.
 - Never run `cargo clippy`.
 - The code below is `rustfmt`-formatted with the repository's `rustfmt.toml`; transcribe it exactly, so `cargo fmt --all -- --check` stays silent.
-- Edits are given in three forms: a whole file; "replace" followed by text that occurs exactly once in the file and its replacement; "insert directly above" a unique anchor. "Append inside `mod tests`" means directly above the closing brace of the file's test module, which is the last line of the file.
+- Edits are given in three forms: a whole file; "replace" followed by text that occurs exactly once in the file and its replacement; "insert directly above" a unique anchor. An anchor spanning several lines is written on one line, its lines joined by single spaces without their indentation; the inserted block ends with its own blank line. "Append inside `mod tests`" means directly above the closing brace of the file's test module, which is the last line of the file, after one blank line separating it from the test before.
 - A new file's failing test is the file holding only its `#[cfg(test)] mod tests` block; the implementation step then writes the whole file.
 - Builds stay warning-free; a warning is a defect to fix before committing.
 - Expected test counts assume the tasks are done in order with the code exactly as given; a count that differs means a step was missed or changed.
@@ -36,7 +36,7 @@
 - Shot hits: the target's own neutralize field protects it (simulation.md, shot pop); acid and toxin are stopped by any member's neutralize field (rule 5). One `EffectApplied` per target; the caster's carried timer is set once per hit pop.
 - Field and secretion radius checks are three functions in `ability_model.rs` (`is_inside_field`, `is_inside_spore_secretion`, `is_inside_shot_secretion`) with `get_neutralize_field_center` and `get_toxin_field_center`; the spawn hazard checks are rewritten onto them.
 - Directions: spore offsets are taken on the lattice (the same direction as in pixels); unit vectors go through `libm::sqrt` and `libm::round`, as the chance tables use `libm`.
-- Shot cell selection compares cosines exactly in i128 through dot-product signs and cross-multiplied squares, with saturating products; exact while offsets stay below 2^24.
+- Shot cell selection compares cosines exactly in i128 through dot-product signs and cross-multiplied squares, with saturating products; exact while offset components stay below 2^23.
 - Force spawn (`spawn::force_spawn_participants`): every organism is discarded first, without a death; then Participants with a loadout spawn in ascending id while the alive count is below the player cap; one without a position gets `SpawnRejected { PositionNotFound }` and the next is tried. `spawn_member` now converts the member before its search, which draws the same numbers.
 - Rounds: at most one transition per tick; in PreRound the checks run cancel, force spawn, start. `player_minimum` absent counts as 0 (never the case in survival). Ending a round emits `RoundPhaseChanged { PostRound }` then `RoundWon`; leaving PostRound restores the world, emits `RoundPhaseChanged { Waiting }`, then the force spawn's events.
 - Countdown: `RoundState::get_countdown_seconds(tick)`, `Some` in PreRound and PostRound, from the ticks left of the 114-tick delay.
@@ -886,7 +886,7 @@ Expected: before the commit, `git status --short` shows exactly the paths just a
 - Modify: `shared/src/organism/spawn.rs`
 - Test: inline `mod tests` in `shared/src/ability/ability_model.rs`; the existing spawn hazard tests in `shared/src/organism/spawn.rs`
 
-The radius rules of the neutralize and toxin fields and of both secretions live in one place: spawn hazards, shot hits and the damage phase all call these functions (the bug-fix ledger's single neutralize check). The spawn search is rewritten onto them; its existing hazard tests must keep passing.
+The radius rules of the neutralize and toxin fields and of both secretions live in one place: spawn hazards, shot hits and the damage phase all call these functions. The spawn search is rewritten onto them; its existing hazard tests must keep passing.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1596,7 +1596,7 @@ use crate::ability::ability_constants;
 use crate::ability::{AimVector, Projectile};
 ```
 
-In `shared/src/ability/projectile.rs`, insert directly above `/// `speed` along the non-zero`:
+In `shared/src/ability/projectile.rs`, insert directly above `` /// `speed` along the non-zero ``:
 
 ```rust
 /// `None` for a zero aim or an organism without cells; the chosen cell leaves the organism and flies along `aim`.
@@ -1661,7 +1661,7 @@ fn compare_alignment(first: (i64, i64), second: (i64, i64), aim: AimVector) -> O
         return sign_ordering;
     }
 
-    // Exact while offsets stay below 2^24; saturates beyond.
+    // Exact while offset components stay below 2^23; saturates beyond.
     let first_scaled_square: i128 = first_dot.saturating_mul(first_dot).saturating_mul(get_length_squared(second));
     let second_scaled_square: i128 = second_dot.saturating_mul(second_dot).saturating_mul(get_length_squared(first));
     let magnitude_ordering: Ordering = first_scaled_square.cmp(&second_scaled_square);
@@ -1836,7 +1836,7 @@ use crate::game::GameState;
 use crate::geometry::{LatticeCoordinate, SubpixelVector};
 ```
 
-In `shared/src/ability/projectile.rs`, insert directly above `/// `speed` along the non-zero`:
+In `shared/src/ability/projectile.rs`, insert directly above `` /// `speed` along the non-zero ``:
 
 ```rust
 pub fn run_flight_phase(state: &mut GameState) {
@@ -3250,7 +3250,7 @@ Expected: before the commit, `git status --short` shows exactly the paths just a
 - Modify: `shared/src/ability/mod.rs`
 - Test: inline `mod tests` in `shared/src/ability/damage.rs`
 
-Phase 9 of the tick order. For each victim (ascending id) and each acid owner (ascending id): spore secretions, then shot secretions slot 0 and slot 1, then the toxin field. Every source spares cells inside any member's neutralize field (rule 5) and the owner's teammates; spore and shot acid reach the owner's own cells (rule 1) while toxin never does. `last_hitter` is set on each actual removal only, so the last removal in iteration order wins and neutralized or teammate hits record nothing.
+Phase 9 of the tick order. For each victim (ascending id) and each acid owner (ascending id): spore secretions, then shot secretions slot 0 and slot 1, then the toxin field. Every source spares cells inside any member's neutralize field (rule 5, through `is_protected_by_neutralize`, the bug-fix ledger's single neutralize check) and the owner's teammates; spore and shot acid reach the owner's own cells (rule 1) while toxin never does. `last_hitter` is set on each actual removal only, so the last removal in iteration order wins and neutralized or teammate hits record nothing.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3563,9 +3563,7 @@ fn damage_member(member: &mut Member, acid_sources: &[AcidSource], neutralize_fi
 
         for lattice_coordinate in lattice_coordinates {
             let cell_center: WorldPoint = organism.cell_center(lattice_coordinate);
-            let is_neutralized: bool = neutralize_field_centers
-                .iter()
-                .any(|field_center| ability::is_inside_field(*field_center, cell_center));
+            let is_neutralized: bool = is_protected_by_neutralize(neutralize_field_centers, cell_center);
 
             if is_neutralized || !acid_source.removes_cell(victim_id, cell_center) {
                 continue;
@@ -3575,6 +3573,12 @@ fn damage_member(member: &mut Member, acid_sources: &[AcidSource], neutralize_fi
             organism.last_hitter = Some(acid_source.owner_id);
         }
     }
+}
+
+fn is_protected_by_neutralize(neutralize_field_centers: &[WorldPoint], cell_center: WorldPoint) -> bool {
+    neutralize_field_centers
+        .iter()
+        .any(|field_center| ability::is_inside_field(*field_center, cell_center))
 }
 
 fn get_neutralize_field_centers(state: &GameState) -> Vec<WorldPoint> {
@@ -5724,12 +5728,12 @@ pub fn format_kill_death_ratio(kills: u32, deaths: u32) -> String {
 
     let hundredths: u64 = (u64::from(kills) * 200 + u64::from(deaths)) / (2 * u64::from(deaths));
     let whole: u64 = hundredths / 100;
-    let fraction: u64 = hundredths % 100;
+    let decimal_hundredths: u64 = hundredths % 100;
 
-    match fraction {
+    match decimal_hundredths {
         0 => format!("{whole}"),
         tenths_only if tenths_only % 10 == 0 => format!("{whole}.{}", tenths_only / 10),
-        _ => format!("{whole}.{fraction:02}"),
+        _ => format!("{whole}.{decimal_hundredths:02}"),
     }
 }
 
@@ -6048,7 +6052,7 @@ Expected: compilation fails; the first error is `` error[E0425]: cannot find typ
 Replace the whole of `shared/src/ability/ability_icon.rs` with:
 
 ```rust
-/// Steps of the original's pixel pen: L left, U up, R right, D down.
+// Steps of the original's pixel pen: L left, U up, R right, D down.
 const EXTEND_PEN_PATH: &str = concat!(
     "DDLLLLLLLLDDDDLUUUUURULURULURULURULDLDDDDDDDDDDULUUUUUUUUDLDDDDDDULUUUUDLDDRRRRRRRUUURDDDRUUURDD",
     "DRUUURDDDRUUURDRUDDDDRUUUURDDDDRUUUURDDDDRUUUURDDDDRDDDDRUUUUULURULURULURULURDRDDDDDDDDDDURUUUUU",
@@ -8296,6 +8300,7 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 
 ```text
 <hash> phase 3 plan
+<hash> phase 3 plan review
 <hash> tick arithmetic and millisecond conversion
 <hash> ability durations, cooldowns and speeds
 <hash> ability kind durations, shot effects and press helpers

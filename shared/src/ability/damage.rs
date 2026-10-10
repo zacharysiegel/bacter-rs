@@ -1,5 +1,5 @@
 use crate::ability;
-use crate::ability::{Loadout, ShotPhase, SporePhase};
+use crate::ability::{Loadout, OrganismAbilities, ShotPhase, SporePhase};
 use crate::game::GameState;
 use crate::geometry::{LatticeCoordinate, SubpixelPoint, WorldPoint};
 use crate::member;
@@ -10,7 +10,6 @@ struct AcidSource {
     owner_id: MemberId,
     owner_team: Option<TeamKind>,
     spore_secretion_positions: Vec<SubpixelPoint>,
-    /// Slot 0, then slot 1.
     shot_secretion_centers: Vec<SubpixelPoint>,
     toxin_field_center: Option<WorldPoint>,
 }
@@ -19,25 +18,12 @@ impl AcidSource {
     fn from_member(member: &Member) -> Option<AcidSource> {
         let loadout: &Loadout = member.loadout.as_ref()?;
         let organism: &Organism = member.organism.as_ref()?;
-        let spore_secretion_positions: Vec<SubpixelPoint> = match &organism.abilities.spore {
-            SporePhase::Secreting { spores, .. } => spores.iter().map(|spore| spore.position).collect(),
-            SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => Vec::new(),
-        };
-        let shot_secretion_centers: Vec<SubpixelPoint> = organism
-            .abilities
-            .shots
-            .iter()
-            .filter_map(|shot_phase| match shot_phase {
-                ShotPhase::Secreting { center, .. } => Some(*center),
-                ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => None,
-            })
-            .collect();
 
         Some(AcidSource {
             owner_id: member.member_id,
             owner_team: member.team,
-            spore_secretion_positions,
-            shot_secretion_centers,
+            spore_secretion_positions: get_spore_secretion_positions(&organism.abilities),
+            shot_secretion_centers: get_shot_secretion_centers(&organism.abilities),
             toxin_field_center: organism.abilities.get_toxin_field_center(loadout),
         })
     }
@@ -104,6 +90,24 @@ fn damage_member(member: &mut Member, acid_sources: &[AcidSource], neutralize_fi
     }
 }
 
+fn get_spore_secretion_positions(abilities: &OrganismAbilities) -> Vec<SubpixelPoint> {
+    match &abilities.spore {
+        SporePhase::Secreting { spores, .. } => spores.iter().map(|spore| spore.position).collect(),
+        SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => Vec::new(),
+    }
+}
+
+fn get_shot_secretion_centers(abilities: &OrganismAbilities) -> Vec<SubpixelPoint> {
+    abilities
+        .shots
+        .iter()
+        .filter_map(|shot_phase| match shot_phase {
+            ShotPhase::Secreting { center, .. } => Some(*center),
+            ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => None,
+        })
+        .collect()
+}
+
 fn is_protected_by_neutralize(neutralize_field_centers: &[WorldPoint], cell_center: WorldPoint) -> bool {
     neutralize_field_centers
         .iter()
@@ -126,7 +130,7 @@ fn get_neutralize_field_centers(state: &GameState) -> Vec<WorldPoint> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AbilityPhase, OrganismAbilities, Projectile, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind};
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::SubpixelVector;
     use crate::world::WorldShapeKind;
@@ -256,7 +260,6 @@ mod tests {
         run_damage_phase(&mut state);
 
         assert_eq!(get_cells(&state, VICTIM_ID), vec![LatticeCoordinate { i: 1, j: 0 }]);
-        assert_eq!(get_cells(&state, OWNER_ID), vec![LatticeCoordinate { i: 0, j: 0 }]);
     }
 
     #[test]

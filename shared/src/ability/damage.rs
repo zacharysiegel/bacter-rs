@@ -226,6 +226,23 @@ mod tests {
     }
 
     #[test]
+    fn run_damage_phase_lets_acid_reach_its_owner_in_a_team_mode() {
+        let mut state: GameState = create_state(GameModeKind::Skirmish);
+
+        for member in state.members.values_mut() {
+            member.team = Some(TeamKind::Red);
+        }
+
+        secrete_spore_at(&mut state, VICTIM_ID, VICTIM_POSITION);
+
+        run_damage_phase(&mut state);
+
+        let victim_organism: &Organism = test_fixture::get_organism(&state, VICTIM_ID);
+        assert!(victim_organism.cells.is_empty());
+        assert_eq!(victim_organism.last_hitter, Some(VICTIM_ID));
+    }
+
+    #[test]
     fn run_damage_phase_keeps_toxin_off_its_owner() {
         let mut state: GameState = create_state(GameModeKind::FreeForAll);
         activate_field(&mut state, VICTIM_ID, ThirdAbilityKind::Toxin, VICTIM_POSITION);

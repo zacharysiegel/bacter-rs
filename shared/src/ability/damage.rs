@@ -1,7 +1,7 @@
 use crate::ability;
-use crate::ability::{Loadout, OrganismAbilities, ShotPhase, SporePhase};
+use crate::ability::{Loadout, OrganismAbilities};
 use crate::game::GameState;
-use crate::geometry::{LatticeCoordinate, SubpixelPoint, WorldPoint};
+use crate::geometry::{LatticeCoordinate, WorldPoint};
 use crate::member;
 use crate::member::{Member, MemberId, TeamKind};
 use crate::organism::Organism;
@@ -9,9 +9,8 @@ use crate::organism::Organism;
 struct AcidSource {
     owner_id: MemberId,
     owner_team: Option<TeamKind>,
-    spore_secretion_positions: Vec<SubpixelPoint>,
-    shot_secretion_centers: Vec<SubpixelPoint>,
-    toxin_field_center: Option<WorldPoint>,
+    owner_loadout: Loadout,
+    owner_abilities: OrganismAbilities,
 }
 
 impl AcidSource {
@@ -22,29 +21,18 @@ impl AcidSource {
         Some(AcidSource {
             owner_id: member.member_id,
             owner_team: member.team,
-            spore_secretion_positions: get_spore_secretion_positions(&organism.abilities),
-            shot_secretion_centers: get_shot_secretion_centers(&organism.abilities),
-            toxin_field_center: organism.abilities.get_toxin_field_center(loadout),
+            owner_loadout: *loadout,
+            owner_abilities: organism.abilities.clone(),
         })
     }
 
     /// Spore and shot acid reach the owner's own cells; toxin never does.
     fn removes_cell(&self, victim_id: MemberId, cell_center: WorldPoint) -> bool {
-        let cell_center_subpixels: SubpixelPoint = cell_center.to_subpixel_point();
-        let is_in_spore_secretion: bool = self
-            .spore_secretion_positions
-            .iter()
-            .any(|spore_position| ability::is_inside_spore_secretion(*spore_position, cell_center_subpixels));
-        let is_in_shot_secretion: bool = self
-            .shot_secretion_centers
-            .iter()
-            .any(|shot_center| ability::is_inside_shot_secretion(*shot_center, cell_center_subpixels));
-        let is_in_toxin_field: bool = victim_id != self.owner_id
-            && self
-                .toxin_field_center
-                .is_some_and(|field_center| ability::is_inside_field(field_center, cell_center));
+        let is_in_secretion: bool = self.owner_abilities.is_inside_any_secretion(cell_center.to_subpixel_point());
+        let is_in_toxin_field: bool =
+            victim_id != self.owner_id && self.owner_abilities.is_inside_toxin_field(&self.owner_loadout, cell_center);
 
-        is_in_spore_secretion || is_in_shot_secretion || is_in_toxin_field
+        is_in_secretion || is_in_toxin_field
     }
 }
 
@@ -90,24 +78,6 @@ fn damage_member(member: &mut Member, acid_sources: &[AcidSource], neutralize_fi
     }
 }
 
-fn get_spore_secretion_positions(abilities: &OrganismAbilities) -> Vec<SubpixelPoint> {
-    match &abilities.spore {
-        SporePhase::Secreting { spores, .. } => spores.iter().map(|spore| spore.position).collect(),
-        SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => Vec::new(),
-    }
-}
-
-fn get_shot_secretion_centers(abilities: &OrganismAbilities) -> Vec<SubpixelPoint> {
-    abilities
-        .shots
-        .iter()
-        .filter_map(|shot_phase| match shot_phase {
-            ShotPhase::Secreting { center, .. } => Some(*center),
-            ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => None,
-        })
-        .collect()
-}
-
 fn is_protected_by_neutralize(neutralize_field_centers: &[WorldPoint], cell_center: WorldPoint) -> bool {
     neutralize_field_centers
         .iter()
@@ -130,7 +100,7 @@ fn get_neutralize_field_centers(state: &GameState) -> Vec<WorldPoint> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, Projectile, ShotPhase, SporePhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::SubpixelVector;
     use crate::world::WorldShapeKind;

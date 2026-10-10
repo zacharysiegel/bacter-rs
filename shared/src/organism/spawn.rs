@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::ability;
-use crate::ability::{Loadout, ShotPhase, SporePhase};
+use crate::ability::Loadout;
 use crate::game::{GameState, SimulationEvent, SpawnRejectionKind};
 use crate::geometry;
 use crate::geometry::{SubpixelPoint, WorldPoint};
@@ -177,36 +176,12 @@ fn collides_with_organism(organism: &Organism, candidate: WorldPoint) -> bool {
 }
 
 fn is_inside_hazard(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
-    is_inside_spore_secretion(organism, candidate)
-        || is_inside_shot_secretion(organism, candidate)
-        || is_inside_toxin_field(member, organism, candidate)
-}
+    let is_inside_toxin_field: bool = member
+        .loadout
+        .as_ref()
+        .is_some_and(|loadout| organism.abilities.is_inside_toxin_field(loadout, candidate));
 
-fn is_inside_spore_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
-    let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
-
-    match &organism.abilities.spore {
-        SporePhase::Secreting { spores, .. } => {
-            spores.iter().any(|spore| ability::is_inside_spore_secretion(spore.position, candidate_subpixels))
-        }
-        SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => false,
-    }
-}
-
-fn is_inside_shot_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
-    let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
-
-    organism.abilities.shots.iter().any(|shot| match shot {
-        ShotPhase::Secreting { center, .. } => ability::is_inside_shot_secretion(*center, candidate_subpixels),
-        ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => false,
-    })
-}
-
-fn is_inside_toxin_field(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
-    let toxin_field_center: Option<WorldPoint> =
-        member.loadout.as_ref().and_then(|loadout| organism.abilities.get_toxin_field_center(loadout));
-
-    toxin_field_center.is_some_and(|field_center| ability::is_inside_field(field_center, candidate))
+    organism.abilities.is_inside_any_secretion(candidate.to_subpixel_point()) || is_inside_toxin_field
 }
 
 #[cfg(test)]
@@ -214,7 +189,7 @@ mod tests {
     use std::ops::Range;
 
     use super::*;
-    use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, Projectile, ShotPhase, SporePhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelVector};
     use crate::member::OrganismColorKind;

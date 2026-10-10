@@ -27,6 +27,13 @@ impl GameSettings {
     pub fn validate(&self) -> Result<(), RejectionKind> {
         self.check_mode_fields()?;
         protocol_limits::check_title(&self.title)?;
+        self.check_ranges()?;
+        self.check_cross_field_rules()?;
+
+        Ok(())
+    }
+
+    fn check_ranges(&self) -> Result<(), RejectionKind> {
         check_setting_range(self.world_width_pixels, SettingFieldKind::WorldSize)?;
         check_setting_range(self.world_height_pixels, SettingFieldKind::WorldSize)?;
 
@@ -42,6 +49,10 @@ impl GameSettings {
 
         check_setting_range(u32::from(self.leaderboard_length), SettingFieldKind::LeaderboardLength)?;
 
+        Ok(())
+    }
+
+    fn check_cross_field_rules(&self) -> Result<(), RejectionKind> {
         if self.player_minimum.is_some_and(|player_minimum| self.player_cap < player_minimum) {
             return Err(RejectionKind::PlayerCapBelowMinimum);
         }
@@ -59,12 +70,24 @@ impl GameSettings {
         let has_team_count: bool = self.team_count.is_some();
 
         match self.mode {
-            GameModeKind::FreeForAll if has_player_minimum => Err(get_not_applicable(SettingFieldKind::PlayerMinimum)),
-            GameModeKind::FreeForAll if has_team_count => Err(get_not_applicable(SettingFieldKind::TeamCount)),
-            GameModeKind::Skirmish if has_player_minimum => Err(get_not_applicable(SettingFieldKind::PlayerMinimum)),
-            GameModeKind::Skirmish if !has_team_count => Err(get_below_range(SettingFieldKind::TeamCount)),
-            GameModeKind::Survival if has_team_count => Err(get_not_applicable(SettingFieldKind::TeamCount)),
-            GameModeKind::Survival if !has_player_minimum => Err(get_below_range(SettingFieldKind::PlayerMinimum)),
+            GameModeKind::FreeForAll if has_player_minimum => Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::PlayerMinimum,
+            }),
+            GameModeKind::FreeForAll if has_team_count => Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::TeamCount,
+            }),
+            GameModeKind::Skirmish if has_player_minimum => Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::PlayerMinimum,
+            }),
+            GameModeKind::Skirmish if !has_team_count => {
+                Err(get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Below))
+            }
+            GameModeKind::Survival if has_team_count => Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::TeamCount,
+            }),
+            GameModeKind::Survival if !has_player_minimum => {
+                Err(get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Below))
+            }
             GameModeKind::FreeForAll | GameModeKind::Skirmish | GameModeKind::Survival => Ok(()),
         }
     }
@@ -109,28 +132,18 @@ impl TryFrom<&str> for GameModeKind {
 
 fn check_setting_range(value: u32, field: SettingFieldKind) -> Result<(), RejectionKind> {
     if value < field.lowest() {
-        return Err(get_below_range(field));
+        return Err(get_out_of_range(field, RangeBoundKind::Below));
     }
 
     if value > field.highest() {
-        return Err(RejectionKind::SettingOutOfRange {
-            field,
-            bound: RangeBoundKind::Above,
-        });
+        return Err(get_out_of_range(field, RangeBoundKind::Above));
     }
 
     Ok(())
 }
 
-fn get_below_range(field: SettingFieldKind) -> RejectionKind {
-    RejectionKind::SettingOutOfRange {
-        field,
-        bound: RangeBoundKind::Below,
-    }
-}
-
-fn get_not_applicable(field: SettingFieldKind) -> RejectionKind {
-    RejectionKind::SettingNotApplicable { field }
+fn get_out_of_range(field: SettingFieldKind, bound: RangeBoundKind) -> RejectionKind {
+    RejectionKind::SettingOutOfRange { field, bound }
 }
 
 #[cfg(test)]
@@ -164,10 +177,6 @@ mod tests {
 
     fn create_settings(mode: GameModeKind) -> GameSettings {
         test_fixture::create_settings(mode, WorldShapeKind::Rectangle, 800)
-    }
-
-    fn get_out_of_range(field: SettingFieldKind, bound: RangeBoundKind) -> Result<(), RejectionKind> {
-        Err(RejectionKind::SettingOutOfRange { field, bound })
     }
 
     #[test]
@@ -215,11 +224,11 @@ mod tests {
 
         assert_eq!(
             skirmish_settings.validate(),
-            get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Below),
+            Err(get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Below)),
         );
         assert_eq!(
             survival_settings.validate(),
-            get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Below),
+            Err(get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Below)),
         );
     }
 
@@ -242,14 +251,14 @@ mod tests {
         settings.world_width_pixels = 299;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::WorldSize, RangeBoundKind::Below)
+            Err(get_out_of_range(SettingFieldKind::WorldSize, RangeBoundKind::Below)),
         );
 
         settings.world_width_pixels = 300;
         settings.world_height_pixels = 100_001;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::WorldSize, RangeBoundKind::Above)
+            Err(get_out_of_range(SettingFieldKind::WorldSize, RangeBoundKind::Above)),
         );
     }
 
@@ -264,39 +273,45 @@ mod tests {
         settings.player_minimum = Some(1);
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Below)
+            Err(get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Below)),
         );
 
         settings.player_minimum = Some(33);
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Above)
+            Err(get_out_of_range(SettingFieldKind::PlayerMinimum, RangeBoundKind::Above)),
         );
 
         settings.player_minimum = Some(2);
         settings.player_cap = 33;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::PlayerCap, RangeBoundKind::Above)
+            Err(get_out_of_range(SettingFieldKind::PlayerCap, RangeBoundKind::Above)),
         );
 
         settings.player_cap = 1;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::PlayerCap, RangeBoundKind::Below)
+            Err(get_out_of_range(SettingFieldKind::PlayerCap, RangeBoundKind::Below)),
         );
 
         settings.player_cap = 2;
         settings.leaderboard_length = 0;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::LeaderboardLength, RangeBoundKind::Below),
+            Err(get_out_of_range(
+                SettingFieldKind::LeaderboardLength,
+                RangeBoundKind::Below,
+            )),
         );
 
         settings.leaderboard_length = 21;
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::LeaderboardLength, RangeBoundKind::Above),
+            Err(get_out_of_range(
+                SettingFieldKind::LeaderboardLength,
+                RangeBoundKind::Above,
+            )),
         );
     }
 
@@ -310,13 +325,13 @@ mod tests {
         settings.team_count = Some(1);
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Below)
+            Err(get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Below)),
         );
 
         settings.team_count = Some(5);
         assert_eq!(
             settings.validate(),
-            get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Above)
+            Err(get_out_of_range(SettingFieldKind::TeamCount, RangeBoundKind::Above)),
         );
     }
 
@@ -334,8 +349,21 @@ mod tests {
         assert_eq!(survival_settings.validate(), Err(RejectionKind::PlayerCapBelowMinimum));
         assert_eq!(
             skirmish_settings.validate(),
-            Err(RejectionKind::PlayerCapBelowTeamCount)
+            Err(RejectionKind::PlayerCapBelowTeamCount),
         );
         assert_eq!(free_for_all_settings.validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_accepts_a_player_cap_equal_to_the_cross_field_bound() {
+        let mut survival_settings: GameSettings = create_settings(GameModeKind::Survival);
+        survival_settings.player_minimum = Some(5);
+        survival_settings.player_cap = 5;
+        let mut skirmish_settings: GameSettings = create_settings(GameModeKind::Skirmish);
+        skirmish_settings.team_count = Some(4);
+        skirmish_settings.player_cap = 4;
+
+        assert_eq!(survival_settings.validate(), Ok(()));
+        assert_eq!(skirmish_settings.validate(), Ok(()));
     }
 }

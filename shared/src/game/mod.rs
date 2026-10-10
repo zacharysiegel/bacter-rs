@@ -1,5 +1,6 @@
 pub mod game_settings;
 pub mod game_state;
+pub mod game_summary;
 pub mod input_bundle;
 pub mod player_input;
 pub mod simulation_event;
@@ -11,6 +12,7 @@ pub mod tick;
 
 pub use game_settings::*;
 pub use game_state::*;
+pub use game_summary::*;
 pub use input_bundle::*;
 pub use player_input::*;
 pub use simulation_event::*;

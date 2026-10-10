@@ -9,9 +9,11 @@ use shared::error::AppError;
 
 use crate::frame_dump::DirectionKind;
 use crate::frame_encoding::FrameEncodingKind;
+use crate::replay_dump::ReplayOutputKind;
 
 mod frame_dump;
 mod frame_encoding;
+mod replay_dump;
 
 // minimer prefixes every AppError message with this.
 const APP_ERROR_MESSAGE_PREFIX: &str = "Error: ";
@@ -59,11 +61,23 @@ fn create_command() -> Command {
                 )
                 .arg(Arg::new("file").value_name("FILE").help("Read from standard input when absent")),
         )
+        .subcommand(
+            Command::new("replay")
+                .about("Decodes a replay file and prints its bundles")
+                .arg(Arg::new("file").value_name("FILE").required(true))
+                .arg(
+                    Arg::new("checksums")
+                        .long("checksums")
+                        .action(ArgAction::SetTrue)
+                        .help("Re-runs the replay and prints only the checksum after each tick"),
+                ),
+        )
 }
 
 fn run_subcommand(matches: &ArgMatches) -> Result<String, AppError> {
     match matches.subcommand() {
         Some(("frame", frame_matches)) => run_frame(frame_matches),
+        Some(("replay", replay_matches)) => run_replay(replay_matches),
         Some((other, _)) => Err(AppError::new(&format!("unknown subcommand {other}"))),
         None => Err(AppError::new("missing subcommand")),
     }
@@ -77,6 +91,18 @@ fn run_frame(frame_matches: &ArgMatches) -> Result<String, AppError> {
     let frame_bytes: Vec<u8> = frame_encoding::decode_frame_input(&input_bytes, encoding)?;
 
     frame_dump::dump_frame(&frame_bytes, direction)
+}
+
+fn run_replay(replay_matches: &ArgMatches) -> Result<String, AppError> {
+    let file_path: &String = replay_matches.get_one::<String>("file").expect("file is required via clap");
+    let output: ReplayOutputKind = if replay_matches.get_flag("checksums") {
+        ReplayOutputKind::Checksums
+    } else {
+        ReplayOutputKind::Bundles
+    };
+    let replay_bytes: Vec<u8> = read_file(file_path)?;
+
+    replay_dump::dump_replay(&replay_bytes, output)
 }
 
 fn get_frame_encoding(frame_matches: &ArgMatches) -> FrameEncodingKind {
@@ -96,6 +122,10 @@ fn read_input(file_path: Option<&String>) -> Result<Vec<u8>, AppError> {
         return read_standard_input();
     };
 
+    read_file(file_path)
+}
+
+fn read_file(file_path: &str) -> Result<Vec<u8>, AppError> {
     fs::read(file_path).map_err(|error| AppError::from_error(&format!("cannot read {file_path}"), Box::new(error)))
 }
 

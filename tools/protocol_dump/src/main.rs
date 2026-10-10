@@ -13,6 +13,9 @@ use crate::frame_encoding::FrameEncodingKind;
 mod frame_dump;
 mod frame_encoding;
 
+// minimer prefixes every AppError message with this.
+const APP_ERROR_MESSAGE_PREFIX: &str = "Error: ";
+
 fn main() -> ExitCode {
     env_logger::init();
 
@@ -90,13 +93,20 @@ fn get_frame_encoding(frame_matches: &ArgMatches) -> FrameEncodingKind {
 
 fn read_input(file_path: Option<&String>) -> Result<Vec<u8>, AppError> {
     let Some(file_path): Option<&String> = file_path else {
-        let mut input_bytes: Vec<u8> = Vec::new();
-        io::stdin().read_to_end(&mut input_bytes)?;
-
-        return Ok(input_bytes);
+        return read_standard_input();
     };
 
-    Ok(fs::read(file_path)?)
+    fs::read(file_path).map_err(|error| AppError::from_error(&format!("cannot read {file_path}"), Box::new(error)))
+}
+
+fn read_standard_input() -> Result<Vec<u8>, AppError> {
+    let mut input_bytes: Vec<u8> = Vec::new();
+
+    io::stdin()
+        .read_to_end(&mut input_bytes)
+        .map_err(|error| AppError::from_error("cannot read standard input", Box::new(error)))?;
+
+    Ok(input_bytes)
 }
 
 /// The message and its chain of causes, without backtraces.
@@ -110,5 +120,55 @@ fn get_error_text(error: &AppError) -> String {
         None => sub_error.to_string(),
     };
 
+    // A foreign error converted by `?` already carries the sub-error text as its message.
+    let message_without_prefix: &str = error.message.strip_prefix(APP_ERROR_MESSAGE_PREFIX).unwrap_or(&error.message);
+
+    if message_without_prefix == sub_error_text {
+        return error.message.clone();
+    }
+
     format!("{}: {sub_error_text}", error.message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_error_text_without_sub_error_is_the_message() {
+        let error: AppError = AppError::new("missing subcommand");
+
+        assert_eq!(get_error_text(&error), "Error: missing subcommand");
+    }
+
+    #[test]
+    fn get_error_text_follows_an_app_error_sub_error() {
+        let inner_error: AppError = AppError::from_error("cannot decode", Box::new(io::Error::other("truncated")));
+        let error: AppError = AppError::from_error("cannot dump frame", Box::new(inner_error));
+
+        assert_eq!(
+            get_error_text(&error),
+            "Error: cannot dump frame: Error: cannot decode: truncated"
+        );
+    }
+
+    #[test]
+    fn get_error_text_appends_a_foreign_sub_error() {
+        let error: AppError = AppError::from_error(
+            "cannot read capture.bin",
+            Box::new(io::Error::other("permission denied")),
+        );
+
+        assert_eq!(
+            get_error_text(&error),
+            "Error: cannot read capture.bin: permission denied"
+        );
+    }
+
+    #[test]
+    fn get_error_text_omits_a_foreign_sub_error_the_message_already_carries() {
+        let error: AppError = AppError::from(io::Error::other("permission denied"));
+
+        assert_eq!(get_error_text(&error), "Error: permission denied");
+    }
 }

@@ -293,11 +293,26 @@ mod tests {
         assert!(InputBundle::try_from(bundle_serial_out).is_err());
     }
 
-    #[test]
-    fn try_from_rejects_more_player_inputs_than_any_game_has_members() {
+    fn create_bundle_serial_out_with_player_input_count(player_input_count: u32) -> InputBundleSerialOut {
         let mut bundle_serial_out: InputBundleSerialOut = InputBundleSerialOut::from(&create_bundle());
         let player_input_serial_out: PlayerTickInputSerialOut = bundle_serial_out.player_inputs[1];
-        bundle_serial_out.player_inputs = vec![player_input_serial_out; 97];
+        bundle_serial_out.player_inputs = vec![player_input_serial_out; usize::try_from(player_input_count).unwrap()];
+
+        bundle_serial_out
+    }
+
+    #[test]
+    fn try_from_accepts_player_inputs_up_to_the_member_limit() {
+        let bundle_serial_out: InputBundleSerialOut =
+            create_bundle_serial_out_with_player_input_count(protocol_limits::MEMBER_LIMIT_HIGHEST);
+
+        assert!(InputBundle::try_from(bundle_serial_out).is_ok());
+    }
+
+    #[test]
+    fn try_from_rejects_more_player_inputs_than_any_game_has_members() {
+        let bundle_serial_out: InputBundleSerialOut =
+            create_bundle_serial_out_with_player_input_count(protocol_limits::MEMBER_LIMIT_HIGHEST + 1);
 
         assert!(InputBundle::try_from(bundle_serial_out).is_err());
     }

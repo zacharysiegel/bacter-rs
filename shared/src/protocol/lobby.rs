@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn try_from_rejects_more_teams_than_a_game_can_have() {
         let mut game_summary_serial_out: GameSummarySerialOut = GameSummarySerialOut::from(&create_game_summary());
-        game_summary_serial_out.team_sizes = vec![1; 5];
+        game_summary_serial_out.team_sizes = vec![1; usize::from(protocol_limits::TEAM_COUNT_HIGHEST) + 1];
 
         assert!(GameSummary::try_from(game_summary_serial_out).is_err());
     }

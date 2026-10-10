@@ -13,6 +13,8 @@ use shared::world::WorldShapeKind;
 
 const SCRIPTED_TICK_COUNT: u32 = 10_000;
 const SCRIPTED_PLAYER_COUNT: u32 = 16;
+const SCRIPTED_PLAYER_MINIMUM: u8 = 4;
+const SCRIPTED_LEADERBOARD_LENGTH: u8 = 10;
 const GAME_SEED: u64 = 0x5c41_97ed_0000_0001;
 const SCRIPT_SEED: u64 = 0x5c41_97ed_0000_0002;
 const WORLD_SIZE_PIXELS: u32 = 800;
@@ -20,6 +22,7 @@ const CURSOR_TARGET_MARGIN_PIXELS: u32 = 100;
 const CURSOR_STEP_PIXELS: i32 = 3;
 const PRESS_CHANCE_DENOMINATOR: u32 = 32;
 const AIM_EXTENT_PIXELS: u32 = 100;
+const JOIN_TICK: Tick = Tick(1);
 const LEAVE_TICK: Tick = Tick(4000);
 const LEAVING_MEMBER_ID: MemberId = MemberId(3);
 const REJOIN_TICK: Tick = Tick(4001);
@@ -124,7 +127,7 @@ impl ScriptedPlayers {
         i32::try_from(CURSOR_TARGET_MARGIN_PIXELS + self.script_rng.below(span)).unwrap()
     }
 
-    /// Zero aims included, which press nothing.
+    /// Includes the zero aim, which launches no shot.
     fn draw_aim(&mut self) -> AimVector {
         let x: i32 = i32::try_from(self.script_rng.below(2 * AIM_EXTENT_PIXELS + 1)).unwrap();
         let y: i32 = i32::try_from(self.script_rng.below(2 * AIM_EXTENT_PIXELS + 1)).unwrap();
@@ -144,16 +147,17 @@ fn create_scripted_settings() -> GameSettings {
         world_shape: WorldShapeKind::Rectangle,
         world_width_pixels: WORLD_SIZE_PIXELS,
         world_height_pixels: WORLD_SIZE_PIXELS,
-        player_minimum: Some(4),
-        player_cap: 16,
+        player_minimum: Some(SCRIPTED_PLAYER_MINIMUM),
+        player_cap: u8::try_from(SCRIPTED_PLAYER_COUNT).unwrap(),
         team_count: None,
-        leaderboard_length: 10,
+        leaderboard_length: SCRIPTED_LEADERBOARD_LENGTH,
     }
 }
 
 /// Bit 0 picks the first ability, bit 1 the second, bit 2 the third.
 fn create_loadout(player_index: u32) -> Loadout {
-    let appearance_index: usize = usize::try_from(player_index % 4).unwrap();
+    let appearance_count: u32 = u32::try_from(COLORS.len()).unwrap();
+    let appearance_index: usize = usize::try_from(player_index % appearance_count).unwrap();
 
     Loadout {
         appearance: Appearance {
@@ -199,10 +203,11 @@ fn create_joined_participant_events(member_id: MemberId) -> Vec<MemberEvent> {
 
 fn get_member_events(state: &GameState, tick: Tick) -> Vec<MemberEvent> {
     match tick {
-        Tick(1) => {
+        JOIN_TICK => {
             let mut member_events: Vec<MemberEvent> = (0..SCRIPTED_PLAYER_COUNT)
                 .flat_map(|player_index| create_joined_participant_events(MemberId(player_index)))
                 .collect();
+
             member_events.push(MemberEvent::Joined {
                 member_id: MemberId(SCRIPTED_PLAYER_COUNT),
                 screen_name: String::from("scripted spectator"),
@@ -236,7 +241,9 @@ fn run_scripted_game() -> Vec<u64> {
 
     for _ in 0..SCRIPTED_TICK_COUNT {
         let bundle: InputBundle = scripted_players.create_bundle(&state);
+
         game::step(&mut state, &bundle).unwrap();
+
         checksums.push(state_checksum::get_state_checksum(&state));
     }
 
@@ -268,6 +275,7 @@ fn step_matches_the_golden_checksum_sequence() {
 #[ignore = "rewrites the golden checksums; ./scripts/test/regenerate-replay-fixtures.sh"]
 fn regenerate_scripted_game_checksums() {
     let fixture_path: PathBuf = get_checksum_fixture_path();
+
     fs::create_dir_all(fixture_path.parent().unwrap()).unwrap();
     fs::write(fixture_path, format_checksums(&run_scripted_game())).unwrap();
 }

@@ -54,11 +54,15 @@ fn get_replay_read_error(replay_read_error: ReplayReadError) -> AppError {
 mod tests {
     use super::*;
     use shared::game::{GameModeKind, GameSettings, InputBundle, Tick};
+    use shared::protocol;
+    use shared::protocol::ReplayHeaderSerialOut;
     use shared::replay::ReplayHeader;
     use shared::world::WorldShapeKind;
 
-    fn create_replay_bytes() -> Vec<u8> {
-        let replay_log: ReplayLog = ReplayLog {
+    const CORRUPTED_RECORD: [u8; 3] = [0xff, 0xff, 0xff];
+
+    fn create_replay_log() -> ReplayLog {
+        ReplayLog {
             header: ReplayHeader {
                 settings: GameSettings {
                     title: String::from("Dumped game"),
@@ -80,9 +84,23 @@ mod tests {
                     player_inputs: Vec::new(),
                 })
                 .collect(),
-        };
+        }
+    }
 
-        replay::write_replay(&replay_log)
+    fn create_replay_bytes() -> Vec<u8> {
+        replay::write_replay(&create_replay_log())
+    }
+
+    fn get_replay_bytes_with_a_corrupted_bundle_record() -> Vec<u8> {
+        let corrupted_record_length: u32 = u32::try_from(CORRUPTED_RECORD.len()).unwrap();
+        let mut replay_bytes: Vec<u8> = replay::get_version_prefix().to_vec();
+        replay_bytes.extend(replay::get_header_record_bytes(&ReplayHeaderSerialOut::from(
+            &create_replay_log().header,
+        )));
+        replay_bytes.extend(corrupted_record_length.to_le_bytes());
+        replay_bytes.extend(CORRUPTED_RECORD);
+
+        replay_bytes
     }
 
     #[test]
@@ -107,11 +125,49 @@ mod tests {
 
     #[test]
     fn dump_replay_names_another_protocol_version() {
+        let other_protocol_version: u16 = protocol::PROTOCOL_VERSION + 1;
+        let version_prefix_byte_count: usize = replay::get_version_prefix().len();
         let mut replay_bytes: Vec<u8> = create_replay_bytes();
-        replay_bytes[..2].copy_from_slice(&9_u16.to_le_bytes());
+        replay_bytes[..version_prefix_byte_count].copy_from_slice(&other_protocol_version.to_le_bytes());
 
         let error: AppError = dump_replay(&replay_bytes, ReplayOutputKind::Bundles).unwrap_err();
 
-        assert_eq!(error.message, "Error: the replay has protocol version 9, not 1");
+        assert_eq!(
+            error.message,
+            format!(
+                "Error: the replay has protocol version {other_protocol_version}, not {}",
+                protocol::PROTOCOL_VERSION,
+            ),
+        );
+    }
+
+    #[test]
+    fn dump_replay_reports_a_truncated_replay() {
+        let error: AppError = dump_replay(&[1], ReplayOutputKind::Bundles).unwrap_err();
+
+        assert_eq!(error.message, "Error: the replay is truncated");
+    }
+
+    #[test]
+    fn dump_replay_reports_a_replay_without_a_header() {
+        let error: AppError = dump_replay(&replay::get_version_prefix(), ReplayOutputKind::Bundles).unwrap_err();
+
+        assert_eq!(error.message, "Error: the replay has no header");
+    }
+
+    #[test]
+    fn dump_replay_names_the_invalid_record_and_keeps_its_error() {
+        let replay_bytes: Vec<u8> = get_replay_bytes_with_a_corrupted_bundle_record();
+        let expected_sub_error: AppError = protocol::decode_replay_bundle(&CORRUPTED_RECORD).unwrap_err();
+
+        let error: AppError = dump_replay(&replay_bytes, ReplayOutputKind::Bundles).unwrap_err();
+        let sub_error: &AppError = error
+            .sub_error
+            .as_ref()
+            .and_then(|sub_error| sub_error.downcast_ref::<AppError>())
+            .unwrap();
+
+        assert_eq!(error.message, "Error: replay record 1 is invalid");
+        assert_eq!(sub_error.message, expected_sub_error.message);
     }
 }

@@ -656,4 +656,30 @@ mod tests {
         assert!(state.members[&MemberId(0)].organism.is_some());
         assert_eq!(state.members[&MemberId(1)].organism, None);
     }
+
+    #[test]
+    fn force_spawn_participants_tries_the_next_participant_after_no_position() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 100);
+
+        for member_id in [MemberId(0), MemberId(1)] {
+            state.members.insert(member_id, test_fixture::create_participant(member_id));
+        }
+
+        let simulation_events: Vec<SimulationEvent> = force_spawn_participants(&mut state);
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::SpawnRejected {
+                    member_id: MemberId(0),
+                    reason: SpawnRejectionKind::PositionNotFound,
+                },
+                SimulationEvent::SpawnRejected {
+                    member_id: MemberId(1),
+                    reason: SpawnRejectionKind::PositionNotFound,
+                },
+            ],
+        );
+        assert_eq!(state.alive_organism_count(), 0);
+    }
 }

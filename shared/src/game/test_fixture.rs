@@ -1,11 +1,18 @@
-use crate::ability::{FirstAbilityKind, Loadout, SecondAbilityKind, ThirdAbilityKind};
-use crate::game::{GameModeKind, GameSettings, GameState};
-use crate::geometry::WorldPoint;
+use crate::ability::{
+    AbilityPhase, FirstAbilityKind, Loadout, OrganismAbilities, Projectile, SecondAbilityKind, ShotPhase, SporePhase,
+    ThirdAbilityKind,
+};
+use crate::game::{GameModeKind, GameSettings, GameState, Tick};
+use crate::geometry::{SubpixelPoint, SubpixelVector, WorldPoint};
 use crate::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
 use crate::organism::Organism;
 use crate::world::WorldShapeKind;
 
 pub const FIXTURE_SEED: u64 = 0x5eed;
+pub const PROJECTILE: Projectile = Projectile {
+    position: SubpixelPoint { x: 5, y: 6 },
+    velocity: SubpixelVector { x: -1, y: 2 },
+};
 
 pub fn create_settings(mode: GameModeKind, world_shape: WorldShapeKind, world_size_pixels: u32) -> GameSettings {
     let player_minimum: Option<u8> = match mode {
@@ -82,4 +89,34 @@ pub fn create_state_with_organisms(mode: GameModeKind, world_size_pixels: u32, p
     }
 
     state
+}
+
+/// One cell, with abilities in Active, Cooling, Flying and Secreting phases.
+pub fn create_organism_with_projectiles() -> Organism {
+    let mut organism: Organism = Organism::new(WorldPoint { x: 40, y: 50 });
+    organism.last_hitter = Some(MemberId(3));
+    organism.abilities = OrganismAbilities {
+        first: AbilityPhase::Active { ends_at: Tick(9) },
+        second: AbilityPhase::Cooling { ready_at: Tick(8) },
+        third: AbilityPhase::Ready,
+        third_center: Some(WorldPoint { x: 1, y: 1 }),
+        spore: SporePhase::Secreting {
+            ends_at: Tick(7),
+            spores: vec![PROJECTILE],
+        },
+        shots: [
+            ShotPhase::Flying {
+                ends_at: Tick(6),
+                shot: PROJECTILE,
+            },
+            ShotPhase::Secreting {
+                ends_at: Tick(5),
+                center: PROJECTILE.position,
+            },
+        ],
+        compressed_until: Some(Tick(4)),
+        frozen_until: None,
+    };
+
+    organism
 }

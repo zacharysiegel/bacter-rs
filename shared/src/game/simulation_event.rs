@@ -1,6 +1,7 @@
 use crate::ability::ShotEffectKind;
 use crate::geometry::WorldPoint;
 use crate::member::MemberId;
+use crate::round::RoundPhase;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SimulationEvent {
@@ -21,6 +22,12 @@ pub enum SimulationEvent {
     OrganismDied {
         member_id: MemberId,
         credited_to: Option<MemberId>,
+    },
+    RoundPhaseChanged {
+        phase: RoundPhase,
+    },
+    RoundWon {
+        member_id: MemberId,
     },
     EffectApplied {
         target: MemberId,

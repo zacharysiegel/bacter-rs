@@ -10,6 +10,7 @@ pub mod organism_serial;
 pub mod protocol;
 pub mod protocol_limits;
 pub mod rejection;
+pub mod replay_serial;
 pub mod state_checksum;
 
 pub use close_reason::*;
@@ -24,4 +25,5 @@ pub use organism_serial::*;
 pub use protocol::*;
 pub use protocol_limits::*;
 pub use rejection::*;
+pub use replay_serial::*;
 pub use state_checksum::*;

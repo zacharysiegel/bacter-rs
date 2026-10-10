@@ -94,7 +94,7 @@ mod tests {
         for close_reason in CLOSE_REASON_KINDS {
             assert_eq!(
                 CloseReasonKind::from_close_code(close_reason.close_code()),
-                Some(close_reason)
+                Some(close_reason),
             );
         }
     }
@@ -106,17 +106,24 @@ mod tests {
     }
 
     #[test]
-    fn reason_text_names_the_protocol_version_on_a_mismatch() {
+    fn reason_text_gives_the_reason_of_every_close_reason() {
+        let reason_texts: Vec<Option<String>> =
+            CLOSE_REASON_KINDS.iter().map(|close_reason| close_reason.reason_text()).collect();
+
         assert_eq!(
-            CloseReasonKind::ProtocolVersionMismatch.reason_text(),
-            Some(String::from("server protocol version 1")),
+            reason_texts,
+            vec![
+                Some(String::from("server shutting down")),
+                None,
+                None,
+                Some(format!("server protocol version {}", protocol::PROTOCOL_VERSION)),
+                Some(String::from("slow consumer")),
+                Some(String::from("password failure limit")),
+                Some(String::from("rate limit")),
+                Some(String::from("inbound timeout")),
+                Some(String::from("server full")),
+            ],
         );
-        assert_eq!(
-            CloseReasonKind::SlowConsumer.reason_text(),
-            Some(String::from("slow consumer"))
-        );
-        assert_eq!(CloseReasonKind::InternalError.reason_text(), None);
-        assert_eq!(CloseReasonKind::ProtocolViolation.reason_text(), None);
     }
 
     #[test]
@@ -138,5 +145,27 @@ mod tests {
                 "The server is full",
             ],
         );
+    }
+
+    /// Indexes the fixed-size array with a constant, so a variant missing from it fails to compile.
+    fn listed_close_reason_kind(close_reason: CloseReasonKind) -> CloseReasonKind {
+        match close_reason {
+            CloseReasonKind::ServerShutdown => CLOSE_REASON_KINDS[0],
+            CloseReasonKind::ProtocolViolation => CLOSE_REASON_KINDS[1],
+            CloseReasonKind::InternalError => CLOSE_REASON_KINDS[2],
+            CloseReasonKind::ProtocolVersionMismatch => CLOSE_REASON_KINDS[3],
+            CloseReasonKind::SlowConsumer => CLOSE_REASON_KINDS[4],
+            CloseReasonKind::PasswordFailureLimit => CLOSE_REASON_KINDS[5],
+            CloseReasonKind::RateLimitAbuse => CLOSE_REASON_KINDS[6],
+            CloseReasonKind::InboundTimeout => CLOSE_REASON_KINDS[7],
+            CloseReasonKind::ServerFull => CLOSE_REASON_KINDS[8],
+        }
+    }
+
+    #[test]
+    fn close_reason_kinds_lists_every_close_reason() {
+        for close_reason in CLOSE_REASON_KINDS {
+            assert_eq!(listed_close_reason_kind(close_reason), close_reason);
+        }
     }
 }

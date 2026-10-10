@@ -6,6 +6,8 @@ use crate::member::{Member, MemberId, MemberRoleKind, TeamKind};
 
 const INFINITE_RATIO_TEXT: &str = "∞";
 const ZERO_RATIO_TEXT: &str = "0";
+const HUNDREDTHS_PER_WHOLE: u64 = 100;
+const HUNDREDTHS_PER_TENTH: u64 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Score {
@@ -80,30 +82,8 @@ pub fn get_leaderboard_columns(mode: GameModeKind) -> Vec<LeaderboardColumnKind>
 /// Player rows are cut to the leaderboard length; team rows are all shown, in team order.
 pub fn get_leaderboard_rows(state: &GameState) -> Vec<LeaderboardRow> {
     match state.settings.mode {
-        GameModeKind::FreeForAll => {
-            let mut participants: Vec<&Member> = get_participants(state);
-            participants.sort_by_key(|participant| {
-                (
-                    Reverse(participant.score.kills),
-                    participant.score.deaths,
-                    participant.member_id,
-                )
-            });
-
-            get_member_rows(&participants, state.settings.leaderboard_length)
-        }
-        GameModeKind::Survival => {
-            let mut participants: Vec<&Member> = get_participants(state);
-            participants.sort_by_key(|participant| {
-                (
-                    Reverse(participant.score.kills),
-                    Reverse(participant.score.wins),
-                    participant.member_id,
-                )
-            });
-
-            get_member_rows(&participants, state.settings.leaderboard_length)
-        }
+        GameModeKind::FreeForAll => get_sorted_member_rows(state, get_free_for_all_sort_key),
+        GameModeKind::Survival => get_sorted_member_rows(state, get_survival_sort_key),
         GameModeKind::Skirmish => get_team_rows(state),
     }
 }
@@ -120,15 +100,47 @@ pub fn format_kill_death_ratio(kills: u32, deaths: u32) -> String {
         return String::from(ratio_text);
     }
 
-    let hundredths: u64 = (u64::from(kills) * 200 + u64::from(deaths)) / (2 * u64::from(deaths));
-    let whole: u64 = hundredths / 100;
-    let decimal_hundredths: u64 = hundredths % 100;
+    let hundredths: u64 = divide_rounding_half_up(u64::from(kills) * HUNDREDTHS_PER_WHOLE, u64::from(deaths));
+    let whole: u64 = hundredths / HUNDREDTHS_PER_WHOLE;
+    let decimal_hundredths: u64 = hundredths % HUNDREDTHS_PER_WHOLE;
 
     match decimal_hundredths {
         0 => format!("{whole}"),
-        tenths_only if tenths_only % 10 == 0 => format!("{whole}.{}", tenths_only / 10),
+        tenths_only if tenths_only % HUNDREDTHS_PER_TENTH == 0 => {
+            format!("{whole}.{}", tenths_only / HUNDREDTHS_PER_TENTH)
+        }
         _ => format!("{whole}.{decimal_hundredths:02}"),
     }
+}
+
+fn divide_rounding_half_up(numerator: u64, denominator: u64) -> u64 {
+    (2 * numerator + denominator) / (2 * denominator)
+}
+
+fn get_sorted_member_rows<SortKey: Ord>(
+    state: &GameState,
+    get_sort_key: fn(&Member) -> SortKey,
+) -> Vec<LeaderboardRow> {
+    let mut participants: Vec<&Member> = get_participants(state);
+    participants.sort_by_key(|participant| get_sort_key(participant));
+
+    get_member_rows(&participants, state.settings.leaderboard_length)
+}
+
+fn get_free_for_all_sort_key(participant: &Member) -> (Reverse<u32>, u32, MemberId) {
+    (
+        Reverse(participant.score.kills),
+        participant.score.deaths,
+        participant.member_id,
+    )
+}
+
+fn get_survival_sort_key(participant: &Member) -> (Reverse<u32>, Reverse<u32>, MemberId) {
+    (
+        Reverse(participant.score.kills),
+        Reverse(participant.score.wins),
+        participant.member_id,
+    )
 }
 
 /// Pure Spectators are not on the board; dead Participants are.
@@ -284,16 +296,30 @@ mod tests {
     #[test]
     fn get_leaderboard_columns_follow_the_mode() {
         assert_eq!(
+            get_leaderboard_columns(GameModeKind::FreeForAll),
+            vec![
+                LeaderboardColumnKind::Player,
+                LeaderboardColumnKind::Kills,
+                LeaderboardColumnKind::Deaths,
+                LeaderboardColumnKind::KillDeathRatio,
+            ],
+        );
+        assert_eq!(
+            get_leaderboard_columns(GameModeKind::Skirmish),
+            vec![
+                LeaderboardColumnKind::Team,
+                LeaderboardColumnKind::Kills,
+                LeaderboardColumnKind::Deaths,
+                LeaderboardColumnKind::KillDeathRatio,
+            ],
+        );
+        assert_eq!(
             get_leaderboard_columns(GameModeKind::Survival),
             vec![
                 LeaderboardColumnKind::Player,
                 LeaderboardColumnKind::Wins,
                 LeaderboardColumnKind::Kills,
             ],
-        );
-        assert_eq!(
-            get_leaderboard_columns(GameModeKind::Skirmish)[0],
-            LeaderboardColumnKind::Team
         );
     }
 

@@ -1,6 +1,7 @@
 pub mod close_reason;
 pub mod game_state_serial;
 pub mod geometry_serial;
+pub mod input_bundle_serial;
 pub mod member_serial;
 pub mod organism_serial;
 pub mod protocol;
@@ -11,6 +12,7 @@ pub mod state_checksum;
 pub use close_reason::*;
 pub use game_state_serial::*;
 pub use geometry_serial::*;
+pub use input_bundle_serial::*;
 pub use member_serial::*;
 pub use organism_serial::*;
 pub use protocol::*;

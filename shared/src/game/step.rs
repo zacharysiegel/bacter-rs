@@ -3,6 +3,7 @@ use crate::game::{GameState, InputBundle, MemberEvent, PlayerTickInput, Simulati
 use crate::member::{Appearance, Member, MemberId, Score};
 use crate::organism::Organism;
 use crate::organism::{growth, spawn};
+use crate::round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepError {
@@ -29,12 +30,16 @@ pub fn step(state: &mut GameState, bundle: &InputBundle) -> Result<Vec<Simulatio
     simulation_events.extend(effect_events);
 
     projectile::run_flight_phase(state);
+    round::run_survival_shrink_phase(state);
     growth::run_birth_phase(state, bundle.tick);
     growth::run_natural_death_phase(state);
     damage::run_damage_phase(state);
 
     let death_events: Vec<SimulationEvent> = record_deaths(state);
     simulation_events.extend(death_events);
+
+    let round_events: Vec<SimulationEvent> = round::run_round_transition_phase(state, bundle.tick);
+    simulation_events.extend(round_events);
 
     retighten_cell_occupancies(state);
     state.tick = bundle.tick;
@@ -195,6 +200,7 @@ mod tests {
     use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, WorldPoint};
     use crate::member::{MemberRoleKind, OrganismColorKind, SkinKind, TeamKind};
     use crate::organism::CellOccupancy;
+    use crate::round::{RoundPhase, RoundState};
     use crate::world::WorldShapeKind;
 
     fn create_bundle(tick: u32, member_events: Vec<MemberEvent>) -> InputBundle {
@@ -672,5 +678,52 @@ mod tests {
             }],
         );
         assert_eq!(state.members[&MemberId(0)].score.kills, 1);
+    }
+
+    #[test]
+    fn step_shrinks_a_survival_world_while_playing() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
+        state.round = Some(RoundState {
+            phase: RoundPhase::Playing,
+            phase_started_at: Tick(0),
+        });
+
+        step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(state.world.bounds.width.0, 819_200 - 286);
+    }
+
+    #[test]
+    fn step_runs_round_transitions_after_death_bookkeeping() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
+        state.round = Some(RoundState {
+            phase: RoundPhase::Playing,
+            phase_started_at: Tick(0),
+        });
+
+        for (member_id, x) in [(MemberId(0), 200), (MemberId(1), 400)] {
+            state.members.insert(
+                member_id,
+                test_fixture::create_participant_with_organism(member_id, WorldPoint { x, y: 400 }),
+            );
+        }
+
+        kill(&mut state, MemberId(0), None);
+
+        let simulation_events: Vec<SimulationEvent> = step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::OrganismDied {
+                    member_id: MemberId(0),
+                    credited_to: None,
+                },
+                SimulationEvent::RoundPhaseChanged {
+                    phase: RoundPhase::PostRound,
+                },
+                SimulationEvent::RoundWon { member_id: MemberId(1) },
+            ],
+        );
     }
 }

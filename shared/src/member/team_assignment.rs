@@ -21,7 +21,7 @@ impl TeamSizes {
         };
 
         for member in members.values() {
-            let Some(team) = member.team else {
+            let Some(team): Option<TeamKind> = member.team else {
                 continue;
             };
 
@@ -90,7 +90,7 @@ pub fn check_team_choice(
     current_team: Option<TeamKind>,
     requested_team: TeamKind,
 ) -> Result<(), TeamChoiceRejectionKind> {
-    let Some(requested_size) = team_sizes.get_size(requested_team) else {
+    let Some(requested_size): Option<u32> = team_sizes.get_size(requested_team) else {
         return Err(TeamChoiceRejectionKind::TeamNotInGame);
     };
 

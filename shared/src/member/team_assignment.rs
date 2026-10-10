@@ -10,7 +10,7 @@ pub struct TeamSizes {
 }
 
 impl TeamSizes {
-    /// `excluded_member_id`, the requester, is not counted.
+    /// `excluded_member_id` is not counted.
     pub fn from_members(
         members: &BTreeMap<MemberId, Member>,
         team_count: u8,
@@ -81,25 +81,25 @@ impl TeamSizes {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TeamChoiceRejectionKind {
     TeamNotInGame,
-    TeamUnbalanced { smaller: TeamKind },
+    TeamUnbalanced { smaller_team: TeamKind },
 }
 
-/// Allowed when the member is already on `requested`, or when `requested` is among the smallest teams.
+/// Allowed when the member is already on `requested_team`, or when `requested_team` is among the smallest teams.
 pub fn check_team_choice(
     team_sizes: &TeamSizes,
     current_team: Option<TeamKind>,
-    requested: TeamKind,
+    requested_team: TeamKind,
 ) -> Result<(), TeamChoiceRejectionKind> {
-    let Some(requested_size) = team_sizes.get_size(requested) else {
+    let Some(requested_size) = team_sizes.get_size(requested_team) else {
         return Err(TeamChoiceRejectionKind::TeamNotInGame);
     };
 
-    if current_team == Some(requested) {
+    if current_team == Some(requested_team) {
         return Ok(());
     }
 
     match team_sizes.find_smaller_team(requested_size) {
-        Some(smaller) => Err(TeamChoiceRejectionKind::TeamUnbalanced { smaller }),
+        Some(smaller_team) => Err(TeamChoiceRejectionKind::TeamUnbalanced { smaller_team }),
         None => Ok(()),
     }
 }
@@ -149,6 +149,7 @@ mod tests {
     #[test]
     fn add_member_counts_a_pending_member() {
         let mut team_sizes: TeamSizes = TeamSizes::from_members(&BTreeMap::new(), 2, None);
+
         team_sizes.add_member(TeamKind::Blue);
         team_sizes.add_member(TeamKind::Pink);
 
@@ -183,13 +184,13 @@ mod tests {
         assert_eq!(
             check_team_choice(&team_sizes, None, TeamKind::Red),
             Err(TeamChoiceRejectionKind::TeamUnbalanced {
-                smaller: TeamKind::Blue,
+                smaller_team: TeamKind::Blue,
             }),
         );
         assert_eq!(
             check_team_choice(&team_sizes, None, TeamKind::Blue),
             Err(TeamChoiceRejectionKind::TeamUnbalanced {
-                smaller: TeamKind::Green,
+                smaller_team: TeamKind::Green,
             }),
         );
     }
@@ -201,7 +202,7 @@ mod tests {
 
         assert_eq!(
             check_team_choice(&team_sizes, Some(TeamKind::Red), TeamKind::Red),
-            Ok(())
+            Ok(()),
         );
     }
 

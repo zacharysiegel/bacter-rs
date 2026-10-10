@@ -151,32 +151,28 @@ fn get_entry(thresholds: &[u64], distance_squared: i64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::state_checksum;
 
     const GROWTH_STATES: [GrowthStateKind; 3] = [
         GrowthStateKind::Default,
         GrowthStateKind::Compressed,
         GrowthStateKind::Extended,
     ];
-    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
     const GOLDEN_TABLE_DIGEST: u64 = 0x75a8_9b54_1a01_86e5;
 
     fn get_tables_digest(tables: &GrowthChanceTables) -> u64 {
-        let mut digest: u64 = FNV_OFFSET_BASIS;
+        let mut threshold_bytes: Vec<u8> = Vec::new();
 
         for growth_state in GROWTH_STATES {
             let table: &GrowthChanceTable = tables.get(growth_state);
             let thresholds: Vec<u64> = [table.birth_thresholds(), table.death_thresholds()].concat();
 
             for threshold in thresholds {
-                for byte in threshold.to_le_bytes() {
-                    digest ^= u64::from(byte);
-                    digest = digest.wrapping_mul(FNV_PRIME);
-                }
+                threshold_bytes.extend(threshold.to_le_bytes());
             }
         }
 
-        digest
+        state_checksum::get_fnv1a_64_digest(&threshold_bytes)
     }
 
     #[test]

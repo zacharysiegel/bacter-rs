@@ -1,7 +1,9 @@
+use crate::ability::{activation, damage, projectile};
 use crate::game::{GameState, InputBundle, MemberEvent, PlayerTickInput, SimulationEvent, Tick};
 use crate::member::{Appearance, Member, MemberId, Score};
 use crate::organism::Organism;
 use crate::organism::{growth, spawn};
+use crate::round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepError {
@@ -21,11 +23,23 @@ pub fn step(state: &mut GameState, bundle: &InputBundle) -> Result<Vec<Simulatio
     }
 
     apply_cursor_updates(state, &bundle.player_inputs);
+    activation::run_timer_expiry_phase(state, bundle.tick);
+
+    let effect_events: Vec<SimulationEvent> =
+        activation::run_ability_press_phase(state, &bundle.player_inputs, bundle.tick);
+    simulation_events.extend(effect_events);
+
+    projectile::run_flight_phase(state);
+    round::run_survival_shrink_phase(state);
     growth::run_birth_phase(state, bundle.tick);
     growth::run_natural_death_phase(state);
+    damage::run_damage_phase(state);
 
     let death_events: Vec<SimulationEvent> = record_deaths(state);
     simulation_events.extend(death_events);
+
+    let round_events: Vec<SimulationEvent> = round::run_round_transition_phase(state, bundle.tick);
+    simulation_events.extend(round_events);
 
     retighten_cell_occupancies(state);
     state.tick = bundle.tick;
@@ -181,11 +195,12 @@ fn retighten_cell_occupancies(state: &mut GameState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::AbilityPressSet;
+    use crate::ability::{AbilityPhase, AbilityPressSet, Projectile, SporePhase};
     use crate::game::{GameModeKind, test_fixture};
-    use crate::geometry::{LatticeCoordinate, WorldPoint};
+    use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, WorldPoint};
     use crate::member::{MemberRoleKind, OrganismColorKind, SkinKind, TeamKind};
     use crate::organism::CellOccupancy;
+    use crate::round::{RoundPhase, RoundState};
     use crate::world::WorldShapeKind;
 
     fn create_bundle(tick: u32, member_events: Vec<MemberEvent>) -> InputBundle {
@@ -580,6 +595,135 @@ mod tests {
         assert_eq!(
             test_fixture::get_organism(&state, MemberId(0)).cells,
             CellOccupancy::with_cell(LatticeCoordinate { i: 0, j: 0 }),
+        );
+    }
+
+    fn create_press_input(member_id: MemberId, ability_presses: AbilityPressSet) -> PlayerTickInput {
+        PlayerTickInput {
+            member_id,
+            cursor: WorldPoint { x: 100, y: 100 },
+            ability_presses,
+            aim: None,
+        }
+    }
+
+    #[test]
+    fn step_expires_a_cooldown_before_the_press_of_the_same_tick() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0)]);
+        freeze(&mut state, MemberId(0));
+        test_fixture::get_organism_mut(&mut state, MemberId(0)).abilities.first =
+            AbilityPhase::Cooling { ready_at: Tick(1) };
+        let mut bundle: InputBundle = create_bundle(1, Vec::new());
+        bundle.player_inputs = vec![create_press_input(MemberId(0), AbilityPressSet::FIRST)];
+
+        step(&mut state, &bundle).unwrap();
+
+        assert_eq!(
+            test_fixture::get_organism(&state, MemberId(0)).abilities.first,
+            AbilityPhase::Active { ends_at: Tick(65) },
+        );
+    }
+
+    #[test]
+    fn step_moves_spores_in_the_tick_they_launch() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0)]);
+        freeze(&mut state, MemberId(0));
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, MemberId(0));
+
+        for j in -1..=1 {
+            for i in -1..=1 {
+                organism.cells.insert(LatticeCoordinate { i, j });
+            }
+        }
+
+        let mut bundle: InputBundle = create_bundle(1, Vec::new());
+        bundle.player_inputs = vec![create_press_input(MemberId(0), AbilityPressSet::FOURTH)];
+
+        step(&mut state, &bundle).unwrap();
+
+        let expected_first_spore: Projectile = Projectile {
+            position: SubpixelPoint {
+                x: 96_256 - 7603,
+                y: 96_256 - 7603,
+            },
+            velocity: SubpixelVector { x: -7603, y: -7603 },
+        };
+
+        assert!(matches!(
+            &test_fixture::get_organism(&state, MemberId(0)).abilities.spore,
+            SporePhase::Flying { ends_at: Tick(25), spores } if spores.len() == 8 && spores[0] == expected_first_spore,
+        ));
+    }
+
+    #[test]
+    fn step_damages_before_recording_deaths() {
+        let mut state: GameState = create_state_with_organisms(&[MemberId(0), MemberId(1)]);
+        freeze(&mut state, MemberId(0));
+        freeze(&mut state, MemberId(1));
+        test_fixture::get_organism_mut(&mut state, MemberId(0)).abilities.spore = SporePhase::Secreting {
+            ends_at: Tick(5),
+            spores: vec![Projectile {
+                position: WorldPoint { x: 300, y: 100 }.to_subpixel_point(),
+                velocity: SubpixelVector { x: 0, y: 0 },
+            }],
+        };
+
+        let simulation_events: Vec<SimulationEvent> = step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![SimulationEvent::OrganismDied {
+                member_id: MemberId(1),
+                credited_to: Some(MemberId(0)),
+            }],
+        );
+        assert_eq!(state.members[&MemberId(0)].score.kills, 1);
+    }
+
+    #[test]
+    fn step_shrinks_a_survival_world_while_playing() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
+        state.round = Some(RoundState {
+            phase: RoundPhase::Playing,
+            phase_started_at: Tick(0),
+        });
+
+        step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(state.world.bounds.width.0, 819_200 - 286);
+    }
+
+    #[test]
+    fn step_runs_round_transitions_after_death_bookkeeping() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
+        state.round = Some(RoundState {
+            phase: RoundPhase::Playing,
+            phase_started_at: Tick(0),
+        });
+
+        for (member_id, x) in [(MemberId(0), 200), (MemberId(1), 400)] {
+            state.members.insert(
+                member_id,
+                test_fixture::create_participant_with_organism(member_id, WorldPoint { x, y: 400 }),
+            );
+        }
+
+        kill(&mut state, MemberId(0), None);
+
+        let simulation_events: Vec<SimulationEvent> = step(&mut state, &create_bundle(1, Vec::new())).unwrap();
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::OrganismDied {
+                    member_id: MemberId(0),
+                    credited_to: None,
+                },
+                SimulationEvent::RoundPhaseChanged {
+                    phase: RoundPhase::PostRound,
+                },
+                SimulationEvent::RoundWon { member_id: MemberId(1) },
+            ],
         );
     }
 }

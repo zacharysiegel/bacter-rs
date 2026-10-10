@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::ability::ability_constants;
-use crate::ability::{Loadout, ShotPhase, SporePhase};
+use crate::ability::Loadout;
 use crate::game::{GameState, SimulationEvent, SpawnRejectionKind};
 use crate::geometry;
 use crate::geometry::{SubpixelPoint, WorldPoint};
@@ -43,26 +42,40 @@ pub fn spawn_member(
         return Some(SimulationEvent::SpawnRejected { member_id, reason });
     }
 
-    let spawn_position: Option<WorldPoint> = find_spawn_position(&mut state.rng, &state.world, &state.members);
-
     let member: &mut Member = state.members.get_mut(&member_id)?;
     member.role = MemberRoleKind::Participant;
     member.loadout = Some(loadout.with_team_color(team));
     member.team = team;
 
-    let Some(position) = spawn_position else {
-        return Some(SimulationEvent::SpawnRejected {
-            member_id,
-            reason: SpawnRejectionKind::PositionNotFound,
-        });
-    };
+    Some(spawn_at_found_position(state, member_id))
+}
 
-    member.organism = Some(Organism::new(position));
+/// Every organism is discarded without a death; then each Participant with a loadout, in ascending id, spawns while
+/// the alive organism count is below the player cap.
+pub fn force_spawn_participants(state: &mut GameState) -> Vec<SimulationEvent> {
+    for member in state.members.values_mut() {
+        member.organism = None;
+    }
 
-    Some(SimulationEvent::OrganismSpawned {
-        member_id,
-        cursor: position,
-    })
+    let participant_ids: Vec<MemberId> = state
+        .members
+        .values()
+        .filter(|member| member.role == MemberRoleKind::Participant && member.loadout.is_some())
+        .map(|member| member.member_id)
+        .collect();
+    let mut simulation_events: Vec<SimulationEvent> = Vec::new();
+
+    for member_id in participant_ids {
+        let is_at_player_cap: bool = state.alive_organism_count() >= u32::from(state.settings.player_cap);
+
+        if is_at_player_cap {
+            break;
+        }
+
+        simulation_events.push(spawn_at_found_position(state, member_id));
+    }
+
+    simulation_events
 }
 
 /// One cell at `position`, with no random draw and no hazard check.
@@ -112,6 +125,25 @@ pub fn is_spawn_position_valid(world: &World, members: &BTreeMap<MemberId, Membe
 
         !collides_with_organism(organism, candidate) && !is_inside_hazard(member, organism, candidate)
     })
+}
+
+fn spawn_at_found_position(state: &mut GameState, member_id: MemberId) -> SimulationEvent {
+    let spawn_position: Option<WorldPoint> = find_spawn_position(&mut state.rng, &state.world, &state.members);
+    let member: Option<&mut Member> = state.members.get_mut(&member_id);
+
+    let (Some(position), Some(member)) = (spawn_position, member) else {
+        return SimulationEvent::SpawnRejected {
+            member_id,
+            reason: SpawnRejectionKind::PositionNotFound,
+        };
+    };
+
+    member.organism = Some(Organism::new(position));
+
+    SimulationEvent::OrganismSpawned {
+        member_id,
+        cursor: position,
+    }
 }
 
 fn get_spawn_rejection(state: &GameState, member: &Member) -> Option<SpawnRejectionKind> {
@@ -177,42 +209,12 @@ fn collides_with_organism(organism: &Organism, candidate: WorldPoint) -> bool {
 }
 
 fn is_inside_hazard(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
-    is_inside_spore_secretion(organism, candidate)
-        || is_inside_shot_secretion(organism, candidate)
-        || is_inside_toxin_field(member, organism, candidate)
-}
+    let is_inside_toxin_field: bool = member
+        .loadout
+        .as_ref()
+        .is_some_and(|loadout| organism.abilities.is_inside_toxin_field(loadout, candidate));
 
-fn is_inside_spore_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
-    let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
-
-    match &organism.abilities.spore {
-        SporePhase::Secreting { spores, .. } => spores.iter().any(|spore| {
-            spore.position.distance_squared(candidate_subpixels)
-                <= ability_constants::SPORE_SECRETION_RADIUS_SQUARED_SUBPIXELS
-        }),
-        SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => false,
-    }
-}
-
-fn is_inside_shot_secretion(organism: &Organism, candidate: WorldPoint) -> bool {
-    let candidate_subpixels: SubpixelPoint = candidate.to_subpixel_point();
-
-    organism.abilities.shots.iter().any(|shot| match shot {
-        ShotPhase::Secreting { center, .. } => {
-            center.distance_squared(candidate_subpixels) <= ability_constants::SHOT_SECRETION_RADIUS_SQUARED_SUBPIXELS
-        }
-        ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => false,
-    })
-}
-
-fn is_inside_toxin_field(member: &Member, organism: &Organism, candidate: WorldPoint) -> bool {
-    let is_toxin_field_active: bool =
-        member.loadout.as_ref().is_some_and(|loadout| organism.abilities.is_toxin_field_active(loadout));
-
-    is_toxin_field_active
-        && organism.abilities.third_center.is_some_and(|third_center| {
-            third_center.distance_squared(candidate) <= ability_constants::FIELD_RADIUS_SQUARED_PIXELS
-        })
+    organism.abilities.is_inside_any_secretion(candidate.to_subpixel_point()) || is_inside_toxin_field
 }
 
 #[cfg(test)]
@@ -220,7 +222,7 @@ mod tests {
     use std::ops::Range;
 
     use super::*;
-    use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, Projectile, ShotPhase, SporePhase, ThirdAbilityKind};
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelVector};
     use crate::member::OrganismColorKind;
@@ -584,5 +586,100 @@ mod tests {
             place_organism(&mut state, MemberId(3), WorldPoint { x: 9, y: 9 }),
             Err(PlacementError::MemberNotFound { member_id: MemberId(3) }),
         );
+    }
+
+    fn create_survival_state_with_participants(participant_count: u32) -> GameState {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
+
+        for index in 0..participant_count {
+            let member_id: MemberId = MemberId(index);
+            state.members.insert(member_id, test_fixture::create_participant(member_id));
+        }
+
+        state
+    }
+
+    #[test]
+    fn force_spawn_participants_replaces_organisms_without_deaths() {
+        let mut state: GameState = create_survival_state_with_participants(2);
+        place_organism(&mut state, MemberId(0), WorldPoint { x: 9, y: 9 }).unwrap();
+        test_fixture::get_organism_mut(&mut state, MemberId(0))
+            .cells
+            .insert(LatticeCoordinate { i: 1, j: 0 });
+
+        let simulation_events: Vec<SimulationEvent> = force_spawn_participants(&mut state);
+
+        let cursors: Vec<WorldPoint> = [MemberId(0), MemberId(1)]
+            .iter()
+            .map(|member_id| test_fixture::get_organism(&state, *member_id).cursor)
+            .collect();
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::OrganismSpawned {
+                    member_id: MemberId(0),
+                    cursor: cursors[0],
+                },
+                SimulationEvent::OrganismSpawned {
+                    member_id: MemberId(1),
+                    cursor: cursors[1],
+                },
+            ],
+        );
+        assert_ne!(cursors[0], WorldPoint { x: 9, y: 9 });
+        assert_eq!(test_fixture::get_organism(&state, MemberId(0)).cells.count(), 1);
+        assert_eq!(state.members[&MemberId(0)].score.deaths, 0);
+    }
+
+    #[test]
+    fn force_spawn_participants_stops_at_the_player_cap() {
+        let mut state: GameState = create_survival_state_with_participants(3);
+        state.settings.player_cap = 2;
+
+        let simulation_events: Vec<SimulationEvent> = force_spawn_participants(&mut state);
+
+        assert_eq!(simulation_events.len(), 2);
+        assert_eq!(state.alive_organism_count(), 2);
+        assert_eq!(state.members[&MemberId(2)].organism, None);
+    }
+
+    #[test]
+    fn force_spawn_participants_never_spawns_a_spectator() {
+        let mut state: GameState = create_survival_state_with_participants(1);
+        let mut spectator: Member = test_fixture::create_participant(MemberId(1));
+        spectator.role = MemberRoleKind::Spectator;
+        spectator.loadout = None;
+        state.members.insert(MemberId(1), spectator);
+
+        force_spawn_participants(&mut state);
+
+        assert!(state.members[&MemberId(0)].organism.is_some());
+        assert_eq!(state.members[&MemberId(1)].organism, None);
+    }
+
+    #[test]
+    fn force_spawn_participants_tries_the_next_participant_after_no_position() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 100);
+
+        for member_id in [MemberId(0), MemberId(1)] {
+            state.members.insert(member_id, test_fixture::create_participant(member_id));
+        }
+
+        let simulation_events: Vec<SimulationEvent> = force_spawn_participants(&mut state);
+
+        assert_eq!(
+            simulation_events,
+            vec![
+                SimulationEvent::SpawnRejected {
+                    member_id: MemberId(0),
+                    reason: SpawnRejectionKind::PositionNotFound,
+                },
+                SimulationEvent::SpawnRejected {
+                    member_id: MemberId(1),
+                    reason: SpawnRejectionKind::PositionNotFound,
+                },
+            ],
+        );
+        assert_eq!(state.alive_organism_count(), 0);
     }
 }

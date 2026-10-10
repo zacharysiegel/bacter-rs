@@ -2,6 +2,8 @@ use crate::ability::Loadout;
 use crate::member::Score;
 use crate::organism::Organism;
 
+pub const TEAM_ORDER: [TeamKind; 4] = [TeamKind::Red, TeamKind::Blue, TeamKind::Green, TeamKind::Pink];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Member {
     pub member_id: MemberId,
@@ -95,6 +97,16 @@ impl TeamKind {
     }
 }
 
+/// The first `team_count` teams in team order.
+pub fn get_game_teams(team_count: u8) -> Vec<TeamKind> {
+    TEAM_ORDER.into_iter().take(usize::from(team_count)).collect()
+}
+
+/// Members without a team are nobody's teammates.
+pub fn is_same_team(first_team: Option<TeamKind>, second_team: Option<TeamKind>) -> bool {
+    first_team.is_some() && first_team == second_team
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +150,18 @@ mod tests {
     fn next_saturates_at_the_maximum_id() {
         assert_eq!(MemberId(4).next(), MemberId(5));
         assert_eq!(MemberId(u32::MAX).next(), MemberId(u32::MAX));
+    }
+
+    #[test]
+    fn is_same_team_requires_one_team() {
+        assert!(is_same_team(Some(TeamKind::Green), Some(TeamKind::Green)));
+        assert!(!is_same_team(Some(TeamKind::Green), Some(TeamKind::Red)));
+        assert!(!is_same_team(None, None));
+    }
+
+    #[test]
+    fn get_game_teams_takes_the_first_teams_in_order() {
+        assert_eq!(get_game_teams(2), vec![TeamKind::Red, TeamKind::Blue]);
+        assert_eq!(get_game_teams(4), TEAM_ORDER.to_vec());
     }
 }

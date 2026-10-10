@@ -5,6 +5,7 @@ pub mod game;
 pub mod geometry;
 pub mod member;
 pub mod organism;
+pub mod protocol;
 pub mod random;
 pub mod round;
 pub mod world;

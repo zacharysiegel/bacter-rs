@@ -3,6 +3,10 @@ use crate::member::Score;
 use crate::organism::Organism;
 
 pub const TEAM_ORDER: [TeamKind; 4] = [TeamKind::Red, TeamKind::Blue, TeamKind::Green, TeamKind::Pink];
+const RED_TEAM_NAME: &str = "red";
+const BLUE_TEAM_NAME: &str = "blue";
+const GREEN_TEAM_NAME: &str = "green";
+const PINK_TEAM_NAME: &str = "pink";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Member {
@@ -95,6 +99,36 @@ impl TeamKind {
             TeamKind::Pink => OrganismColorKind::Petal,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeamKind::Red => RED_TEAM_NAME,
+            TeamKind::Blue => BLUE_TEAM_NAME,
+            TeamKind::Green => GREEN_TEAM_NAME,
+            TeamKind::Pink => PINK_TEAM_NAME,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownTeamName {
+    pub name: String,
+}
+
+impl TryFrom<&str> for TeamKind {
+    type Error = UnknownTeamName;
+
+    fn try_from(name: &str) -> Result<TeamKind, UnknownTeamName> {
+        match name {
+            RED_TEAM_NAME => Ok(TeamKind::Red),
+            BLUE_TEAM_NAME => Ok(TeamKind::Blue),
+            GREEN_TEAM_NAME => Ok(TeamKind::Green),
+            PINK_TEAM_NAME => Ok(TeamKind::Pink),
+            _ => Err(UnknownTeamName {
+                name: String::from(name),
+            }),
+        }
+    }
 }
 
 /// The first `team_count` teams in team order.
@@ -163,5 +197,29 @@ mod tests {
     fn get_game_teams_takes_the_first_teams_in_order() {
         assert_eq!(get_game_teams(2), vec![TeamKind::Red, TeamKind::Blue]);
         assert_eq!(get_game_teams(4), TEAM_ORDER.to_vec());
+    }
+
+    #[test]
+    fn as_str_gives_the_lowercase_team_names() {
+        let team_names: Vec<&str> = TEAM_ORDER.iter().map(|team| team.as_str()).collect();
+
+        assert_eq!(team_names, vec!["red", "blue", "green", "pink"]);
+    }
+
+    #[test]
+    fn try_from_reads_every_team_name() {
+        for team in TEAM_ORDER {
+            assert_eq!(TeamKind::try_from(team.as_str()), Ok(team));
+        }
+    }
+
+    #[test]
+    fn try_from_rejects_an_unknown_team_name() {
+        assert_eq!(
+            TeamKind::try_from("Red"),
+            Err(UnknownTeamName {
+                name: String::from("Red"),
+            }),
+        );
     }
 }

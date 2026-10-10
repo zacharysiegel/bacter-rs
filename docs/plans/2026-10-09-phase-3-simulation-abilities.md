@@ -5996,7 +5996,7 @@ mod tests {
     }
 
     #[test]
-    fn pen_paths_hold_only_step_letters() {
+    fn pen_path_holds_only_step_letters() {
         for icon in ICONS {
             assert!(icon.pen_path().chars().all(|letter| PenStepKind::from_letter(letter).is_some()));
         }
@@ -6208,7 +6208,7 @@ mod tests {
     }
 
     #[test]
-    fn pen_paths_hold_only_step_letters() {
+    fn pen_path_holds_only_step_letters() {
         for icon in ICONS {
             assert!(icon.pen_path().chars().all(|letter| PenStepKind::from_letter(letter).is_some()));
         }

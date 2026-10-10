@@ -279,6 +279,31 @@ impl OrganismAbilities {
         self.third_center.filter(|_| self.is_toxin_field_active(loadout))
     }
 
+    pub fn is_inside_toxin_field(&self, loadout: &Loadout, point: WorldPoint) -> bool {
+        self.get_toxin_field_center(loadout)
+            .is_some_and(|field_center| is_inside_field(field_center, point))
+    }
+
+    pub fn is_inside_any_secretion(&self, point: SubpixelPoint) -> bool {
+        self.is_inside_any_spore_secretion(point) || self.is_inside_any_shot_secretion(point)
+    }
+
+    fn is_inside_any_spore_secretion(&self, point: SubpixelPoint) -> bool {
+        match &self.spore {
+            SporePhase::Secreting { spores, .. } => {
+                spores.iter().any(|spore| is_inside_spore_secretion(spore.position, point))
+            }
+            SporePhase::Ready | SporePhase::Flying { .. } | SporePhase::Cooling { .. } => false,
+        }
+    }
+
+    fn is_inside_any_shot_secretion(&self, point: SubpixelPoint) -> bool {
+        self.shots.iter().any(|shot_phase| match shot_phase {
+            ShotPhase::Secreting { center, .. } => is_inside_shot_secretion(*center, point),
+            ShotPhase::Ready | ShotPhase::Flying { .. } | ShotPhase::Cooling { .. } => false,
+        })
+    }
+
     pub fn is_compressed(&self) -> bool {
         self.compressed_until.is_some()
     }
@@ -655,5 +680,34 @@ mod tests {
         assert!(!is_inside_spore_secretion(center, SubpixelPoint { x: 25_198, y: 0 }));
         assert!(is_inside_shot_secretion(center, SubpixelPoint { x: 12_598, y: 0 }));
         assert!(!is_inside_shot_secretion(center, SubpixelPoint { x: 12_599, y: 0 }));
+    }
+
+    #[test]
+    fn is_inside_any_secretion_counts_only_secreting_projectiles() {
+        let point: SubpixelPoint = SubpixelPoint { x: 0, y: 0 };
+        let mut abilities: OrganismAbilities = OrganismAbilities::all_ready();
+        abilities.spore = SporePhase::Flying {
+            ends_at: Tick(20),
+            spores: vec![Projectile {
+                position: point,
+                velocity: SubpixelVector { x: 0, y: 0 },
+            }],
+        };
+        abilities.shots[0] = ShotPhase::Flying {
+            ends_at: Tick(20),
+            shot: Projectile {
+                position: point,
+                velocity: SubpixelVector { x: 0, y: 0 },
+            },
+        };
+
+        assert!(!abilities.is_inside_any_secretion(point));
+
+        abilities.shots[1] = ShotPhase::Secreting {
+            ends_at: Tick(20),
+            center: point,
+        };
+
+        assert!(abilities.is_inside_any_secretion(point));
     }
 }

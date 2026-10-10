@@ -182,14 +182,18 @@ mod tests {
     fn write_replay_starts_with_the_little_endian_protocol_version() {
         let replay_bytes: Vec<u8> = write_replay(&create_replay_log());
 
-        assert_eq!(replay_bytes[..2], protocol::PROTOCOL_VERSION.to_le_bytes());
+        assert_eq!(
+            replay_bytes[..VERSION_PREFIX_BYTE_COUNT],
+            protocol::PROTOCOL_VERSION.to_le_bytes()
+        );
     }
 
     #[test]
     fn read_replay_rejects_another_protocol_version_before_decoding() {
         let mut replay_bytes: Vec<u8> = write_replay(&create_replay_log());
-        replay_bytes[..2].copy_from_slice(&7_u16.to_le_bytes());
-        replay_bytes.truncate(5);
+        let inside_first_record_length_byte_count: usize = VERSION_PREFIX_BYTE_COUNT + RECORD_LENGTH_BYTE_COUNT - 1;
+        replay_bytes[..VERSION_PREFIX_BYTE_COUNT].copy_from_slice(&7_u16.to_le_bytes());
+        replay_bytes.truncate(inside_first_record_length_byte_count);
 
         let replay_read_error: ReplayReadError = read_replay(&replay_bytes).unwrap_err();
 

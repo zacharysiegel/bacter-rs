@@ -53,7 +53,9 @@ fn get_replay_read_error(replay_read_error: ReplayReadError) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::game::{GameModeKind, GameSettings, InputBundle, Tick};
+    use std::ops::RangeInclusive;
+
+    use shared::game::{GameModeKind, GameSettings, InputBundle, StepError, Tick};
     use shared::protocol;
     use shared::protocol::ReplayHeaderSerialOut;
     use shared::replay::ReplayHeader;
@@ -62,6 +64,10 @@ mod tests {
     const CORRUPTED_RECORD: [u8; 3] = [0xff, 0xff, 0xff];
 
     fn create_replay_log() -> ReplayLog {
+        create_replay_log_with_bundle_ticks(1..=3)
+    }
+
+    fn create_replay_log_with_bundle_ticks(bundle_ticks: RangeInclusive<u32>) -> ReplayLog {
         ReplayLog {
             header: ReplayHeader {
                 settings: GameSettings {
@@ -77,7 +83,7 @@ mod tests {
                 },
                 seed: 5,
             },
-            input_bundles: (1..=3)
+            input_bundles: bundle_ticks
                 .map(|tick| InputBundle {
                     tick: Tick(tick),
                     member_events: Vec::new(),
@@ -112,6 +118,24 @@ mod tests {
         assert_eq!(
             dump_replay(&replay_bytes, ReplayOutputKind::Checksums).unwrap(),
             expected_dump
+        );
+    }
+
+    #[test]
+    fn dump_replay_reports_a_replay_which_does_not_step() {
+        let replay_bytes: Vec<u8> = replay::write_replay(&create_replay_log_with_bundle_ticks(2..=4));
+
+        let error: AppError = dump_replay(&replay_bytes, ReplayOutputKind::Checksums).unwrap_err();
+
+        assert_eq!(
+            error.message,
+            format!(
+                "Error: the replay does not step: {:?}",
+                StepError::TickMismatch {
+                    expected: Tick(1),
+                    received: Tick(2),
+                },
+            ),
         );
     }
 

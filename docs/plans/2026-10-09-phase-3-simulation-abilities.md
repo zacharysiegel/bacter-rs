@@ -1701,7 +1701,7 @@ git commit -m "shot cell selection and launch"
 
 Expected: before the commit, `git status --short` shows exactly the paths just added as staged (`A` or `M` in the first column) and no other staged or modified path.
 
-**Deviations:** `select_shot_cell` has no explicit zero-offset exclusion (simulation.md, shot launch). The rule holds without it: the exposed cell furthest along the aim has a dot product of at least the mean, 0, so a zero-offset cell can only tie at 0, which requires every cell on the perpendicular through the centroid, where an endpoint precedes the centroid cell in lattice order. An inline comment at the loop states this. The test `select_shot_cell_takes_a_centroid_cell_only_when_alone` became `select_shot_cell_takes_the_cell_of_a_single_cell_organism`; its dropped centred-organism assertion never exercised the exclusion.
+**Deviations:** `select_shot_cell` has no explicit zero-offset exclusion (simulation.md, shot launch). The rule holds without it: the offsets of all cells sum to 0, so the cell with the largest dot product over the whole organism has a dot product of at least 0, and that cell is always exposed, since its neighbour in some direction with a positive dot product cannot be in the organism; a zero-offset cell can therefore only tie at 0, which puts every cell on one line, whose first cell in lattice order is an endpoint. An inline comment at the loop states this. The test `select_shot_cell_takes_a_centroid_cell_only_when_alone` became `select_shot_cell_takes_the_cell_of_a_single_cell_organism`; its dropped centred-organism assertion never exercised the exclusion.
 
 
 ### Task 9: Projectile flight
@@ -8350,3 +8350,22 @@ Expected, oldest first (hashes vary; review-fix commits, if any, sit after their
 - Determinism tests: Task 26 (10,000-tick scripted game with 16 players using every ability, stepped twice; golden checksum sequence).
 - Kill credit cases of `testing.md` (last removal wins, suicide, departed hitter, teammate and neutralized hits record nothing): Task 13 together with phase 2's step tests.
 - Deferred to phase 4, as `testing.md` places them on the protocol: the snapshot round trip, decoding and `TryFrom`, and the replay fixture.
+
+## Deviations from the plan
+
+- New functions and types not in the plan:
+  - `AbilityActivation { Started, NotReady }` and `AbilityPhase::activate` in `ability_model.rs`; `press_first`, `press_second`, `press_third` and `start_carried_ability_timer` start an ability through it, so the readiness check sits in one place.
+  - `OrganismAbilities::is_inside_toxin_field` and `OrganismAbilities::is_inside_any_secretion` (with the private `is_inside_any_spore_secretion` and `is_inside_any_shot_secretion`); both `damage.rs` and the spawn hazard check in `spawn.rs` use them, so which phases count as secreting is decided once.
+  - `test_fixture::create_state_with_organisms(mode, world_size_pixels, positions)` in `game/test_fixture.rs`, shared by the `growth.rs` and `activation.rs` tests (the plan had a private copy in each test module).
+  - `get_subpixels_per_tick_from_original_pixels_per_packet` in `ability_constants.rs` for the two projectile speeds.
+  - `get_sorted_member_rows`, `get_free_for_all_sort_key`, `get_survival_sort_key`, `divide_rounding_half_up`, `HUNDREDTHS_PER_WHOLE` and `HUNDREDTHS_PER_TENTH` in `scoreboard.rs`.
+  - `SCRIPTED_PLAYER_MINIMUM`, `SCRIPTED_LEADERBOARD_LENGTH` and `JOIN_TICK` in `shared/tests/determinism.rs`; the golden checksums are unchanged by them.
+- Changed shapes:
+  - `AcidSource` in `damage.rs` holds the owner's `Loadout` and a copy of its `OrganismAbilities` and asks them through the shared containment functions, in place of the plan's precomputed secretion position lists and toxin centre.
+  - `select_shot_cell` has no explicit zero-offset exclusion (Task 8 note); the test `select_shot_cell_takes_a_centroid_cell_only_when_alone` became `select_shot_cell_takes_the_cell_of_a_single_cell_organism`.
+  - `TeamChoiceRejectionKind::TeamUnbalanced` names its field `smaller_team`, and `check_team_choice` takes `requested_team`.
+  - Test renames: `press_shot_slot_spares_teammates_and_the_caster` split into `press_shot_slot_spares_teammates` and `press_shot_slot_spares_the_caster_in_free_for_all`; the icon tests are `pen_path_holds_only_step_letters`.
+- Tests added beyond the plan: `activate_starts_a_ready_phase`, `activate_leaves_an_active_or_cooling_phase_unchanged`, `is_inside_any_secretion_counts_only_secreting_projectiles`, `expire_timers_cools_an_ended_spore_and_every_ended_shot`, `press_third_keeps_the_active_field_centre`, `press_fourth_ignores_a_press_while_secreting_or_cooling`, `press_shot_slot_spares_the_caster_in_free_for_all`, `run_damage_phase_lets_acid_reach_its_owner_in_a_team_mode`, and in the final review `force_spawn_participants_tries_the_next_participant_after_no_position` (the plan's decision that a force-spawned Participant without a position is skipped had no test).
+- Test counts: the `shared` library reports 234 passed where Task 27 expects 225, because of the nine tests above; every other count is as planned.
+- Commits: review-fix commits follow their tasks (`task N quality fixes`), plus `force spawn test for a participant without a position` and `phase 3 deviations` after Task 26.
+- Unnecessary steps: none; the three open review findings (the Task 8 comment, the `AbilityActivation` position in Task 11, the duplicated secretion checks in Task 13) were already fixed by later review commits when the final check ran.

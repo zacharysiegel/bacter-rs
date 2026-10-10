@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use shared::replay;
 use shared::replay::{ReplayLog, TickChecksum};
 
+const SCRIPTED_GAME_TICK_COUNT: usize = 10_000;
+
 fn read_scripted_game_log() -> ReplayLog {
     let fixture_path: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/scripted_game.replay");
 
@@ -16,6 +18,6 @@ fn run_replay_gives_identical_checksums_in_two_runs() {
     let first_tick_checksums: Vec<TickChecksum> = replay::run_replay(&replay_log).unwrap();
     let second_tick_checksums: Vec<TickChecksum> = replay::run_replay(&replay_log).unwrap();
 
-    assert_eq!(first_tick_checksums.len(), 10_000);
+    assert_eq!(first_tick_checksums.len(), SCRIPTED_GAME_TICK_COUNT);
     assert_eq!(first_tick_checksums, second_tick_checksums);
 }

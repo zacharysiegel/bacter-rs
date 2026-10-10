@@ -82,13 +82,10 @@ impl TryFrom<PlayerTickInputSerialOut> for PlayerTickInput {
     type Error = AppError;
 
     fn try_from(player_input_serial_out: PlayerTickInputSerialOut) -> Result<PlayerTickInput, AppError> {
-        let ability_presses: AbilityPressSet = AbilityPressSet::from_bits(player_input_serial_out.ability_presses)
-            .ok_or_else(|| AppError::new("unknown ability press bits"))?;
-
         Ok(PlayerTickInput {
             member_id: MemberId(player_input_serial_out.member_id),
             cursor: WorldPoint::try_from(player_input_serial_out.cursor)?,
-            ability_presses,
+            ability_presses: convert_ability_presses(player_input_serial_out.ability_presses)?,
             aim: player_input_serial_out.aim.map(AimVector::from),
         })
     }
@@ -193,6 +190,10 @@ impl TryFrom<MemberEventSerialOut> for MemberEvent {
 
         Ok(member_event)
     }
+}
+
+pub fn convert_ability_presses(ability_press_bits: u8) -> Result<AbilityPressSet, AppError> {
+    AbilityPressSet::from_bits(ability_press_bits).ok_or_else(|| AppError::new("unknown ability press bits"))
 }
 
 #[cfg(test)]

@@ -1,11 +1,49 @@
 use bitcode::{Decode, Encode};
 
-use crate::ability::Loadout;
-use crate::game::{GameModeKind, GameSettings};
+use crate::ability::{AbilityPressSet, AimVector, Loadout};
+use crate::error::AppError;
+use crate::game::{GameModeKind, GameSettings, PlayerInput, Tick};
+use crate::geometry::SubpixelPoint;
 use crate::member::{Joiner, TeamChoiceKind, TeamKind};
-use crate::protocol::protocol_limits;
-use crate::protocol::{GameModeKindSerial, LoadoutSerial, RejectionKind, TeamKindSerial, WorldShapeKindSerial};
+use crate::protocol::{
+    AimVectorSerial, AppearanceSerial, GameModeKindSerial, LoadoutSerial, RejectionKind, SubpixelPointSerial,
+    TeamKindSerial, WorldShapeKindSerial,
+};
+use crate::protocol::{input_bundle_serial, protocol_limits};
 use crate::world::WorldShapeKind;
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum MessageSerialIn {
+    SubscribeGameList,
+    UnsubscribeGameList,
+    CreateGame {
+        settings: GameSettingsSerialIn,
+        password: Option<String>,
+        joiner: JoinerSerialIn,
+    },
+    JoinGame {
+        game_id: u32,
+        password: Option<String>,
+        joiner: JoinerSerialIn,
+    },
+    SpectateGame {
+        game_id: u32,
+        password: Option<String>,
+        screen_name: String,
+    },
+    Respawn {
+        loadout: LoadoutSerial,
+        team: TeamChoiceKindSerialIn,
+    },
+    UpdateAppearance {
+        appearance: AppearanceSerial,
+    },
+    Input(PlayerInputSerialIn),
+    RequestSnapshot {
+        client_tick: u32,
+    },
+    LeaveGame,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct GameSettingsSerialIn {
@@ -73,6 +111,36 @@ impl From<TeamChoiceKindSerialIn> for TeamChoiceKind {
             TeamChoiceKindSerialIn::Auto => TeamChoiceKind::Auto,
             TeamChoiceKindSerialIn::Team(team_serial) => TeamChoiceKind::Team(TeamKind::from(team_serial)),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct PlayerInputSerialIn {
+    pub client_tick: u32,
+    pub cursor: SubpixelPointSerial,
+    pub ability_presses: u8,
+    pub aim: Option<AimVectorSerial>,
+}
+
+impl TryFrom<PlayerInputSerialIn> for PlayerInput {
+    type Error = AppError;
+
+    fn try_from(player_input_serial_in: PlayerInputSerialIn) -> Result<PlayerInput, AppError> {
+        let ability_presses: AbilityPressSet =
+            input_bundle_serial::convert_ability_presses(player_input_serial_in.ability_presses)?;
+        let has_shot_slot_press: bool =
+            ability_presses.contains(AbilityPressSet::FIRST) || ability_presses.contains(AbilityPressSet::SECOND);
+
+        if player_input_serial_in.aim.is_some() && !has_shot_slot_press {
+            return Err(AppError::new("an aim comes only with a first or second ability press"));
+        }
+
+        Ok(PlayerInput {
+            client_tick: Tick(player_input_serial_in.client_tick),
+            cursor: SubpixelPoint::try_from(player_input_serial_in.cursor)?,
+            ability_presses,
+            aim: player_input_serial_in.aim.map(AimVector::from),
+        })
     }
 }
 
@@ -182,5 +250,53 @@ mod tests {
     #[test]
     fn team_choice_kind_from_converts_auto() {
         assert_eq!(TeamChoiceKind::from(TeamChoiceKindSerialIn::Auto), TeamChoiceKind::Auto);
+    }
+
+    fn create_player_input_serial_in(ability_presses: u8, aim: Option<AimVectorSerial>) -> PlayerInputSerialIn {
+        PlayerInputSerialIn {
+            client_tick: 41,
+            cursor: SubpixelPointSerial { x: 409_600, y: -1 },
+            ability_presses,
+            aim,
+        }
+    }
+
+    #[test]
+    fn player_input_try_from_accepts_an_aim_with_a_shot_slot_press() {
+        let aim_serial: AimVectorSerial = AimVectorSerial { x: 30, y: -4 };
+        let player_input: PlayerInput =
+            PlayerInput::try_from(create_player_input_serial_in(0b0010, Some(aim_serial))).unwrap();
+
+        assert_eq!(
+            player_input,
+            PlayerInput {
+                client_tick: Tick(41),
+                cursor: SubpixelPoint { x: 409_600, y: -1 },
+                ability_presses: AbilityPressSet::SECOND,
+                aim: Some(AimVector { x: 30, y: -4 }),
+            },
+        );
+        assert!(PlayerInput::try_from(create_player_input_serial_in(0b0001, Some(aim_serial))).is_ok());
+        assert!(PlayerInput::try_from(create_player_input_serial_in(0b0001, None)).is_ok());
+    }
+
+    #[test]
+    fn player_input_try_from_rejects_an_aim_without_a_shot_slot_press() {
+        let aim_serial: AimVectorSerial = AimVectorSerial { x: 30, y: -4 };
+
+        assert!(PlayerInput::try_from(create_player_input_serial_in(0b1100, Some(aim_serial))).is_err());
+    }
+
+    #[test]
+    fn player_input_try_from_rejects_unknown_press_bits() {
+        assert!(PlayerInput::try_from(create_player_input_serial_in(0b1000_0000, None)).is_err());
+    }
+
+    #[test]
+    fn player_input_try_from_rejects_a_cursor_beyond_the_coordinate_limit() {
+        let mut player_input_serial_in: PlayerInputSerialIn = create_player_input_serial_in(0, None);
+        player_input_serial_in.cursor.y = 268_435_457;
+
+        assert!(PlayerInput::try_from(player_input_serial_in).is_err());
     }
 }

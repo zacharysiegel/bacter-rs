@@ -1,3 +1,4 @@
+pub mod close_reason;
 pub mod game_state_serial;
 pub mod geometry_serial;
 pub mod member_serial;
@@ -7,6 +8,7 @@ pub mod protocol_limits;
 pub mod rejection;
 pub mod state_checksum;
 
+pub use close_reason::*;
 pub use game_state_serial::*;
 pub use geometry_serial::*;
 pub use member_serial::*;

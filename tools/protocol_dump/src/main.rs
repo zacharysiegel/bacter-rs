@@ -95,11 +95,7 @@ fn run_frame(frame_matches: &ArgMatches) -> Result<String, AppError> {
 
 fn run_replay(replay_matches: &ArgMatches) -> Result<String, AppError> {
     let file_path: &String = replay_matches.get_one::<String>("file").expect("file is required via clap");
-    let output: ReplayOutputKind = if replay_matches.get_flag("checksums") {
-        ReplayOutputKind::Checksums
-    } else {
-        ReplayOutputKind::Bundles
-    };
+    let output: ReplayOutputKind = get_replay_output(replay_matches);
     let replay_bytes: Vec<u8> = read_file(file_path)?;
 
     replay_dump::dump_replay(&replay_bytes, output)
@@ -115,6 +111,14 @@ fn get_frame_encoding(frame_matches: &ArgMatches) -> FrameEncodingKind {
     }
 
     FrameEncodingKind::Binary
+}
+
+fn get_replay_output(replay_matches: &ArgMatches) -> ReplayOutputKind {
+    if replay_matches.get_flag("checksums") {
+        return ReplayOutputKind::Checksums;
+    }
+
+    ReplayOutputKind::Bundles
 }
 
 fn read_input(file_path: Option<&String>) -> Result<Vec<u8>, AppError> {

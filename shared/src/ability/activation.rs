@@ -2,8 +2,8 @@ use crate::ability;
 use crate::ability::ability_constants;
 use crate::ability::projectile;
 use crate::ability::{
-    AbilityActivation, AbilityPhase, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile,
-    SecondAbilityKind, ShotEffectKind, ShotPhase, SporePhase,
+    AbilityActivation, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, Projectile, SecondAbilityKind,
+    ShotEffectKind, ShotPhase, SporePhase,
 };
 use crate::game::{GameState, PlayerTickInput, SimulationEvent, Tick};
 use crate::geometry::{SubpixelPoint, WorldPoint};
@@ -270,14 +270,10 @@ fn start_carried_ability_timer(state: &mut GameState, caster_id: MemberId, effec
 
     match effect {
         ShotEffectKind::Compress => {
-            caster_organism.abilities.first = AbilityPhase::Active {
-                ends_at: tick.plus(loadout.first.active_ticks()),
-            };
+            caster_organism.abilities.first.activate(tick, loadout.first.active_ticks());
         }
         ShotEffectKind::Freeze => {
-            caster_organism.abilities.second = AbilityPhase::Active {
-                ends_at: tick.plus(loadout.second.active_ticks()),
-            };
+            caster_organism.abilities.second.activate(tick, loadout.second.active_ticks());
         }
     }
 }
@@ -293,7 +289,7 @@ fn get_loadout_and_organism(state: &mut GameState, member_id: MemberId) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::{AimVector, ThirdAbilityKind};
+    use crate::ability::{AbilityPhase, AimVector, ThirdAbilityKind};
     use crate::game::{GameModeKind, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelVector};
     use crate::world::WorldShapeKind;
@@ -801,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn press_shot_slot_spares_teammates_and_the_caster() {
+    fn press_shot_slot_spares_teammates() {
         let mut state: GameState = test_fixture::create_state_with_organisms(
             GameModeKind::Skirmish,
             800,
@@ -826,6 +822,36 @@ mod tests {
         assert_eq!(simulation_events, Vec::new());
         assert_eq!(get_abilities(&state, CASTER_ID).compressed_until, None);
         assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, None);
+    }
+
+    #[test]
+    fn press_shot_slot_spares_the_caster_in_free_for_all() {
+        let mut state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            800,
+            &[WorldPoint { x: 300, y: 294 }, WorldPoint { x: 300, y: 300 }],
+        );
+        get_loadout_mut(&mut state, CASTER_ID).first = FirstAbilityKind::Compress;
+        set_flying_shot(
+            &mut state,
+            CASTER_ID,
+            ShotEffectKind::Compress,
+            WorldPoint { x: 300, y: 297 },
+        );
+
+        let simulation_events: Vec<SimulationEvent> =
+            press(&mut state, CASTER_ID, AbilityPressSet::FIRST, None, PRESS_TICK);
+
+        assert_eq!(
+            simulation_events,
+            vec![SimulationEvent::EffectApplied {
+                target: TARGET_ID,
+                caster: CASTER_ID,
+                kind: ShotEffectKind::Compress,
+            }],
+        );
+        assert_eq!(get_abilities(&state, CASTER_ID).compressed_until, None);
+        assert_eq!(get_abilities(&state, TARGET_ID).compressed_until, Some(Tick(60)));
     }
 
     #[test]

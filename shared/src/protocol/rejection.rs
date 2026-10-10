@@ -1,5 +1,8 @@
+use bitcode::{Decode, Encode};
+
 use crate::error::AppError;
 use crate::member::TeamKind;
+use crate::protocol::TeamKindSerial;
 use crate::protocol::protocol_limits;
 
 const GENERAL_FAULT_TEXT: &str = "Request is not valid right now";
@@ -155,6 +158,222 @@ impl RejectionKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum RequestKindSerialOut {
+    SubscribeGameList,
+    CreateGame,
+    JoinGame,
+    SpectateGame,
+    Respawn,
+    UpdateAppearance,
+    LeaveGame,
+}
+
+impl From<&RequestKind> for RequestKindSerialOut {
+    fn from(request: &RequestKind) -> RequestKindSerialOut {
+        match request {
+            RequestKind::SubscribeGameList => RequestKindSerialOut::SubscribeGameList,
+            RequestKind::CreateGame => RequestKindSerialOut::CreateGame,
+            RequestKind::JoinGame => RequestKindSerialOut::JoinGame,
+            RequestKind::SpectateGame => RequestKindSerialOut::SpectateGame,
+            RequestKind::Respawn => RequestKindSerialOut::Respawn,
+            RequestKind::UpdateAppearance => RequestKindSerialOut::UpdateAppearance,
+            RequestKind::LeaveGame => RequestKindSerialOut::LeaveGame,
+        }
+    }
+}
+
+impl From<RequestKindSerialOut> for RequestKind {
+    fn from(request_serial_out: RequestKindSerialOut) -> RequestKind {
+        match request_serial_out {
+            RequestKindSerialOut::SubscribeGameList => RequestKind::SubscribeGameList,
+            RequestKindSerialOut::CreateGame => RequestKind::CreateGame,
+            RequestKindSerialOut::JoinGame => RequestKind::JoinGame,
+            RequestKindSerialOut::SpectateGame => RequestKind::SpectateGame,
+            RequestKindSerialOut::Respawn => RequestKind::Respawn,
+            RequestKindSerialOut::UpdateAppearance => RequestKind::UpdateAppearance,
+            RequestKindSerialOut::LeaveGame => RequestKind::LeaveGame,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum SettingFieldKindSerialOut {
+    WorldSize,
+    PlayerMinimum,
+    PlayerCap,
+    TeamCount,
+    LeaderboardLength,
+}
+
+impl From<&SettingFieldKind> for SettingFieldKindSerialOut {
+    fn from(field: &SettingFieldKind) -> SettingFieldKindSerialOut {
+        match field {
+            SettingFieldKind::WorldSize => SettingFieldKindSerialOut::WorldSize,
+            SettingFieldKind::PlayerMinimum => SettingFieldKindSerialOut::PlayerMinimum,
+            SettingFieldKind::PlayerCap => SettingFieldKindSerialOut::PlayerCap,
+            SettingFieldKind::TeamCount => SettingFieldKindSerialOut::TeamCount,
+            SettingFieldKind::LeaderboardLength => SettingFieldKindSerialOut::LeaderboardLength,
+        }
+    }
+}
+
+impl From<SettingFieldKindSerialOut> for SettingFieldKind {
+    fn from(field_serial_out: SettingFieldKindSerialOut) -> SettingFieldKind {
+        match field_serial_out {
+            SettingFieldKindSerialOut::WorldSize => SettingFieldKind::WorldSize,
+            SettingFieldKindSerialOut::PlayerMinimum => SettingFieldKind::PlayerMinimum,
+            SettingFieldKindSerialOut::PlayerCap => SettingFieldKind::PlayerCap,
+            SettingFieldKindSerialOut::TeamCount => SettingFieldKind::TeamCount,
+            SettingFieldKindSerialOut::LeaderboardLength => SettingFieldKind::LeaderboardLength,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum RangeBoundKindSerialOut {
+    Below,
+    Above,
+}
+
+impl From<&RangeBoundKind> for RangeBoundKindSerialOut {
+    fn from(bound: &RangeBoundKind) -> RangeBoundKindSerialOut {
+        match bound {
+            RangeBoundKind::Below => RangeBoundKindSerialOut::Below,
+            RangeBoundKind::Above => RangeBoundKindSerialOut::Above,
+        }
+    }
+}
+
+impl From<RangeBoundKindSerialOut> for RangeBoundKind {
+    fn from(bound_serial_out: RangeBoundKindSerialOut) -> RangeBoundKind {
+        match bound_serial_out {
+            RangeBoundKindSerialOut::Below => RangeBoundKind::Below,
+            RangeBoundKindSerialOut::Above => RangeBoundKind::Above,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum RejectionKindSerialOut {
+    ScreenNameEmpty,
+    ScreenNameTooLong,
+    ScreenNameInvalidCharacter,
+    ScreenNameTaken,
+    TitleEmpty,
+    TitleTooLong,
+    TitleInvalidCharacter,
+    TitleTaken,
+    SettingOutOfRange {
+        field: SettingFieldKindSerialOut,
+        bound: RangeBoundKindSerialOut,
+    },
+    SettingNotApplicable {
+        field: SettingFieldKindSerialOut,
+    },
+    PlayerCapBelowMinimum,
+    PlayerCapBelowTeamCount,
+    PasswordRequired,
+    PasswordIncorrect,
+    PasswordTooLong,
+    GameNotFound,
+    GameFull,
+    SpectatorLimitReached,
+    TeamUnbalanced {
+        requested: TeamKindSerial,
+        smaller: TeamKindSerial,
+    },
+    RoundInProgress,
+    AlreadyInGame,
+    NotInGame,
+    NotDead,
+    ServerFull,
+    ServerBusy,
+    RateLimited,
+}
+
+impl From<&RejectionKind> for RejectionKindSerialOut {
+    fn from(rejection_kind: &RejectionKind) -> RejectionKindSerialOut {
+        match rejection_kind {
+            RejectionKind::ScreenNameEmpty => RejectionKindSerialOut::ScreenNameEmpty,
+            RejectionKind::ScreenNameTooLong => RejectionKindSerialOut::ScreenNameTooLong,
+            RejectionKind::ScreenNameInvalidCharacter => RejectionKindSerialOut::ScreenNameInvalidCharacter,
+            RejectionKind::ScreenNameTaken => RejectionKindSerialOut::ScreenNameTaken,
+            RejectionKind::TitleEmpty => RejectionKindSerialOut::TitleEmpty,
+            RejectionKind::TitleTooLong => RejectionKindSerialOut::TitleTooLong,
+            RejectionKind::TitleInvalidCharacter => RejectionKindSerialOut::TitleInvalidCharacter,
+            RejectionKind::TitleTaken => RejectionKindSerialOut::TitleTaken,
+            RejectionKind::SettingOutOfRange { field, bound } => RejectionKindSerialOut::SettingOutOfRange {
+                field: SettingFieldKindSerialOut::from(field),
+                bound: RangeBoundKindSerialOut::from(bound),
+            },
+            RejectionKind::SettingNotApplicable { field } => RejectionKindSerialOut::SettingNotApplicable {
+                field: SettingFieldKindSerialOut::from(field),
+            },
+            RejectionKind::PlayerCapBelowMinimum => RejectionKindSerialOut::PlayerCapBelowMinimum,
+            RejectionKind::PlayerCapBelowTeamCount => RejectionKindSerialOut::PlayerCapBelowTeamCount,
+            RejectionKind::PasswordRequired => RejectionKindSerialOut::PasswordRequired,
+            RejectionKind::PasswordIncorrect => RejectionKindSerialOut::PasswordIncorrect,
+            RejectionKind::PasswordTooLong => RejectionKindSerialOut::PasswordTooLong,
+            RejectionKind::GameNotFound => RejectionKindSerialOut::GameNotFound,
+            RejectionKind::GameFull => RejectionKindSerialOut::GameFull,
+            RejectionKind::SpectatorLimitReached => RejectionKindSerialOut::SpectatorLimitReached,
+            RejectionKind::TeamUnbalanced { requested, smaller } => RejectionKindSerialOut::TeamUnbalanced {
+                requested: TeamKindSerial::from(requested),
+                smaller: TeamKindSerial::from(smaller),
+            },
+            RejectionKind::RoundInProgress => RejectionKindSerialOut::RoundInProgress,
+            RejectionKind::AlreadyInGame => RejectionKindSerialOut::AlreadyInGame,
+            RejectionKind::NotInGame => RejectionKindSerialOut::NotInGame,
+            RejectionKind::NotDead => RejectionKindSerialOut::NotDead,
+            RejectionKind::ServerFull => RejectionKindSerialOut::ServerFull,
+            RejectionKind::ServerBusy => RejectionKindSerialOut::ServerBusy,
+            RejectionKind::RateLimited => RejectionKindSerialOut::RateLimited,
+        }
+    }
+}
+
+impl From<RejectionKindSerialOut> for RejectionKind {
+    fn from(rejection_kind_serial_out: RejectionKindSerialOut) -> RejectionKind {
+        match rejection_kind_serial_out {
+            RejectionKindSerialOut::ScreenNameEmpty => RejectionKind::ScreenNameEmpty,
+            RejectionKindSerialOut::ScreenNameTooLong => RejectionKind::ScreenNameTooLong,
+            RejectionKindSerialOut::ScreenNameInvalidCharacter => RejectionKind::ScreenNameInvalidCharacter,
+            RejectionKindSerialOut::ScreenNameTaken => RejectionKind::ScreenNameTaken,
+            RejectionKindSerialOut::TitleEmpty => RejectionKind::TitleEmpty,
+            RejectionKindSerialOut::TitleTooLong => RejectionKind::TitleTooLong,
+            RejectionKindSerialOut::TitleInvalidCharacter => RejectionKind::TitleInvalidCharacter,
+            RejectionKindSerialOut::TitleTaken => RejectionKind::TitleTaken,
+            RejectionKindSerialOut::SettingOutOfRange { field, bound } => RejectionKind::SettingOutOfRange {
+                field: SettingFieldKind::from(field),
+                bound: RangeBoundKind::from(bound),
+            },
+            RejectionKindSerialOut::SettingNotApplicable { field } => RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::from(field),
+            },
+            RejectionKindSerialOut::PlayerCapBelowMinimum => RejectionKind::PlayerCapBelowMinimum,
+            RejectionKindSerialOut::PlayerCapBelowTeamCount => RejectionKind::PlayerCapBelowTeamCount,
+            RejectionKindSerialOut::PasswordRequired => RejectionKind::PasswordRequired,
+            RejectionKindSerialOut::PasswordIncorrect => RejectionKind::PasswordIncorrect,
+            RejectionKindSerialOut::PasswordTooLong => RejectionKind::PasswordTooLong,
+            RejectionKindSerialOut::GameNotFound => RejectionKind::GameNotFound,
+            RejectionKindSerialOut::GameFull => RejectionKind::GameFull,
+            RejectionKindSerialOut::SpectatorLimitReached => RejectionKind::SpectatorLimitReached,
+            RejectionKindSerialOut::TeamUnbalanced { requested, smaller } => RejectionKind::TeamUnbalanced {
+                requested: TeamKind::from(requested),
+                smaller: TeamKind::from(smaller),
+            },
+            RejectionKindSerialOut::RoundInProgress => RejectionKind::RoundInProgress,
+            RejectionKindSerialOut::AlreadyInGame => RejectionKind::AlreadyInGame,
+            RejectionKindSerialOut::NotInGame => RejectionKind::NotInGame,
+            RejectionKindSerialOut::NotDead => RejectionKind::NotDead,
+            RejectionKindSerialOut::ServerFull => RejectionKind::ServerFull,
+            RejectionKindSerialOut::ServerBusy => RejectionKind::ServerBusy,
+            RejectionKindSerialOut::RateLimited => RejectionKind::RateLimited,
+        }
+    }
+}
+
 fn get_out_of_range_text(field: SettingFieldKind, bound: RangeBoundKind) -> String {
     let (relation, limit): (&str, u32) = match bound {
         RangeBoundKind::Below => ("must be at least", field.lowest()),
@@ -307,5 +526,81 @@ mod tests {
         let error: AppError = RejectionKind::ScreenNameTooLong.to_app_error();
 
         assert_eq!(error.message, "Error: rejected: ScreenNameTooLong");
+    }
+
+    fn get_every_rejection_kind() -> Vec<RejectionKind> {
+        let fields: [SettingFieldKind; 5] = [
+            SettingFieldKind::WorldSize,
+            SettingFieldKind::PlayerMinimum,
+            SettingFieldKind::PlayerCap,
+            SettingFieldKind::TeamCount,
+            SettingFieldKind::LeaderboardLength,
+        ];
+        let mut rejection_kinds: Vec<RejectionKind> = vec![
+            RejectionKind::ScreenNameEmpty,
+            RejectionKind::ScreenNameTooLong,
+            RejectionKind::ScreenNameInvalidCharacter,
+            RejectionKind::ScreenNameTaken,
+            RejectionKind::TitleEmpty,
+            RejectionKind::TitleTooLong,
+            RejectionKind::TitleInvalidCharacter,
+            RejectionKind::TitleTaken,
+            RejectionKind::PlayerCapBelowMinimum,
+            RejectionKind::PlayerCapBelowTeamCount,
+            RejectionKind::PasswordRequired,
+            RejectionKind::PasswordIncorrect,
+            RejectionKind::PasswordTooLong,
+            RejectionKind::GameNotFound,
+            RejectionKind::GameFull,
+            RejectionKind::SpectatorLimitReached,
+            RejectionKind::TeamUnbalanced {
+                requested: TeamKind::Pink,
+                smaller: TeamKind::Blue,
+            },
+            RejectionKind::RoundInProgress,
+            RejectionKind::AlreadyInGame,
+            RejectionKind::NotInGame,
+            RejectionKind::NotDead,
+            RejectionKind::ServerFull,
+            RejectionKind::ServerBusy,
+            RejectionKind::RateLimited,
+        ];
+
+        for field in fields {
+            rejection_kinds.push(RejectionKind::SettingNotApplicable { field });
+
+            for bound in [RangeBoundKind::Below, RangeBoundKind::Above] {
+                rejection_kinds.push(RejectionKind::SettingOutOfRange { field, bound });
+            }
+        }
+
+        rejection_kinds
+    }
+
+    #[test]
+    fn rejection_kind_serial_out_converts_back_to_every_rejection() {
+        for rejection_kind in get_every_rejection_kind() {
+            assert_eq!(
+                RejectionKind::from(RejectionKindSerialOut::from(&rejection_kind)),
+                rejection_kind
+            );
+        }
+    }
+
+    #[test]
+    fn request_kind_serial_out_converts_back_to_every_request() {
+        let requests: [RequestKind; 7] = [
+            RequestKind::SubscribeGameList,
+            RequestKind::CreateGame,
+            RequestKind::JoinGame,
+            RequestKind::SpectateGame,
+            RequestKind::Respawn,
+            RequestKind::UpdateAppearance,
+            RequestKind::LeaveGame,
+        ];
+
+        for request in requests {
+            assert_eq!(RequestKind::from(RequestKindSerialOut::from(&request)), request);
+        }
     }
 }

@@ -213,6 +213,17 @@ impl From<&TeamKind> for TeamKindSerial {
     }
 }
 
+impl From<TeamKindSerial> for TeamKind {
+    fn from(team_serial: TeamKindSerial) -> TeamKind {
+        match team_serial {
+            TeamKindSerial::Red => TeamKind::Red,
+            TeamKindSerial::Blue => TeamKind::Blue,
+            TeamKindSerial::Green => TeamKind::Green,
+            TeamKindSerial::Pink => TeamKind::Pink,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

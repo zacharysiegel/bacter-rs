@@ -6692,6 +6692,7 @@ use shared::game;
 use shared::game::{GameModeKind, GameSettings, GameState, InputBundle, MemberEvent, PlayerTickInput, Tick};
 use shared::geometry::WorldPoint;
 use shared::member::{Appearance, MemberId, MemberRoleKind, OrganismColorKind, SkinKind};
+use shared::organism::Organism;
 use shared::random::Pcg32;
 use shared::replay;
 use shared::replay::{ReplayHeader, ReplayLog, TickChecksum};
@@ -6751,7 +6752,7 @@ impl ScriptedPlayers {
         let mut player_inputs: Vec<PlayerTickInput> = Vec::new();
 
         for member in state.members.values() {
-            let Some(organism) = &member.organism else {
+            let Some(organism): Option<&Organism> = member.organism.as_ref() else {
                 continue;
             };
 
@@ -7660,11 +7661,14 @@ fn create_client_frames() -> Vec<Vec<u8>> {
 fn create_malformed_frames(frame: &[u8], rng: &mut Pcg32) -> Vec<Vec<u8>> {
     let frame_length: u32 = u32::try_from(frame.len()).unwrap();
     let truncated_length: usize = usize::try_from(rng.below(frame_length)).unwrap();
+
     let flipped_bit_index: usize = usize::try_from(rng.below(frame_length * 8)).unwrap();
     let mut flipped_frame: Vec<u8> = frame.to_vec();
     flipped_frame[flipped_bit_index / 8] ^= 1 << (flipped_bit_index % 8);
+
     let mut appended_frame: Vec<u8> = frame.to_vec();
     appended_frame.push(get_random_byte(rng));
+
     let random_frame_length: u32 = rng.below(RANDOM_FRAME_BYTE_LIMIT);
     let random_frame: Vec<u8> = (0..random_frame_length).map(|_| get_random_byte(rng)).collect();
 

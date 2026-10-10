@@ -1,7 +1,9 @@
 use bitcode::DecodeOwned;
 
 use crate::error::AppError;
-use crate::protocol::{GameStateSerialOut, MessageSerialIn, MessageSerialOut};
+use crate::protocol::{
+    GameStateSerialOut, InputBundleSerialOut, MessageSerialIn, MessageSerialOut, ReplayHeaderSerialOut,
+};
 
 /// Bumped on any change to a wire type.
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -30,6 +32,22 @@ pub fn decode_game_state(bytes: &[u8]) -> Result<GameStateSerialOut, AppError> {
     decode(bytes, "game state")
 }
 
+pub fn encode_replay_header(header_serial_out: &ReplayHeaderSerialOut) -> Vec<u8> {
+    bitcode::encode(header_serial_out)
+}
+
+pub fn decode_replay_header(bytes: &[u8]) -> Result<ReplayHeaderSerialOut, AppError> {
+    decode(bytes, "replay header")
+}
+
+pub fn encode_replay_bundle(bundle_serial_out: &InputBundleSerialOut) -> Vec<u8> {
+    bitcode::encode(bundle_serial_out)
+}
+
+pub fn decode_replay_bundle(bytes: &[u8]) -> Result<InputBundleSerialOut, AppError> {
+    decode(bytes, "replay bundle")
+}
+
 fn decode<T: DecodeOwned>(bytes: &[u8], subject: &str) -> Result<T, AppError> {
     bitcode::decode(bytes)
         .map_err(|error| AppError::from_error(&format!("cannot decode the {subject}"), Box::new(error)))
@@ -44,8 +62,8 @@ mod tests {
     use crate::organism::CellOccupancy;
     use crate::protocol::{
         AimVectorSerial, AppearanceSerial, CellOccupancySerialOut, GameModeKindSerial, GameSettingsSerialIn,
-        GameSnapshotSerialOut, GameSummarySerialOut, InputBundleSerialOut, JoinerSerialIn, LoadoutSerial,
-        MemberEventSerialOut, MemberRoleKindSerialOut, OrganismColorKindSerial, PlayerInputSerialIn,
+        GameSettingsSerialOut, GameSnapshotSerialOut, GameSummarySerialOut, InputBundleSerialOut, JoinerSerialIn,
+        LoadoutSerial, MemberEventSerialOut, MemberRoleKindSerialOut, OrganismColorKindSerial, PlayerInputSerialIn,
         PlayerTickInputSerialOut, RangeBoundKindSerialOut, RejectionKindSerialOut, RequestKindSerialOut,
         SettingFieldKindSerialOut, SkinKindSerial, SubpixelPointSerial, TeamChoiceKindSerialIn, TeamKindSerial,
         WorldPointSerialOut, WorldShapeKindSerial,
@@ -273,5 +291,28 @@ mod tests {
         let decoded_state: GameState = GameState::try_from(decode_game_state(&state_bytes).unwrap()).unwrap();
 
         assert_eq!(decoded_state, state);
+    }
+
+    #[test]
+    fn decode_replay_header_restores_the_header() {
+        let header_serial_out: ReplayHeaderSerialOut = ReplayHeaderSerialOut {
+            settings: GameSettingsSerialOut::from(&test_fixture::create_settings(
+                GameModeKind::FreeForAll,
+                WorldShapeKind::Rectangle,
+                640,
+            )),
+            seed: 99,
+        };
+        let header_bytes: Vec<u8> = encode_replay_header(&header_serial_out);
+
+        assert_eq!(decode_replay_header(&header_bytes).unwrap(), header_serial_out);
+    }
+
+    #[test]
+    fn decode_replay_bundle_restores_the_bundle() {
+        let bundle_serial_out: InputBundleSerialOut = create_bundle_serial_out();
+        let bundle_bytes: Vec<u8> = encode_replay_bundle(&bundle_serial_out);
+
+        assert_eq!(decode_replay_bundle(&bundle_bytes).unwrap(), bundle_serial_out);
     }
 }

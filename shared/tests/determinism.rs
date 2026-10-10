@@ -48,7 +48,7 @@ fn snapshot_round_trip_continues_with_equal_checksums() {
 
             assert_eq!(
                 state_checksum::get_state_checksum(restored_state),
-                state_checksum::get_state_checksum(&state)
+                state_checksum::get_state_checksum(&state),
             );
         }
 

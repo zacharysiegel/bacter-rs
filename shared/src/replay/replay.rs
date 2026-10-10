@@ -1,6 +1,8 @@
 use crate::error::AppError;
-use crate::game::{GameSettings, InputBundle};
+use crate::game;
+use crate::game::{GameSettings, GameState, InputBundle, StepError, Tick};
 use crate::protocol;
+use crate::protocol::state_checksum;
 use crate::protocol::{InputBundleSerialOut, ReplayHeaderSerialOut};
 
 const VERSION_PREFIX_BYTE_COUNT: usize = 2;
@@ -32,6 +34,13 @@ pub enum ReplayReadError {
         record_index: u32,
         error: AppError,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TickChecksum {
+    pub tick: Tick,
+    /// Of the state after the tick.
+    pub checksum: u64,
 }
 
 /// Little-endian, ahead of the encoded records.
@@ -91,6 +100,31 @@ pub fn read_replay(replay_bytes: &[u8]) -> Result<ReplayLog, ReplayReadError> {
     }
 
     Ok(ReplayLog { header, input_bundles })
+}
+
+/// From `GameState::new` with the header's settings and seed, one checksum per bundle.
+pub fn run_replay(replay_log: &ReplayLog) -> Result<Vec<TickChecksum>, StepError> {
+    let mut state: GameState = GameState::new(replay_log.header.settings.clone(), replay_log.header.seed);
+    let mut tick_checksums: Vec<TickChecksum> = Vec::with_capacity(replay_log.input_bundles.len());
+
+    for bundle in &replay_log.input_bundles {
+        game::step(&mut state, bundle)?;
+
+        tick_checksums.push(TickChecksum {
+            tick: state.tick,
+            checksum: state_checksum::get_state_checksum(&state),
+        });
+    }
+
+    Ok(tick_checksums)
+}
+
+/// One line per tick: the tick, then the checksum as 16 lowercase hexadecimal digits.
+pub fn format_tick_checksums(tick_checksums: &[TickChecksum]) -> String {
+    tick_checksums
+        .iter()
+        .map(|tick_checksum| format!("{} {:016x}\n", tick_checksum.tick.0, tick_checksum.checksum))
+        .collect()
 }
 
 fn get_length_prefixed_record(record: &[u8]) -> Vec<u8> {
@@ -238,5 +272,55 @@ mod tests {
             replay_read_error,
             ReplayReadError::InvalidRecord { record_index: 1, .. }
         ));
+    }
+
+    #[test]
+    fn run_replay_gives_the_checksum_after_each_bundle() {
+        let replay_log: ReplayLog = create_replay_log();
+        let mut state: GameState = GameState::new(replay_log.header.settings.clone(), replay_log.header.seed);
+        let mut expected_tick_checksums: Vec<TickChecksum> = Vec::new();
+
+        for bundle in &replay_log.input_bundles {
+            game::step(&mut state, bundle).unwrap();
+            expected_tick_checksums.push(TickChecksum {
+                tick: bundle.tick,
+                checksum: state_checksum::get_state_checksum(&state),
+            });
+        }
+
+        assert_eq!(run_replay(&replay_log).unwrap(), expected_tick_checksums);
+    }
+
+    #[test]
+    fn run_replay_stops_at_a_bundle_out_of_order() {
+        let mut replay_log: ReplayLog = create_replay_log();
+        replay_log.input_bundles.swap(0, 1);
+
+        assert_eq!(
+            run_replay(&replay_log),
+            Err(StepError::TickMismatch {
+                expected: Tick(1),
+                received: Tick(2),
+            }),
+        );
+    }
+
+    #[test]
+    fn format_tick_checksums_writes_one_line_per_tick() {
+        let tick_checksums: Vec<TickChecksum> = vec![
+            TickChecksum {
+                tick: Tick(1),
+                checksum: 0xab,
+            },
+            TickChecksum {
+                tick: Tick(2),
+                checksum: 0xc6db_d9a8_567e_e3e6,
+            },
+        ];
+
+        assert_eq!(
+            format_tick_checksums(&tick_checksums),
+            "1 00000000000000ab\n2 c6dbd9a8567ee3e6\n"
+        );
     }
 }

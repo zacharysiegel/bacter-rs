@@ -190,6 +190,8 @@ mod tests {
     fn validate_rejects_a_field_the_mode_does_not_have() {
         let mut free_for_all_settings: GameSettings = create_settings(GameModeKind::FreeForAll);
         free_for_all_settings.team_count = Some(2);
+        let mut free_for_all_player_minimum_settings: GameSettings = create_settings(GameModeKind::FreeForAll);
+        free_for_all_player_minimum_settings.player_minimum = Some(2);
         let mut skirmish_settings: GameSettings = create_settings(GameModeKind::Skirmish);
         skirmish_settings.player_minimum = Some(2);
         let mut survival_settings: GameSettings = create_settings(GameModeKind::Survival);
@@ -199,6 +201,12 @@ mod tests {
             free_for_all_settings.validate(),
             Err(RejectionKind::SettingNotApplicable {
                 field: SettingFieldKind::TeamCount,
+            }),
+        );
+        assert_eq!(
+            free_for_all_player_minimum_settings.validate(),
+            Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::PlayerMinimum,
             }),
         );
         assert_eq!(
@@ -238,6 +246,32 @@ mod tests {
         settings.title = String::new();
 
         assert_eq!(settings.validate(), Err(RejectionKind::TitleEmpty));
+    }
+
+    #[test]
+    fn validate_returns_the_first_broken_rule_in_order() {
+        let mut mode_field_and_title_settings: GameSettings = create_settings(GameModeKind::FreeForAll);
+        mode_field_and_title_settings.team_count = Some(2);
+        mode_field_and_title_settings.title = String::new();
+        let mut title_and_range_settings: GameSettings = create_settings(GameModeKind::FreeForAll);
+        title_and_range_settings.title = String::new();
+        title_and_range_settings.world_width_pixels = 299;
+        let mut range_and_cross_field_settings: GameSettings = create_settings(GameModeKind::Survival);
+        range_and_cross_field_settings.world_width_pixels = 299;
+        range_and_cross_field_settings.player_minimum = Some(5);
+        range_and_cross_field_settings.player_cap = 4;
+
+        assert_eq!(
+            mode_field_and_title_settings.validate(),
+            Err(RejectionKind::SettingNotApplicable {
+                field: SettingFieldKind::TeamCount,
+            }),
+        );
+        assert_eq!(title_and_range_settings.validate(), Err(RejectionKind::TitleEmpty));
+        assert_eq!(
+            range_and_cross_field_settings.validate(),
+            Err(get_out_of_range(SettingFieldKind::WorldSize, RangeBoundKind::Below)),
+        );
     }
 
     #[test]

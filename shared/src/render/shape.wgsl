@@ -1,5 +1,6 @@
 // The instance layout matches ShapeInstance in shape_pipeline.rs.
 
+const SHAPE_KIND_RECTANGLE: u32 = 0u;
 const SHAPE_KIND_ELLIPSE: u32 = 1u;
 
 struct ShapeInstanceInput {
@@ -38,13 +39,23 @@ fn shape_vertex_main(@builtin(vertex_index) vertex_index: u32, instance: ShapeIn
     return output;
 }
 
+fn get_shape_distance(shape_kind: u32, local_position: vec2<f32>, half_extent: vec2<f32>) -> f32 {
+    switch shape_kind {
+        case SHAPE_KIND_RECTANGLE: {
+            return get_rectangle_distance(local_position, half_extent);
+        }
+        case SHAPE_KIND_ELLIPSE: {
+            return get_ellipse_distance(local_position, half_extent);
+        }
+        default: {
+            return get_rectangle_distance(local_position, half_extent);
+        }
+    }
+}
+
 @fragment
 fn shape_fragment_main(input: ShapeVertexOutput) -> @location(0) vec4<f32> {
-    var signed_distance_pixels: f32 = get_rectangle_distance(input.local_position, input.half_extent);
-
-    if (input.shape_kind == SHAPE_KIND_ELLIPSE) {
-        signed_distance_pixels = get_ellipse_distance(input.local_position, input.half_extent);
-    }
+    let signed_distance_pixels: f32 = get_shape_distance(input.shape_kind, input.local_position, input.half_extent);
 
     return get_stroke_over_fill(
         input.fill_color,

@@ -184,4 +184,18 @@ mod tests {
     fn code_gives_every_shape_kind_its_own_value() {
         assert_eq!((ShapeKind::Rectangle.code(), ShapeKind::Ellipse.code()), (0, 1));
     }
+
+    #[test]
+    fn code_matches_the_shader_constant_of_every_shape_kind() {
+        let shape_kind_constant_names: [(ShapeKind, &str); 2] = [
+            (ShapeKind::Rectangle, "SHAPE_KIND_RECTANGLE"),
+            (ShapeKind::Ellipse, "SHAPE_KIND_ELLIPSE"),
+        ];
+
+        for (shape_kind, constant_name) in shape_kind_constant_names {
+            let declaration: String = format!("const {constant_name}: u32 = {}u;", shape_kind.code());
+
+            assert!(SHAPE_SHADER_SOURCE.contains(&declaration));
+        }
+    }
 }

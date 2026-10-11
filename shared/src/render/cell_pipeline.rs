@@ -191,4 +191,21 @@ mod tests {
 
         assert_eq!(codes, vec![0, 1, 2, 3, 4]);
     }
+
+    #[test]
+    fn code_matches_the_shader_constant_of_every_skin() {
+        let skin_constant_names: [(InstanceSkinKind, &str); 5] = [
+            (InstanceSkinKind::Grid, "INSTANCE_SKIN_GRID"),
+            (InstanceSkinKind::Circles, "INSTANCE_SKIN_CIRCLES"),
+            (InstanceSkinKind::Ghost, "INSTANCE_SKIN_GHOST"),
+            (InstanceSkinKind::None, "INSTANCE_SKIN_NONE"),
+            (InstanceSkinKind::Solid, "INSTANCE_SKIN_SOLID"),
+        ];
+
+        for (instance_skin, constant_name) in skin_constant_names {
+            let declaration: String = format!("const {constant_name}: u32 = {}u;", instance_skin.code());
+
+            assert!(CELL_SHADER_SOURCE.contains(&declaration));
+        }
+    }
 }

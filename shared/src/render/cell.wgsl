@@ -4,6 +4,7 @@ const INSTANCE_SKIN_GRID: u32 = 0u;
 const INSTANCE_SKIN_CIRCLES: u32 = 1u;
 const INSTANCE_SKIN_GHOST: u32 = 2u;
 const INSTANCE_SKIN_NONE: u32 = 3u;
+const INSTANCE_SKIN_SOLID: u32 = 4u;
 const INSTANCE_SCALE_UNITS_PER_CELL: f32 = 1000.0;
 // Half of geometry::CELL_WIDTH_PIXELS.
 const CELL_HALF_WIDTH_PIXELS: f32 = 3.0;
@@ -58,31 +59,34 @@ fn cell_fragment_main(input: CellVertexOutput) -> @location(0) vec4<f32> {
     let half_extent: vec2<f32> = vec2<f32>(input.half_width_pixels);
     let square_distance: f32 = get_rectangle_distance(input.local_position, half_extent);
 
-    if (input.skin_kind == INSTANCE_SKIN_GRID) {
-        return get_stroke_over_fill(
-            input.color,
-            get_coverage(square_distance),
-            GRID_STROKE_COLOR,
-            get_stroke_coverage(square_distance, GRID_STROKE_WIDTH_PIXELS),
-        );
+    switch input.skin_kind {
+        case INSTANCE_SKIN_GRID: {
+            return get_stroke_over_fill(
+                input.color,
+                get_coverage(square_distance),
+                GRID_STROKE_COLOR,
+                get_stroke_coverage(square_distance, GRID_STROKE_WIDTH_PIXELS),
+            );
+        }
+        case INSTANCE_SKIN_CIRCLES: {
+            return get_premultiplied(input.color, get_coverage(get_ellipse_distance(input.local_position, half_extent)));
+        }
+        case INSTANCE_SKIN_GHOST: {
+            return get_premultiplied(input.color, get_stroke_coverage(square_distance, OUTLINE_STROKE_WIDTH_PIXELS));
+        }
+        case INSTANCE_SKIN_NONE: {
+            return get_stroke_over_fill(
+                input.color,
+                get_coverage(square_distance),
+                input.color,
+                get_stroke_coverage(square_distance, OUTLINE_STROKE_WIDTH_PIXELS),
+            );
+        }
+        case INSTANCE_SKIN_SOLID: {
+            return get_premultiplied(input.color, get_coverage(square_distance));
+        }
+        default: {
+            return get_premultiplied(input.color, get_coverage(square_distance));
+        }
     }
-
-    if (input.skin_kind == INSTANCE_SKIN_CIRCLES) {
-        return get_premultiplied(input.color, get_coverage(get_ellipse_distance(input.local_position, half_extent)));
-    }
-
-    if (input.skin_kind == INSTANCE_SKIN_GHOST) {
-        return get_premultiplied(input.color, get_stroke_coverage(square_distance, OUTLINE_STROKE_WIDTH_PIXELS));
-    }
-
-    if (input.skin_kind == INSTANCE_SKIN_NONE) {
-        return get_stroke_over_fill(
-            input.color,
-            get_coverage(square_distance),
-            input.color,
-            get_stroke_coverage(square_distance, OUTLINE_STROKE_WIDTH_PIXELS),
-        );
-    }
-
-    return get_premultiplied(input.color, get_coverage(square_distance));
 }

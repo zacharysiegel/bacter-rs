@@ -348,6 +348,11 @@ impl AbilityPressSet {
             bits: self.bits | press.bits,
         }
     }
+
+    /// The first and second slots carry the shot abilities.
+    pub fn has_shot_slot_press(self) -> bool {
+        self.contains(AbilityPressSet::FIRST) || self.contains(AbilityPressSet::SECOND)
+    }
 }
 
 /// Mouse offset from the on-screen crosshair, in CSS px.
@@ -709,5 +714,13 @@ mod tests {
         };
 
         assert!(abilities.is_inside_any_secretion(point));
+    }
+
+    #[test]
+    fn has_shot_slot_press_holds_for_a_first_or_second_press() {
+        assert!(AbilityPressSet::FIRST.has_shot_slot_press());
+        assert!(AbilityPressSet::SECOND.with(AbilityPressSet::THIRD).has_shot_slot_press());
+        assert!(!AbilityPressSet::THIRD.with(AbilityPressSet::FOURTH).has_shot_slot_press());
+        assert!(!AbilityPressSet::NONE.has_shot_slot_press());
     }
 }

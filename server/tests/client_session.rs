@@ -114,7 +114,16 @@ impl SessionDriver {
                 ClientEffect::SendFrame(frame) => self.client.send_raw(frame.into()).await,
                 ClientEffect::TickApplied { tick } => self.record_checksum(tick),
                 ClientEffect::ResyncStarted | ClientEffect::SynchronisationLost => self.resync_count += 1,
-                _ => {}
+                ClientEffect::RequestRejected { .. }
+                | ClientEffect::ConnectionLost(_)
+                | ClientEffect::LeftGame
+                | ClientEffect::GameEnded => panic!("unexpected effect: {effect:?}"),
+                ClientEffect::GameListReceived { .. }
+                | ClientEffect::JoinAccepted { .. }
+                | ClientEffect::OwnMemberStateChanged(_)
+                | ClientEffect::OwnOrganismSpawned { .. }
+                | ClientEffect::OwnSpawnRejected
+                | ClientEffect::ResyncFinished => {}
             }
         }
     }
@@ -126,7 +135,7 @@ impl SessionDriver {
         self.checksums_by_tick.insert(tick, state_checksum::get_state_checksum(state));
     }
 
-    /// The session compares the checksum itself; this also counts it.
+    /// A second check, independent of the comparison the session runs itself.
     fn verify_server_checksum(&mut self, frame: &[u8]) {
         let decoded: Result<MessageSerialOut, AppError> = protocol::decode_message_out(frame);
 

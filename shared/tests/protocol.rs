@@ -47,6 +47,7 @@ const EXPECTED_PHASE_NAMES: [&str; 18] = [
 ];
 
 const MALFORMED_INPUT_SEED_COUNT: u64 = 400;
+const MALFORMED_FRAME_MUTATION_COUNT: usize = 4;
 const MALFORMED_SNAPSHOT_TICK: Tick = Tick(2500);
 const MALFORMED_REPLAY_BUNDLE_COUNT: usize = 20;
 const RANDOM_FRAME_BYTE_LIMIT: u32 = 64;
@@ -287,7 +288,7 @@ fn create_client_frames() -> Vec<Vec<u8>> {
     client_messages.iter().map(protocol::encode_message_in).collect()
 }
 
-fn create_malformed_frames(frame: &[u8], rng: &mut Pcg32) -> Vec<Vec<u8>> {
+fn create_malformed_frames(frame: &[u8], rng: &mut Pcg32) -> [Vec<u8>; MALFORMED_FRAME_MUTATION_COUNT] {
     let frame_length: u32 = u32::try_from(frame.len()).unwrap();
     let truncated_length: usize = usize::try_from(rng.below(frame_length)).unwrap();
 
@@ -301,7 +302,7 @@ fn create_malformed_frames(frame: &[u8], rng: &mut Pcg32) -> Vec<Vec<u8>> {
     let random_frame_length: u32 = rng.below(RANDOM_FRAME_BYTE_LIMIT);
     let random_frame: Vec<u8> = (0..random_frame_length).map(|_| get_random_byte(rng)).collect();
 
-    vec![
+    [
         frame[..truncated_length].to_vec(),
         flipped_frame,
         appended_frame,
@@ -397,7 +398,11 @@ fn decode_and_try_from_never_panic_on_malformed_frames() {
         }
     }
 
-    assert_eq!(outcome_counts.total(), 16_000);
+    let frame_count: u64 = u64::try_from(server_frames.len() + client_frames.len()).unwrap();
+    let mutation_count: u64 = u64::try_from(MALFORMED_FRAME_MUTATION_COUNT).unwrap();
+    let expected_total: u64 = MALFORMED_INPUT_SEED_COUNT * frame_count * mutation_count;
+
+    assert_eq!(u64::from(outcome_counts.total()), expected_total);
     assert!(outcome_counts.decode_rejected > 0);
     assert!(outcome_counts.conversion_rejected > 0);
     assert!(outcome_counts.accepted > 0);

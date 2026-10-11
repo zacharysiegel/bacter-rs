@@ -6,6 +6,7 @@ pub mod game_runtime;
 pub mod membership;
 pub mod pending_admissions;
 pub mod recipients;
+pub mod replay_capture;
 // Fixtures shared by the unit tests of several modules; absent from every non-test build.
 #[cfg(test)]
 pub mod test_fixture;
@@ -18,3 +19,4 @@ pub use game_runtime::*;
 pub use membership::*;
 pub use pending_admissions::*;
 pub use recipients::*;
+pub use replay_capture::*;

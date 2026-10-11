@@ -19,10 +19,15 @@ mod unix {
     /// Interrupt or terminate.
     pub async fn wait_for_termination_signal() {
         let terminate_signal: io::Result<Signal> = signal::unix::signal(SignalKind::terminate());
-        let Ok(mut terminate_signal) = terminate_signal else {
-            let _ = signal::ctrl_c().await;
+        let mut terminate_signal: Signal = match terminate_signal {
+            Ok(terminate_signal) => terminate_signal,
+            Err(error) => {
+                log::warn!("the SIGTERM handler could not be installed; waiting for ctrl-c only; [error={error}]");
 
-            return;
+                let _ = signal::ctrl_c().await;
+
+                return;
+            }
         };
 
         tokio::select! {

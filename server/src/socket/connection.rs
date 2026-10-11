@@ -112,7 +112,9 @@ impl Connection {
     }
 
     pub async fn send_message(&self, message_serial_out: &MessageSerialOut) -> ConnectionFlow {
-        self.send_to_writer(WriterCommand::Frame(connection_model::encode_frame(message_serial_out))).await
+        let frame: Bytes = connection_model::encode_frame(message_serial_out);
+
+        self.send_to_writer(WriterCommand::Frame(frame)).await
     }
 }
 

@@ -80,7 +80,9 @@ impl TestClient {
     }
 
     pub async fn send(&mut self, message_serial_in: &MessageSerialIn) {
-        self.send_raw(Message::Binary(protocol::encode_message_in(message_serial_in).into())).await;
+        let frame: Vec<u8> = protocol::encode_message_in(message_serial_in);
+
+        self.send_raw(Message::binary(frame)).await;
     }
 
     pub async fn send_raw(&mut self, message: Message) {
@@ -92,7 +94,9 @@ impl TestClient {
         let deadline: Instant = Instant::now() + RECEIVE_TIMEOUT;
 
         loop {
-            match self.receive_frame(deadline).await {
+            let frame: Message = self.receive_frame(deadline).await;
+
+            match frame {
                 Message::Binary(frame) => {
                     return protocol::decode_message_out(&frame).expect("a server message decodes");
                 }
@@ -123,7 +127,9 @@ impl TestClient {
         let deadline: Instant = Instant::now() + RECEIVE_TIMEOUT;
 
         loop {
-            match self.receive_frame(deadline).await {
+            let frame: Message = self.receive_frame(deadline).await;
+
+            match frame {
                 Message::Close(Some(CloseFrame { code, reason })) => return (u16::from(code), reason.to_string()),
                 Message::Close(None) => panic!("the server closed without a close frame"),
                 _ => continue,

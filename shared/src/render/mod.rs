@@ -1,5 +1,6 @@
 pub mod camera;
 pub mod cell_pipeline;
+pub mod game_renderer;
 pub mod instance_buffer;
 pub mod render_color;
 pub mod scene;
@@ -9,6 +10,7 @@ pub mod surface;
 
 pub use camera::*;
 pub use cell_pipeline::*;
+pub use game_renderer::*;
 pub use instance_buffer::*;
 pub use render_color::*;
 pub use scene::*;

@@ -268,6 +268,10 @@ impl Tutorial {
         for _ in 0..steppable_tick_count {
             self.step_tick(controls);
             tick_applied = Some(self.state().tick);
+
+            if self.stepping != TutorialSteppingKind::Running {
+                break;
+            }
         }
 
         if tick_applied.is_some() {
@@ -472,12 +476,7 @@ impl Tutorial {
             return;
         };
 
-        let bot_organism: Option<&mut Organism> = self
-            .local_game
-            .state_mut()
-            .members
-            .get_mut(&bot.member_id)
-            .and_then(|member| member.organism.as_mut());
+        let bot_organism: Option<&mut Organism> = self.get_member_organism_mut(bot.member_id);
 
         if let Some(bot_organism) = bot_organism {
             bot_organism.last_hitter = None;
@@ -498,7 +497,7 @@ impl Tutorial {
         }
 
         let Some(SporePhase::Flying { ends_at, .. }) =
-            self.get_player_organism().map(|organism| &organism.abilities.spore)
+            self.get_member_organism(TUTORIAL_PLAYER_ID).map(|organism| &organism.abilities.spore)
         else {
             return;
         };
@@ -532,10 +531,7 @@ impl Tutorial {
         };
 
         let is_last_hitter: bool = self
-            .state()
-            .members
-            .get(&bot.member_id)
-            .and_then(|member| member.organism.as_ref())
+            .get_member_organism(bot.member_id)
             .is_some_and(|organism| organism.last_hitter == Some(TUTORIAL_PLAYER_ID));
         let was_killed_by_player: bool = simulation_events.iter().any(|simulation_event| {
             matches!(
@@ -549,12 +545,16 @@ impl Tutorial {
     }
 
     fn is_player_secreting(&self) -> bool {
-        self.get_player_organism()
+        self.get_member_organism(TUTORIAL_PLAYER_ID)
             .is_some_and(|organism| matches!(organism.abilities.spore, SporePhase::Secreting { .. }))
     }
 
-    fn get_player_organism(&self) -> Option<&Organism> {
-        self.state().members.get(&TUTORIAL_PLAYER_ID)?.organism.as_ref()
+    fn get_member_organism(&self, member_id: MemberId) -> Option<&Organism> {
+        self.state().members.get(&member_id)?.organism.as_ref()
+    }
+
+    fn get_member_organism_mut(&mut self, member_id: MemberId) -> Option<&mut Organism> {
+        self.local_game.state_mut().members.get_mut(&member_id)?.organism.as_mut()
     }
 }
 
@@ -578,6 +578,8 @@ mod tests {
     const TICKS_RUN_WHILE_PAUSED: u32 = 20;
     /// The crosshair's travel in one tick at `CROSSHAIR_SPEED_PIXELS_PER_SECOND`.
     const CROSSHAIR_TRAVEL_SUBPIXELS_PER_TICK: i32 = 3046;
+    /// The most tick periods one frame steps, within `FRAME_DURATION_LIMIT_MILLISECONDS`.
+    const MULTI_TICK_FRAME_TICKS: u32 = 3;
 
     struct TutorialHarness {
         tutorial: Tutorial,
@@ -601,9 +603,13 @@ mod tests {
         /// One frame per tick period.
         fn run_ticks(&mut self, tick_count: u32) {
             for _ in 0..tick_count {
-                self.now_milliseconds += frame_pacing::TICK_PERIOD_MILLISECONDS;
-                self.tutorial.advance_frame(self.now_milliseconds, &mut self.controls, InputFocusKind::Game);
+                self.run_frame_spanning_ticks(1);
             }
+        }
+
+        fn run_frame_spanning_ticks(&mut self, tick_count: u32) {
+            self.now_milliseconds += f64::from(tick_count) * frame_pacing::TICK_PERIOD_MILLISECONDS;
+            self.tutorial.advance_frame(self.now_milliseconds, &mut self.controls, InputFocusKind::Game);
         }
 
         fn change_key(&mut self, key: GameKeyKind, transition: KeyTransitionKind) {
@@ -1023,6 +1029,28 @@ mod tests {
             harness.player_organism().abilities.spore,
             SporePhase::Secreting { .. }
         ));
+    }
+
+    #[test]
+    fn advance_frame_stops_a_multi_tick_frame_at_the_halfway_tick_of_a_spore_flight() {
+        let mut harness: TutorialHarness = TutorialHarness::new(DisplayModeKind::Windowed);
+        harness.run_ticks(GROWTH_TICKS_BEFORE_SPORE);
+        harness.start_task(TutorialTaskKind::Spore);
+
+        harness.press(GameKeyKind::FourthAbility);
+        harness.run_ticks(1);
+        let launch_tick: Tick = harness.tutorial.state().tick;
+        harness.run_ticks(ability_constants::SPORE_FLIGHT_TICKS / 2 - 1);
+        harness.run_frame_spanning_ticks(MULTI_TICK_FRAME_TICKS);
+
+        assert_eq!(
+            harness.tutorial.state().tick,
+            launch_tick.plus(ability_constants::SPORE_FLIGHT_TICKS / 2),
+        );
+        assert_eq!(
+            harness.tutorial.message_text(),
+            "Reactivate the ability to cause all spores to secrete an acid, killing enemy cells",
+        );
     }
 
     #[test]

@@ -74,8 +74,8 @@ mod tests {
     use super::*;
     use shared::protocol::protocol_limits;
 
-    fn create_clamp_with_budget_ticks(budget_tick_count: u32) -> CursorClamp {
-        let mut clamp: CursorClamp = CursorClamp::new(SubpixelPoint { x: 0, y: 0 });
+    fn create_clamp_with_budget_ticks(start_cursor: SubpixelPoint, budget_tick_count: i64) -> CursorClamp {
+        let mut clamp: CursorClamp = CursorClamp::new(start_cursor);
 
         for _ in 0..budget_tick_count {
             clamp.add_tick_budget();
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn apply_moves_to_a_target_within_the_budget_and_spends_the_distance() {
-        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(1);
+        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(SubpixelPoint { x: 0, y: 0 }, 1);
 
         assert_eq!(
             clamp.apply(SubpixelPoint { x: 3000, y: 0 }),
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn apply_moves_along_the_direction_by_the_budget_beyond_it() {
-        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(1);
+        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(SubpixelPoint { x: 0, y: 0 }, 1);
 
         assert_eq!(
             clamp.apply(SubpixelPoint { x: 30_000, y: -40_000 }),
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn add_tick_budget_stops_at_the_cap() {
-        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(20);
+        let mut clamp: CursorClamp = create_clamp_with_budget_ticks(SubpixelPoint { x: 0, y: 0 }, 20);
 
         assert_eq!(
             clamp.apply(SubpixelPoint { x: 100_000, y: 0 }),
@@ -140,11 +140,8 @@ mod tests {
     #[test]
     fn apply_handles_opposite_corners_of_the_coordinate_limit() {
         let limit: i32 = protocol_limits::COORDINATE_LIMIT_SUBPIXELS;
-        let mut clamp: CursorClamp = CursorClamp::new(SubpixelPoint { x: -limit, y: -limit });
-
-        for _ in 0..15 {
-            clamp.add_tick_budget();
-        }
+        let mut clamp: CursorClamp =
+            create_clamp_with_budget_ticks(SubpixelPoint { x: -limit, y: -limit }, MOVE_BUDGET_CAP_TICKS);
 
         assert_eq!(
             clamp.apply(SubpixelPoint { x: limit, y: limit }),

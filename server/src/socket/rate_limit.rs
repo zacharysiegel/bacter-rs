@@ -12,7 +12,7 @@ pub struct TokenBucket {
     burst: f64,
     tokens: f64,
     refilled_at: Instant,
-    /// Since the first refusal after the last token taken.
+    /// Since the first refusal after a take last left a token in the bucket.
     refusing_since: Option<Instant>,
 }
 
@@ -41,7 +41,11 @@ impl TokenBucket {
 
         if self.tokens >= 1.0 {
             self.tokens -= 1.0;
-            self.refusing_since = None;
+
+            // A flood refills just enough for an occasional take, which must not end the empty period.
+            if self.tokens >= 1.0 {
+                self.refusing_since = None;
+            }
 
             return TokenTakeKind::Taken;
         }
@@ -66,7 +70,7 @@ impl TokenBucket {
 pub enum TokenTakeKind {
     Taken,
     Refused,
-    /// Refused without a token taken for the whole abuse period.
+    /// Refused with the bucket empty for the whole abuse period.
     Abused,
 }
 
@@ -76,6 +80,17 @@ mod tests {
 
     fn take_repeatedly(bucket: &mut TokenBucket, take_count: u32, now: Instant) -> Vec<TokenTakeKind> {
         (0..take_count).map(|_| bucket.take(now)).collect()
+    }
+
+    fn flood(
+        bucket: &mut TokenBucket,
+        start: Instant,
+        take_spacing: Duration,
+        flood_duration: Duration,
+    ) -> Vec<TokenTakeKind> {
+        let take_count: u32 = flood_duration.div_duration_f64(take_spacing) as u32;
+
+        (0..take_count).map(|take_index| bucket.take(start + take_spacing * take_index)).collect()
     }
 
     #[test]
@@ -129,13 +144,35 @@ mod tests {
     }
 
     #[test]
-    fn take_forgets_refusals_once_a_token_is_taken() {
+    fn take_reports_abuse_when_a_flood_keeps_the_bucket_empty() {
         let start: Instant = Instant::now();
-        let mut bucket: TokenBucket = TokenBucket::new(0.1, 1.0, start);
-        bucket.take(start);
+        let buckets: [TokenBucket; 2] = [
+            TokenBucket::create_input_bucket(start),
+            TokenBucket::create_request_bucket(start),
+        ];
+
+        for mut bucket in buckets {
+            let take_kinds: Vec<TokenTakeKind> = flood(
+                &mut bucket,
+                start,
+                Duration::from_millis(10),
+                RATE_LIMIT_ABUSE_PERIOD + Duration::from_secs(1),
+            );
+
+            assert!(take_kinds.contains(&TokenTakeKind::Taken));
+            assert!(take_kinds.contains(&TokenTakeKind::Abused));
+        }
+    }
+
+    #[test]
+    fn take_forgets_refusals_once_a_take_leaves_a_token() {
+        let start: Instant = Instant::now();
+        let mut bucket: TokenBucket = TokenBucket::new(0.1, 2.0, start);
+        take_repeatedly(&mut bucket, 2, start);
 
         assert_eq!(bucket.take(start + Duration::from_secs(1)), TokenTakeKind::Refused);
-        assert_eq!(bucket.take(start + Duration::from_millis(10_500)), TokenTakeKind::Taken);
-        assert_eq!(bucket.take(start + Duration::from_secs(12)), TokenTakeKind::Refused);
+        assert_eq!(bucket.take(start + Duration::from_millis(20_500)), TokenTakeKind::Taken);
+        assert_eq!(bucket.take(start + Duration::from_millis(20_600)), TokenTakeKind::Taken);
+        assert_eq!(bucket.take(start + Duration::from_secs(21)), TokenTakeKind::Refused);
     }
 }

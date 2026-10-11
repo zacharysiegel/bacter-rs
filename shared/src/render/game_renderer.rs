@@ -5,7 +5,8 @@ use wgpu::{
     Adapter, AdapterInfo, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color,
     CommandEncoder, CommandEncoderDescriptor, CurrentSurfaceTexture, Device, Instance, InstanceDescriptor, LoadOp,
     Operations, PowerPreference, Queue, RenderPass, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RequestAdapterOptions, StoreOp, SurfaceTexture, TextureView, TextureViewDescriptor,
+    RequestAdapterError, RequestAdapterOptions, RequestDeviceError, StoreOp, SurfaceTexture, TextureView,
+    TextureViewDescriptor,
 };
 
 #[cfg(target_arch = "wasm32")] // other targets have no canvas element
@@ -78,7 +79,7 @@ impl GameRenderer {
         size: PhysicalSize,
     ) -> Result<GameRenderer, AppError> {
         // WebGL2 needs the adapter requested compatible with the surface.
-        let requested_adapter: Result<Adapter, wgpu::RequestAdapterError> = instance
+        let requested_adapter: Result<Adapter, RequestAdapterError> = instance
             .request_adapter(&RequestAdapterOptions {
                 power_preference: PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
@@ -89,7 +90,7 @@ impl GameRenderer {
         let adapter: Adapter =
             requested_adapter.map_err(|error| AppError::new(&format!("requesting a GPU adapter failed: {error}")))?;
 
-        let requested_device: Result<(Device, Queue), wgpu::RequestDeviceError> =
+        let requested_device: Result<(Device, Queue), RequestDeviceError> =
             adapter.request_device(&scene_pipelines::get_device_descriptor(&adapter)).await;
         let (device, queue): (Device, Queue) =
             requested_device.map_err(|error| AppError::new(&format!("requesting a GPU device failed: {error}")))?;

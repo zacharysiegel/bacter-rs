@@ -14,8 +14,9 @@ use shared::replay;
 use crate::game::game_runtime;
 
 pub const REPLAY_CAPTURE_CHANNEL_CAPACITY: usize = 1024;
+const REPLAY_FILE_EXTENSION: &str = "replay";
 
-/// Appends a game's replay records to `<directory>/<game_id>.replay` from a writer task.
+/// Appends a game's replay records to its replay file from a writer task.
 pub struct ReplayCapture {
     game_id: GameId,
     /// None once the capture is abandoned.
@@ -30,7 +31,7 @@ impl ReplayCapture {
     ) -> (ReplayCapture, JoinHandle<()>) {
         let (record_sender, record_receiver): (mpsc::Sender<ReplayRecord>, mpsc::Receiver<ReplayRecord>) =
             mpsc::channel(REPLAY_CAPTURE_CHANNEL_CAPACITY);
-        let path: PathBuf = directory.join(format!("{}.replay", game_id.0));
+        let path: PathBuf = get_replay_path(directory, game_id);
 
         let replay_capture: ReplayCapture =
             ReplayCapture::from_record_sender(game_id, record_sender, header_serial_out);
@@ -78,6 +79,10 @@ impl ReplayCapture {
             self.records = None;
         }
     }
+}
+
+pub fn get_replay_path(directory: &Path, game_id: GameId) -> PathBuf {
+    directory.join(game_id.0.to_string()).with_extension(REPLAY_FILE_EXTENSION)
 }
 
 pub enum ReplayRecord {

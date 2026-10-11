@@ -9,9 +9,9 @@ use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 
 use helpers::test_server;
 use helpers::test_server::{TestClient, TestPlayer, TestServer, TestSocket};
-use server::game::{cursor_clamp, game_task};
+use server::game::{cursor_clamp, game_task, replay_capture};
 use shared::ability::AbilityPressSet;
-use shared::game::{GameModeKind, InputBundle, MemberEvent, Tick};
+use shared::game::{GameId, GameModeKind, InputBundle, MemberEvent, Tick};
 use shared::geometry;
 use shared::geometry::{SubpixelPoint, WorldPoint};
 use shared::member::{MemberId, MemberRoleKind};
@@ -393,7 +393,7 @@ async fn replay_capture_records_a_replay_with_the_server_checksums() {
         }
     }
 
-    let replay_path: PathBuf = replay_directory.join(format!("{}.replay", player.game_id));
+    let replay_path: PathBuf = replay_capture::get_replay_path(&replay_directory, GameId(player.game_id));
     let bundle_count_through_last_checksum: usize =
         usize::try_from(wanted_checksum_count * game_task::CHECKSUM_INTERVAL_TICKS).unwrap();
     let replay_written = async {

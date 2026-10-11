@@ -9,7 +9,7 @@ use crate::world::{World, WorldBounds};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GameState {
     pub tick: Tick,
-    /// Immutable after creation.
+    /// Immutable during stepping.
     pub settings: GameSettings,
     pub rng: Pcg32,
     pub world: World,

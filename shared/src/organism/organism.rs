@@ -41,15 +41,25 @@ pub struct Organism {
 }
 
 impl Organism {
-    /// One cell at `position`, with the anchor and the cursor there.
     pub fn new(position: WorldPoint) -> Organism {
-        Organism {
+        let mut organism: Organism = Organism {
             anchor: position,
-            cells: CellOccupancy::with_cell(LatticeCoordinate { i: 0, j: 0 }),
+            cells: CellOccupancy::empty(),
             cursor: position,
             last_hitter: None,
             abilities: OrganismAbilities::all_ready(),
-        }
+        };
+
+        organism.reset_to_one_cell_at(position);
+
+        organism
+    }
+
+    /// One cell at `position`, with the anchor and the cursor there.
+    pub fn reset_to_one_cell_at(&mut self, position: WorldPoint) {
+        self.anchor = position;
+        self.cursor = position;
+        self.cells = CellOccupancy::with_cell(LatticeCoordinate { i: 0, j: 0 });
     }
 
     pub fn cell_center(&self, lattice_coordinate: LatticeCoordinate) -> WorldPoint {

@@ -4,11 +4,11 @@ use crate::game::{
     GameModeKind, GameSettings, GameState, InputBundle, MemberEvent, PlayerTickInput, SimulationEvent, StepError,
 };
 use crate::geometry;
-use crate::geometry::{LatticeCoordinate, WorldPoint};
+use crate::geometry::WorldPoint;
 use crate::member;
 use crate::member::{Appearance, MemberId, MemberRoleKind, OrganismColorKind};
 use crate::organism::spawn;
-use crate::organism::{CellOccupancy, Organism, PlacementError};
+use crate::organism::{Organism, PlacementError};
 use crate::random::Pcg32;
 use crate::world::{World, WorldBounds, WorldShapeKind};
 
@@ -140,7 +140,7 @@ impl LocalGame {
                 continue;
             };
 
-            reset_to_one_cell(organism, rescale_point(organism.cursor, old_size, new_size));
+            organism.reset_to_one_cell_at(rescale_point(organism.cursor, old_size, new_size));
         }
     }
 }
@@ -229,12 +229,6 @@ fn get_local_member_id(index: usize) -> MemberId {
 
 fn get_inset_length(window_length_pixels: u32) -> u32 {
     window_length_pixels.saturating_sub(2 * LOCAL_WORLD_MARGIN_PIXELS).max(LOCAL_WORLD_MINIMUM_PIXELS)
-}
-
-fn reset_to_one_cell(organism: &mut Organism, cursor: WorldPoint) {
-    organism.anchor = cursor;
-    organism.cursor = cursor;
-    organism.cells = CellOccupancy::with_cell(LatticeCoordinate { i: 0, j: 0 });
 }
 
 fn rescale_coordinate(coordinate: i32, old_length_pixels: u32, new_length_pixels: u32) -> i32 {

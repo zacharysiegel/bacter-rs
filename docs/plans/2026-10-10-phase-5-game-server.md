@@ -9904,3 +9904,24 @@ server binary
 **Problem:** bacter-rs had a deterministic simulation and a wire protocol but no server to run games or carry the protocol.
 
 **Solution:** the `server` crate on actix-web and actix-ws: a `/ws` endpoint with origin, protocol-version and connection-limit checks; a read task and a writer task per socket; in-memory registries behind `ServerRegistries`; one tick task per game on a dedicated runtime, with admission, cursor clamping, bundle building, per-member fan-out with slow-consumer handling, checksums, snapshots and optional replay capture; a lobby list broadcast; bcrypt passwords; rate limits; static site serving with `/health`; optional rustls and graceful shutdown. Integration tests drive in-process servers over tokio-tungstenite. Repository: `bacter-rs` only.
+
+## Deviations from the plan
+
+- Teams: `Auto` chooses uniformly among the smallest teams with a server-owned `team_assignment_rng` (the decision above was rewritten during Task 15); Task 19 adds `create_team_assignment_rng` in `game_task.rs`, seeded from `getrandom`, falling back to the game id with a warning.
+- Task 14: `TeamSizes::from_members_excluding` in `shared/src/member/team_assignment.rs` (a file the plan does not touch), so a pending respawn counts only on its pending team; `PendingAdmissions` counts saturate, through `pending_admissions::saturating_count` (public, used by `membership.rs`).
+- Task 15: `check_new_member` split into `check_screen_name` and `check_member_limit`; `resolve_team` takes `respawning_member: Option<&Member>`; new `choose_auto_team`; new `test_fixture::create_member`, shared by the membership and pending-admission tests.
+- Task 5: a take which leaves less than one token does not end the refusing period, so a flood which refills an occasional token is still detected as abuse.
+- Task 8: `password_failure_limit::forget_expired_failures`, called by the lobby task on every poll (the Task 8 text was updated); field `failed_at` named `failure_instants`.
+- Task 9: `create_bcrypt_error`.
+- Task 13: `release_game_slot` and `release_title_and_game_slot` in `game_registry.rs`.
+- Task 16: `PendingInput::from_input` replaces `PendingInput::new` (the first input's aim is kept only with a shot-slot press); `MemberInputState::apply_pending_input` and `AppliedPendingInput` hold the per-member step of `build`.
+- Task 18: `ReplayCapture::from_record_sender` and `ReplayCapture::finish`; `ReplayRecord` is public.
+- Task 19: `close_game` takes the game task and finishes its replay capture first (`GameTask::finish_replay_capture`).
+- Task 22: `subscribe` registers the subscriber before sending the current list.
+- Task 23: cache headers only on a success or 304 response; file names and the `pkg/` prefix are constants.
+- Task 24: `close_after_upgrade` in `socket_api.rs`, `write_within_timeout` in `socket_writer.rs`; a failed SIGTERM handler installation logs a warning. A review fix gave `ConnectionClosed` a send timeout; the phase verification restored `send().await`, as server.md and Task 24 specify.
+- Task 25: `GameRequestGate` carries the member id and game handle out of `open_game_request`; `send_request` is split from `send_answered_request`; the unreachable `Continue` fallbacks after the gate became `NotInGame` answers.
+- Tests: 11 more `server` unit tests (121, not 110) and 1 more `shared` test (335, not 334); integration tests take their limits from crate constants and bound the death and replay-written loops by `PLAY_TIMEOUT`.
+- `GameSummary::from_game_state` counts members without an organism directly; same result.
+- Extra commits: `rustfmt password failure limit tests` (Task 11 left the Task 8 tests unformatted) and, in the phase verification, `bind request conversions before matching on them`, `extract the server connection release`, `share the replay file path with the replay capture test` (new `replay_capture::get_replay_path`), and `list the shutdown module in the server module tree` (`docs/architecture/overview.md`).
+- Task 28, step 5: the untracked `.idea/` directory keeps `git status --short` from being empty.

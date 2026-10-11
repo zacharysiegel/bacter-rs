@@ -21,6 +21,7 @@ const LOCAL_LEADERBOARD_LENGTH: u8 = 1;
 const LOCAL_WORLD_MINIMUM_PIXELS: u32 = 1;
 /// A cell centre this close to a world edge is outside the world.
 const CELL_BORDER_PIXELS: i64 = geometry::CELL_WIDTH_PIXELS as i64;
+const COLOR_WHEN_EVERY_COLOR_IS_EXCLUDED: OrganismColorKind = member::ORGANISM_COLOR_ORDER[0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PixelSize {
@@ -130,7 +131,7 @@ impl LocalGame {
         self.state.settings.world_width_pixels = new_size.width_pixels;
         self.state.settings.world_height_pixels = new_size.height_pixels;
         self.state.world = World::new(
-            WorldShapeKind::Rectangle,
+            self.state.settings.world_shape,
             WorldBounds::from_pixel_size(new_size.width_pixels, new_size.height_pixels),
         );
 
@@ -190,21 +191,22 @@ pub fn draw_element<T: Copy>(rng: &mut Pcg32, elements: &[T]) -> Option<T> {
     elements.get(drawn_index).copied()
 }
 
-/// Uniform over the palette without `excluded_colors`.
+/// Uniform over the palette without `excluded_colors`; `COLOR_WHEN_EVERY_COLOR_IS_EXCLUDED` when that leaves none.
 pub fn draw_color_excluding(rng: &mut Pcg32, excluded_colors: &[OrganismColorKind]) -> OrganismColorKind {
     let colors: Vec<OrganismColorKind> =
         member::ORGANISM_COLOR_ORDER.into_iter().filter(|color| !excluded_colors.contains(color)).collect();
 
-    draw_element(rng, &colors).unwrap_or(OrganismColorKind::Fire)
+    draw_element(rng, &colors).unwrap_or(COLOR_WHEN_EVERY_COLOR_IS_EXCLUDED)
 }
 
 /// Uniform over the whole pixels between `start_pixels` and `end_pixels` at which a cell centre is clear of both.
-pub fn draw_cell_coordinate(rng: &mut Pcg32, start_pixels: i64, end_pixels: i64) -> i32 {
+/// `None` when there is no such pixel or it does not fit an `i32`.
+pub fn draw_cell_coordinate(rng: &mut Pcg32, start_pixels: i64, end_pixels: i64) -> Option<i32> {
     let minimum: i64 = start_pixels + CELL_BORDER_PIXELS + 1;
     let end: i64 = end_pixels - CELL_BORDER_PIXELS;
-    let span: u32 = u32::try_from((end - minimum).max(0)).unwrap_or(0);
+    let span: u32 = u32::try_from(end - minimum).ok().filter(|span| *span > 0)?;
 
-    i32::try_from(minimum + i64::from(rng.below(span))).unwrap_or(0)
+    i32::try_from(minimum + i64::from(rng.below(span))).ok()
 }
 
 fn create_local_settings(world_size: PixelSize, player_cap: u8) -> GameSettings {
@@ -245,10 +247,8 @@ fn rescale_coordinate(coordinate: i32, old_length_pixels: u32, new_length_pixels
 mod tests {
     use super::*;
     use crate::ability::AbilityPressSet;
-    use crate::game::{PlayerTickInput, Tick};
-    use crate::geometry;
-    use crate::member;
-    use crate::member::{OrganismColorKind, SkinKind};
+    use crate::game::Tick;
+    use crate::member::SkinKind;
 
     const SEED: u64 = 0x10ca1;
     const WINDOW_SIZE: PixelSize = PixelSize {
@@ -438,13 +438,23 @@ mod tests {
     }
 
     #[test]
+    fn draw_color_excluding_falls_back_when_every_color_is_excluded() {
+        let mut rng: Pcg32 = create_scene_rng(SEED);
+
+        assert_eq!(
+            draw_color_excluding(&mut rng, &member::ORGANISM_COLOR_ORDER),
+            COLOR_WHEN_EVERY_COLOR_IS_EXCLUDED,
+        );
+    }
+
+    #[test]
     fn draw_cell_coordinate_keeps_a_cell_clear_of_both_edges() {
         let mut rng: Pcg32 = create_scene_rng(SEED);
-        let coordinates: Vec<i32> = (0..200).map(|_| draw_cell_coordinate(&mut rng, 100, 120)).collect();
+        let coordinates: Vec<i32> = (0..200).map(|_| draw_cell_coordinate(&mut rng, 100, 120).unwrap()).collect();
 
         assert!(coordinates.iter().all(|coordinate| (107..114).contains(coordinate)));
         assert!(coordinates.contains(&107));
         assert!(coordinates.contains(&113));
-        assert_eq!(draw_cell_coordinate(&mut rng, 0, 5), 7);
+        assert_eq!(draw_cell_coordinate(&mut rng, 0, 5), None);
     }
 }

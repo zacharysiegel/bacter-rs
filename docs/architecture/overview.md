@@ -338,6 +338,7 @@ lobby/       lobby_broadcast.rs   static LOBBY_SUBSCRIBERS: LazyLock<DashMap<Con
 password/    password.rs          hash/verify on web::block, static PASSWORD_CHECK_SEMAPHORE
              password_failure_limit.rs per-IP failure window
 site/        site_api.rs          configurer(): actix-files, cache headers, GET /health
+shutdown/    shutdown.rs          ServerRunState, termination signal wait
 ```
 
 - Imperative routing: every `*_api.rs` exposes `pub fn configurer(config: &mut web::ServiceConfig)`; no route macros.

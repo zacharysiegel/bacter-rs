@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+mod helpers;
 
 use shared::game;
 use shared::game::{GameState, Tick};
@@ -9,14 +8,10 @@ use shared::protocol::state_checksum;
 use shared::replay;
 use shared::replay::{ReplayLog, TickChecksum};
 
+use crate::helpers::replay_fixture;
+
 const SCRIPTED_GAME_TICK_COUNT: usize = 10_000;
 const SNAPSHOT_TICK: Tick = Tick(2500);
-
-fn read_scripted_game_log() -> ReplayLog {
-    let fixture_path: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/scripted_game.replay");
-
-    replay::read_replay(&fs::read(fixture_path).unwrap()).unwrap()
-}
 
 fn restore_from_snapshot(state: &GameState) -> GameState {
     let snapshot_bytes: Vec<u8> = protocol::encode_game_state(&GameStateSerialOut::from(state));
@@ -26,7 +21,7 @@ fn restore_from_snapshot(state: &GameState) -> GameState {
 
 #[test]
 fn run_replay_gives_identical_checksums_in_two_runs() {
-    let replay_log: ReplayLog = read_scripted_game_log();
+    let replay_log: ReplayLog = replay_fixture::read_scripted_game_log();
     let first_tick_checksums: Vec<TickChecksum> = replay::run_replay(&replay_log).unwrap();
     let second_tick_checksums: Vec<TickChecksum> = replay::run_replay(&replay_log).unwrap();
 
@@ -36,7 +31,7 @@ fn run_replay_gives_identical_checksums_in_two_runs() {
 
 #[test]
 fn snapshot_round_trip_continues_with_equal_checksums() {
-    let replay_log: ReplayLog = read_scripted_game_log();
+    let replay_log: ReplayLog = replay_fixture::read_scripted_game_log();
     let mut state: GameState = GameState::new(replay_log.header.settings.clone(), replay_log.header.seed);
     let mut restored_state: Option<GameState> = None;
 

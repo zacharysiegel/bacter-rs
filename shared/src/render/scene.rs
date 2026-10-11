@@ -674,12 +674,14 @@ mod tests {
         let first_camera: Camera = Camera::centred_on(InterpolatedPoint { x: 100.0, y: 100.0 }, VIEWPORT);
         let mut render_scene: RenderScene = RenderScene::from_state(&state, &HALFWAY, first_camera, None);
         let tick_layer: TickLayer = render_scene.tick_layer.clone();
+
         let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, MemberId(0));
         organism.cells.insert(LatticeCoordinate { i: 0, j: 1 });
         organism.abilities.spore = SporePhase::Flying {
             ends_at: Tick(9),
             spores: vec![PROJECTILE],
         };
+
         let second_camera: Camera = Camera::for_local_game(VIEWPORT);
         let crosshair: InterpolatedPoint = InterpolatedPoint { x: 1.0, y: 2.0 };
 
@@ -688,7 +690,7 @@ mod tests {
         assert_eq!(render_scene.tick_layer, tick_layer);
         assert_eq!(
             render_scene.frame_layer,
-            FrameLayer::from_state(&state, &HALFWAY, Some(crosshair))
+            FrameLayer::from_state(&state, &HALFWAY, Some(crosshair)),
         );
         assert_eq!(render_scene.camera, second_camera);
     }

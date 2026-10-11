@@ -209,6 +209,17 @@ pub fn draw_cell_coordinate(rng: &mut Pcg32, start_pixels: i64, end_pixels: i64)
     i32::try_from(minimum + i64::from(rng.below(span))).ok()
 }
 
+/// The centre of the range when no pixel in it is clear of both edges.
+pub fn draw_cell_coordinate_or_centre(rng: &mut Pcg32, start_pixels: i64, end_pixels: i64) -> i32 {
+    let drawn_coordinate: Option<i32> = draw_cell_coordinate(rng, start_pixels, end_pixels);
+
+    drawn_coordinate.unwrap_or_else(|| get_centre_coordinate(start_pixels, end_pixels))
+}
+
+fn get_centre_coordinate(start_pixels: i64, end_pixels: i64) -> i32 {
+    i32::try_from(start_pixels + (end_pixels - start_pixels) / 2).unwrap_or(i32::MAX)
+}
+
 fn create_local_settings(world_size: PixelSize, player_cap: u8) -> GameSettings {
     GameSettings {
         title: String::from(LOCAL_GAME_TITLE),
@@ -451,5 +462,12 @@ mod tests {
         assert!(coordinates.contains(&107));
         assert!(coordinates.contains(&113));
         assert_eq!(draw_cell_coordinate(&mut rng, 0, 5), None);
+    }
+
+    #[test]
+    fn draw_cell_coordinate_or_centre_falls_back_to_the_centre_of_a_range_too_short_for_a_cell() {
+        let mut rng: Pcg32 = create_scene_rng(SEED);
+
+        assert_eq!(draw_cell_coordinate_or_centre(&mut rng, 100, 110), 105);
     }
 }

@@ -122,18 +122,11 @@ fn draw_cursor(
     }
 }
 
-/// The quadrant's centre when no pixel in it is clear of its edges.
 fn draw_quadrant_coordinate(scene_rng: &mut Pcg32, world_length_pixels: u32, half_offset: i64) -> i32 {
     let half_length: i64 = i64::from(world_length_pixels / 2);
     let start_pixels: i64 = half_length * half_offset;
-    let drawn_coordinate: Option<i32> =
-        local_game::draw_cell_coordinate(scene_rng, start_pixels, start_pixels + half_length);
 
-    drawn_coordinate.unwrap_or_else(|| get_quadrant_centre_coordinate(start_pixels, half_length))
-}
-
-fn get_quadrant_centre_coordinate(start_pixels: i64, half_length: i64) -> i32 {
-    i32::try_from(start_pixels + half_length / 2).unwrap_or(i32::MAX)
+    local_game::draw_cell_coordinate_or_centre(scene_rng, start_pixels, start_pixels + half_length)
 }
 
 #[cfg(test)]

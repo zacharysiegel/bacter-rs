@@ -50,31 +50,35 @@ fn draw_bot_cursor(scene_rng: &mut Pcg32, world_size: PixelSize, player_cursor: 
 
 fn draw_world_point(scene_rng: &mut Pcg32, world_size: PixelSize) -> WorldPoint {
     WorldPoint {
-        x: draw_world_coordinate(scene_rng, world_size.width_pixels),
-        y: draw_world_coordinate(scene_rng, world_size.height_pixels),
+        x: local_game::draw_cell_coordinate_or_centre(scene_rng, 0, i64::from(world_size.width_pixels)),
+        y: local_game::draw_cell_coordinate_or_centre(scene_rng, 0, i64::from(world_size.height_pixels)),
     }
-}
-
-/// The world's centre when no pixel is clear of both edges.
-fn draw_world_coordinate(scene_rng: &mut Pcg32, world_length_pixels: u32) -> i32 {
-    let drawn_coordinate: Option<i32> = local_game::draw_cell_coordinate(scene_rng, 0, i64::from(world_length_pixels));
-
-    drawn_coordinate.unwrap_or_else(|| get_centre_coordinate(world_length_pixels))
-}
-
-fn get_centre_coordinate(world_length_pixels: u32) -> i32 {
-    i32::try_from(world_length_pixels / 2).unwrap_or(i32::MAX)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry;
+    use std::ops::Range;
 
     const WORLD_SIZE: PixelSize = PixelSize {
         width_pixels: 400,
         height_pixels: 300,
     };
     const PLAYER_CURSOR: WorldPoint = WorldPoint { x: 200, y: 150 };
+    const MINIMUM_DISTANCE_SQUARED: i64 = TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS * TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS;
+
+    /// The coordinates at which a cell centre is clear of both world edges.
+    fn get_cell_coordinate_range(world_length_pixels: u32) -> Range<i32> {
+        let world_length: i32 = i32::try_from(world_length_pixels).unwrap();
+
+        geometry::CELL_WIDTH_PIXELS + 1..world_length - geometry::CELL_WIDTH_PIXELS
+    }
+
+    fn is_inside_world(cursor: WorldPoint, world_size: PixelSize) -> bool {
+        get_cell_coordinate_range(world_size.width_pixels).contains(&cursor.x)
+            && get_cell_coordinate_range(world_size.height_pixels).contains(&cursor.y)
+    }
 
     #[test]
     fn create_tutorial_bot_joiner_places_the_bot_inside_the_world_away_from_the_player() {
@@ -84,9 +88,8 @@ mod tests {
             let bot_joiner: LocalJoiner = create_tutorial_bot_joiner(&mut scene_rng, WORLD_SIZE, PLAYER_CURSOR);
             let distance_squared: i64 = bot_joiner.cursor.distance_squared(PLAYER_CURSOR);
 
-            assert!(distance_squared >= TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS * TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS);
-            assert!((7..394).contains(&bot_joiner.cursor.x));
-            assert!((7..294).contains(&bot_joiner.cursor.y));
+            assert!(distance_squared >= MINIMUM_DISTANCE_SQUARED);
+            assert!(is_inside_world(bot_joiner.cursor, WORLD_SIZE));
         }
     }
 
@@ -105,15 +108,28 @@ mod tests {
 
     #[test]
     fn create_tutorial_bot_joiner_takes_the_last_candidate_in_a_world_too_small_for_the_distance() {
-        let mut scene_rng: Pcg32 = local_game::create_scene_rng(0);
         let small_world_size: PixelSize = PixelSize {
             width_pixels: 60,
             height_pixels: 60,
         };
+        let small_world_player_cursor: WorldPoint = WorldPoint { x: 30, y: 30 };
+        let mut scene_rng: Pcg32 = local_game::create_scene_rng(0);
+        let mut expected_rng: Pcg32 = local_game::create_scene_rng(0);
 
         let bot_joiner: LocalJoiner =
-            create_tutorial_bot_joiner(&mut scene_rng, small_world_size, WorldPoint { x: 30, y: 30 });
+            create_tutorial_bot_joiner(&mut scene_rng, small_world_size, small_world_player_cursor);
 
-        assert!((7..54).contains(&bot_joiner.cursor.x));
+        let expected_color: OrganismColorKind =
+            local_game::draw_color_excluding(&mut expected_rng, &TUTORIAL_BOT_EXCLUDED_COLORS);
+        let candidate_points: Vec<WorldPoint> = (0..BOT_POSITION_ATTEMPT_LIMIT)
+            .map(|_| draw_world_point(&mut expected_rng, small_world_size))
+            .collect();
+
+        assert_eq!(bot_joiner.appearance.color, expected_color);
+        assert!(candidate_points.iter().all(|candidate_point| {
+            candidate_point.distance_squared(small_world_player_cursor) < MINIMUM_DISTANCE_SQUARED
+        }));
+        assert!(is_inside_world(bot_joiner.cursor, small_world_size));
+        assert_eq!(Some(&bot_joiner.cursor), candidate_points.last());
     }
 }

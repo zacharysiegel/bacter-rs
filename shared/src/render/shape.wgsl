@@ -41,14 +41,11 @@ fn shape_vertex_main(@builtin(vertex_index) vertex_index: u32, instance: ShapeIn
 
 fn get_shape_distance(shape_kind: u32, local_position: vec2<f32>, half_extent: vec2<f32>) -> f32 {
     switch shape_kind {
-        case SHAPE_KIND_RECTANGLE: {
+        case SHAPE_KIND_RECTANGLE, default: {
             return get_rectangle_distance(local_position, half_extent);
         }
         case SHAPE_KIND_ELLIPSE: {
             return get_ellipse_distance(local_position, half_extent);
-        }
-        default: {
-            return get_rectangle_distance(local_position, half_extent);
         }
     }
 }

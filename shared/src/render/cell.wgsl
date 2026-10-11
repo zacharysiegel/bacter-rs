@@ -5,6 +5,8 @@ const INSTANCE_SKIN_CIRCLES: u32 = 1u;
 const INSTANCE_SKIN_GHOST: u32 = 2u;
 const INSTANCE_SKIN_NONE: u32 = 3u;
 const INSTANCE_SKIN_SOLID: u32 = 4u;
+const INSTANCE_SKIN_KIND_MASK: u32 = 0xffu;
+const INSTANCE_SCALE_SHIFT: u32 = 16u;
 const INSTANCE_SCALE_UNITS_PER_CELL: f32 = 1000.0;
 // Half of geometry::CELL_WIDTH_PIXELS.
 const CELL_HALF_WIDTH_PIXELS: f32 = 3.0;
@@ -27,11 +29,11 @@ struct CellVertexOutput {
 }
 
 fn instance_skin_kind(params: u32) -> u32 {
-    return params & 0xffu;
+    return params & INSTANCE_SKIN_KIND_MASK;
 }
 
 fn instance_scale(params: u32) -> f32 {
-    return f32(params >> 16u) / INSTANCE_SCALE_UNITS_PER_CELL;
+    return f32(params >> INSTANCE_SCALE_SHIFT) / INSTANCE_SCALE_UNITS_PER_CELL;
 }
 
 fn instance_color(color: vec4<f32>) -> vec4<f32> {
@@ -82,10 +84,7 @@ fn cell_fragment_main(input: CellVertexOutput) -> @location(0) vec4<f32> {
                 get_stroke_coverage(square_distance, OUTLINE_STROKE_WIDTH_PIXELS),
             );
         }
-        case INSTANCE_SKIN_SOLID: {
-            return get_premultiplied(input.color, get_coverage(square_distance));
-        }
-        default: {
+        case INSTANCE_SKIN_SOLID, default: {
             return get_premultiplied(input.color, get_coverage(square_distance));
         }
     }

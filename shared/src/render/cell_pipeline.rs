@@ -127,6 +127,7 @@ pub fn create_cell_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry;
     use crate::member;
 
     #[test]
@@ -193,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn code_matches_the_shader_constant_of_every_skin() {
+    fn every_shared_constant_matches_its_shader_declaration() {
         let skin_constant_names: [(InstanceSkinKind, &str); 5] = [
             (InstanceSkinKind::Grid, "INSTANCE_SKIN_GRID"),
             (InstanceSkinKind::Circles, "INSTANCE_SKIN_CIRCLES"),
@@ -201,10 +202,23 @@ mod tests {
             (InstanceSkinKind::None, "INSTANCE_SKIN_NONE"),
             (InstanceSkinKind::Solid, "INSTANCE_SKIN_SOLID"),
         ];
+        let cell_half_width_pixels: f32 = geometry::CELL_WIDTH_PIXELS as f32 / 2.0;
 
-        for (instance_skin, constant_name) in skin_constant_names {
-            let declaration: String = format!("const {constant_name}: u32 = {}u;", instance_skin.code());
+        let mut declarations: Vec<String> = skin_constant_names
+            .into_iter()
+            .map(|(instance_skin, constant_name)| format!("const {constant_name}: u32 = {}u;", instance_skin.code()))
+            .collect();
+        declarations.extend([
+            format!("const INSTANCE_SKIN_KIND_MASK: u32 = {INSTANCE_SKIN_KIND_MASK:#x}u;"),
+            format!("const INSTANCE_SCALE_SHIFT: u32 = {INSTANCE_SCALE_SHIFT}u;"),
+            format!(
+                "const INSTANCE_SCALE_UNITS_PER_CELL: f32 = {:?};",
+                f32::from(CellScale::FULL.0)
+            ),
+            format!("const CELL_HALF_WIDTH_PIXELS: f32 = {cell_half_width_pixels:?};"),
+        ]);
 
+        for declaration in declarations {
             assert!(CELL_SHADER_SOURCE.contains(&declaration));
         }
     }

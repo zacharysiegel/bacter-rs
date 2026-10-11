@@ -96,14 +96,14 @@ pub fn choose_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat>
 #[cfg(target_arch = "wasm32")] // other targets have no canvas element
 mod wasm {
     use web_sys::HtmlCanvasElement;
-    use wgpu::{Instance, Surface, SurfaceTarget};
+    use wgpu::{CreateSurfaceError, Instance, Surface, SurfaceTarget};
 
     use super::WgpuSurface;
     use crate::error::AppError;
 
     impl WgpuSurface {
         pub fn from_canvas(instance: &Instance, canvas: HtmlCanvasElement) -> Result<WgpuSurface, AppError> {
-            let created: Result<Surface<'static>, wgpu::CreateSurfaceError> =
+            let created: Result<Surface<'static>, CreateSurfaceError> =
                 instance.create_surface(SurfaceTarget::Canvas(canvas));
             let surface: Surface<'static> = created
                 .map_err(|error| AppError::new(&format!("creating a surface from the canvas failed: {error}")))?;
@@ -119,7 +119,7 @@ mod native {
     use core::ptr::NonNull;
 
     use raw_window_handle::{RawDisplayHandle, RawWindowHandle, UiKitDisplayHandle, UiKitWindowHandle};
-    use wgpu::{Instance, Surface, SurfaceTargetUnsafe};
+    use wgpu::{CreateSurfaceError, Instance, Surface, SurfaceTargetUnsafe};
 
     use super::WgpuSurface;
     use crate::error::AppError;
@@ -140,7 +140,7 @@ mod native {
         ) -> Result<WgpuSurface, AppError> {
             let target: SurfaceTargetUnsafe = get_surface_target(window_handle)?;
             // SAFETY: the caller guarantees the view is valid and outlives the surface.
-            let created: Result<Surface<'static>, wgpu::CreateSurfaceError> =
+            let created: Result<Surface<'static>, CreateSurfaceError> =
                 unsafe { instance.create_surface_unsafe(target) };
             let surface: Surface<'static> = created.map_err(|error| {
                 AppError::new(&format!("creating a surface from the window handle failed: {error}"))
@@ -190,6 +190,10 @@ mod tests {
         let formats: [TextureFormat; 2] = [TextureFormat::Rgba8UnormSrgb, TextureFormat::Bgra8UnormSrgb];
 
         assert_eq!(choose_surface_format(&formats), Some(TextureFormat::Rgba8UnormSrgb));
+    }
+
+    #[test]
+    fn choose_surface_format_returns_none_for_no_formats() {
         assert_eq!(choose_surface_format(&[]), None);
     }
 }

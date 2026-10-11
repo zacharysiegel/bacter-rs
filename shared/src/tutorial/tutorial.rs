@@ -194,10 +194,7 @@ impl Tutorial {
     ) -> Tutorial {
         let mut scene_rng: Pcg32 = local_game::create_scene_rng(seed);
         let world_size: PixelSize = local_game::get_world_size(window_size);
-        let player_cursor: WorldPoint = WorldPoint {
-            x: i32::try_from(world_size.width_pixels / 2).unwrap_or(0),
-            y: i32::try_from(world_size.height_pixels / 2).unwrap_or(0),
-        };
+        let player_cursor: WorldPoint = local_game::get_world_centre(world_size);
         let player_joiner: LocalJoiner = LocalJoiner {
             screen_name: String::from(TUTORIAL_PLAYER_SCREEN_NAME),
             appearance: Appearance {
@@ -260,7 +257,8 @@ impl Tutorial {
         }
 
         if is_steering {
-            self.check_held_key_tasks(&controls.keyboard);
+            let player_cursor: WorldPoint = controls.crosshair.position().to_rounded_world_point();
+            self.check_held_key_tasks(&controls.keyboard, player_cursor);
         }
 
         let local_tick_count: u32 = self.pacer.take_local_tick_count(frame_duration_milliseconds);
@@ -299,7 +297,7 @@ impl Tutorial {
         }
     }
 
-    fn check_held_key_tasks(&mut self, keyboard: &KeyboardState) {
+    fn check_held_key_tasks(&mut self, keyboard: &KeyboardState, player_cursor: WorldPoint) {
         let is_task_done: bool = match self.task {
             TutorialTaskKind::Move => keyboard.is_any_movement_key_held(),
             TutorialTaskKind::Fullscreen => keyboard.is_held(GameKeyKind::Fullscreen),
@@ -316,7 +314,7 @@ impl Tutorial {
         };
 
         if is_task_done {
-            self.start_task(self.task.next(self.display_mode));
+            self.start_task(self.task.next(self.display_mode), player_cursor);
         }
     }
 
@@ -351,12 +349,17 @@ impl Tutorial {
         let simulation_events: Vec<SimulationEvent> =
             self.local_game.step_local_tick(member_events, vec![player_input]);
 
-        self.advance_task(&sample, &simulation_events);
+        self.advance_task(&sample, &simulation_events, player_cursor);
         self.place_missing_organisms(player_cursor);
         self.pause_for_secretion_when_due();
     }
 
-    fn advance_task(&mut self, sample: &AbilityPressSample, simulation_events: &[SimulationEvent]) {
+    fn advance_task(
+        &mut self,
+        sample: &AbilityPressSample,
+        simulation_events: &[SimulationEvent],
+        player_cursor: WorldPoint,
+    ) {
         let tick: Tick = self.state().tick;
 
         if self.task_deadline.is_none() {
@@ -367,7 +370,7 @@ impl Tutorial {
         let is_task_due: bool = self.task_deadline.is_some_and(|task_deadline| task_deadline <= tick);
 
         if is_task_due {
-            self.start_task(self.task.next(self.display_mode));
+            self.start_task(self.task.next(self.display_mode), player_cursor);
         }
     }
 
@@ -408,13 +411,13 @@ impl Tutorial {
         }
     }
 
-    fn start_task(&mut self, task: TutorialTaskKind) {
+    fn start_task(&mut self, task: TutorialTaskKind, player_cursor: WorldPoint) {
         self.task = task;
         self.task_deadline = task.timed_task_ticks().map(|task_ticks| self.state().tick.plus(task_ticks));
         self.write_player_loadout();
 
         match task {
-            TutorialTaskKind::Compress => self.add_bot(),
+            TutorialTaskKind::Compress => self.add_bot(player_cursor),
             TutorialTaskKind::Freeze | TutorialTaskKind::Toxin | TutorialTaskKind::Spore => {
                 self.clear_bot_last_hitter()
             }
@@ -448,13 +451,11 @@ impl Tutorial {
     }
 
     /// Joins in the next tick and is placed after it.
-    fn add_bot(&mut self) {
+    fn add_bot(&mut self, player_cursor: WorldPoint) {
         if self.bot.is_some() {
             return;
         }
 
-        let player_cursor: WorldPoint =
-            self.get_player_organism().map_or(WorldPoint { x: 0, y: 0 }, |organism| organism.cursor);
         let bot_joiner: LocalJoiner =
             tutorial_bot::create_tutorial_bot_joiner(&mut self.scene_rng, self.local_game.world_size(), player_cursor);
         let member_id: MemberId = self.state().next_member_id;
@@ -560,6 +561,7 @@ impl Tutorial {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::test_fixture;
     use crate::geometry::SubpixelPoint;
     use crate::play::frame_pacing;
     use crate::play::{KeyRepeatKind, KeyTransitionKind};
@@ -570,6 +572,12 @@ mod tests {
         height_pixels: 650,
     };
     const WORLD_CENTER: WorldPoint = WorldPoint { x: 400, y: 300 };
+    /// Grows the player's organism past one cell, so it has spores to launch.
+    const GROWTH_TICKS_BEFORE_SPORE: u32 = 40;
+    /// Tick periods of frames run while paused, none of which may step a tick.
+    const TICKS_RUN_WHILE_PAUSED: u32 = 20;
+    /// The crosshair's travel in one tick at `CROSSHAIR_SPEED_PIXELS_PER_SECOND`.
+    const CROSSHAIR_TRAVEL_SUBPIXELS_PER_TICK: i32 = 3046;
 
     struct TutorialHarness {
         tutorial: Tutorial,
@@ -607,12 +615,21 @@ mod tests {
             self.change_key(key, KeyTransitionKind::Released);
         }
 
+        fn crosshair_point(&self) -> WorldPoint {
+            self.controls.crosshair.position().to_rounded_world_point()
+        }
+
         fn start_task(&mut self, task: TutorialTaskKind) {
-            self.tutorial.start_task(task);
+            let player_cursor: WorldPoint = self.crosshair_point();
+            self.tutorial.start_task(task, player_cursor);
         }
 
         fn player_organism(&self) -> &Organism {
-            self.tutorial.get_player_organism().unwrap()
+            test_fixture::get_organism(self.tutorial.state(), TUTORIAL_PLAYER_ID)
+        }
+
+        fn player_organism_mut(&mut self) -> &mut Organism {
+            test_fixture::get_organism_mut(self.tutorial.local_game.state_mut(), TUTORIAL_PLAYER_ID)
         }
 
         fn bot(&self) -> TutorialBot {
@@ -622,20 +639,13 @@ mod tests {
         fn bot_organism_mut(&mut self) -> &mut Organism {
             let bot_member_id: MemberId = self.bot().member_id;
 
-            self.tutorial
-                .local_game
-                .state_mut()
-                .members
-                .get_mut(&bot_member_id)
-                .unwrap()
-                .organism
-                .as_mut()
-                .unwrap()
+            test_fixture::get_organism_mut(self.tutorial.local_game.state_mut(), bot_member_id)
         }
 
         /// The task's condition, met in the tick just stepped.
         fn meet_condition(&mut self, simulation_events: &[SimulationEvent]) {
-            self.tutorial.advance_task(&AbilityPressSample::NONE, simulation_events);
+            let player_cursor: WorldPoint = self.crosshair_point();
+            self.tutorial.advance_task(&AbilityPressSample::NONE, simulation_events, player_cursor);
         }
     }
 
@@ -825,11 +835,14 @@ mod tests {
 
         assert_eq!(windowed_harness.tutorial.task(), TutorialTaskKind::Fullscreen);
         assert_eq!(fullscreen_harness.tutorial.task(), TutorialTaskKind::Survive);
+
+        let world_center_subpixels: SubpixelPoint = WORLD_CENTER.to_subpixel_point();
+
         assert_eq!(
             windowed_harness.controls.crosshair.position(),
             SubpixelPoint {
-                x: WORLD_CENTER.x * 1024,
-                y: WORLD_CENTER.y * 1024 - 3046,
+                x: world_center_subpixels.x,
+                y: world_center_subpixels.y - CROSSHAIR_TRAVEL_SUBPIXELS_PER_TICK,
             },
         );
     }
@@ -981,7 +994,7 @@ mod tests {
     #[test]
     fn advance_frame_pauses_halfway_through_a_spore_flight_until_the_spores_secrete() {
         let mut harness: TutorialHarness = TutorialHarness::new(DisplayModeKind::Windowed);
-        harness.run_ticks(40);
+        harness.run_ticks(GROWTH_TICKS_BEFORE_SPORE);
         harness.start_task(TutorialTaskKind::Spore);
 
         harness.press(GameKeyKind::FourthAbility);
@@ -994,7 +1007,7 @@ mod tests {
 
         harness.run_ticks(ability_constants::SPORE_FLIGHT_TICKS / 2);
         let paused_tick: Tick = harness.tutorial.state().tick;
-        harness.run_ticks(20);
+        harness.run_ticks(TICKS_RUN_WHILE_PAUSED);
 
         assert_eq!(harness.tutorial.state().tick, paused_tick);
         assert_eq!(
@@ -1024,18 +1037,7 @@ mod tests {
 
         assert_eq!(harness.tutorial.task_deadline, None);
 
-        harness
-            .tutorial
-            .local_game
-            .state_mut()
-            .members
-            .get_mut(&TUTORIAL_PLAYER_ID)
-            .unwrap()
-            .organism
-            .as_mut()
-            .unwrap()
-            .abilities
-            .spore = SporePhase::Secreting {
+        harness.player_organism_mut().abilities.spore = SporePhase::Secreting {
             ends_at: Tick(500),
             spores: Vec::new(),
         };

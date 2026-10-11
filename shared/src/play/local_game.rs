@@ -216,6 +216,13 @@ pub fn draw_cell_coordinate_or_centre(rng: &mut Pcg32, start_pixels: i64, end_pi
     drawn_coordinate.unwrap_or_else(|| get_centre_coordinate(start_pixels, end_pixels))
 }
 
+pub fn get_world_centre(world_size: PixelSize) -> WorldPoint {
+    WorldPoint {
+        x: get_centre_coordinate(0, i64::from(world_size.width_pixels)),
+        y: get_centre_coordinate(0, i64::from(world_size.height_pixels)),
+    }
+}
+
 fn get_centre_coordinate(start_pixels: i64, end_pixels: i64) -> i32 {
     i32::try_from(start_pixels + (end_pixels - start_pixels) / 2).unwrap_or(i32::MAX)
 }

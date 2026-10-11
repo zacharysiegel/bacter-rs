@@ -8,7 +8,7 @@ use crate::geometry::WorldPoint;
 use crate::member;
 use crate::member::{Appearance, MemberId, MemberRoleKind, OrganismColorKind};
 use crate::organism::spawn;
-use crate::organism::{Organism, PlacementError};
+use crate::organism::PlacementError;
 use crate::random::Pcg32;
 use crate::world::{World, WorldBounds, WorldShapeKind};
 
@@ -243,6 +243,7 @@ mod tests {
     use crate::ability::AbilityPressSet;
     use crate::game::Tick;
     use crate::member::SkinKind;
+    use crate::organism::Organism;
 
     const SEED: u64 = 0x10ca1;
     const WINDOW_SIZE: PixelSize = PixelSize {

@@ -32,19 +32,23 @@
 
 ## Renderer
 - Module: `shared/src/render`, feature `render`.
-- `GameRenderer` owns instance, adapter, device, queue, surface, pipelines; `!Send`.
+- `GameRenderer` owns adapter, device, queue, surface, pipelines, the camera uniform and the instance buffers; `!Send`; built by `from_canvas` (wasm32) or `unsafe from_window_handle` (other targets) from a `RendererBackendKind` (`Default`, `ForceGl`) and a `PhysicalSize`. The `Instance` is not kept: the surface and the device hold what they need.
 - Surface first, then `request_adapter` with `compatible_surface: Some(&surface)` (required for WebGL2; eafora's order breaks its fallback).
-- `Instance::default()` (WebGPU, else WebGL2); `?renderer=webgl2` forces `Backends::GL`; `Limits::downlevel_webgl2_defaults()`, no features, Fifo present mode.
-- `surface.rs`: shared `WgpuSurface` at file level; `#[cfg(target_arch = "wasm32")] mod wasm` (`from_canvas`); `#[cfg(not(target_arch = "wasm32"))] mod native` (`from_window_handle`, for iOS later).
-- Pipelines:
-  - `cell_pipeline.rs` + `cell.wgsl`: one instanced draw for all cells, spores (0.8 scale) and shots; quad corners from `vertex_index`; per-instance vertex buffer (`VertexStepMode::Instance`): `center: [f32; 2]`, `color: unorm8x4`, `params: u32` (skin, scale); 16 B stride.
+- `Instance::default()` (WebGPU, else WebGL2); `?renderer=webgl2` forces `Backends::GL` (`RendererBackendKind::ForceGl`); `Limits::downlevel_webgl2_defaults()` with the adapter's texture dimensions (`using_resolution`, so a full-window surface at device pixel ratio 2 fits), no features, Fifo present mode.
+- Surface format: the first without sRGB encoding, so colours and blending stay in sRGB values as the original's canvas kept them; the first format otherwise.
+- `surface.rs`: shared `WgpuSurface` (unconfigured) and `ConfiguredSurface` at file level; `#[cfg(target_arch = "wasm32")] mod wasm` (`from_canvas`); `#[cfg(not(target_arch = "wasm32"))] mod native` (`from_window_handle` with a UIKit view, for iOS later).
+- Pipelines (`scene_pipelines.rs`: `ScenePipelines`, one camera bind group, both built inside error scopes):
+  - Every instance is a triangle strip of four vertices, corners from `vertex_index`; premultiplied alpha blending; signed-distance coverage per physical pixel for antialiasing.
+  - `scene_common.wgsl`, prepended to both shaders: the camera uniform, quad corners, rectangle and ellipse distances, coverage, stroke-over-fill compositing, colour accessors.
+  - `cell_pipeline.rs` + `cell.wgsl`: instanced draws for cells, spores and shots (shots at 0.8 scale, faithful); per-instance vertex buffer (`VertexStepMode::Instance`): `center: [f32; 2]`, `color: unorm8x4`, `params: u32` (skin code in the low byte, scale in thousandths of a cell in the high half); 16 B stride.
     - `cell.wgsl` decodes `params` and `color` only through accessor functions defined once, beside the matching Rust instance struct's field order (`fn instance_skin_kind(params: u32) -> u32`, `fn instance_scale(params: u32) -> f32`, `fn instance_color(color: vec4<f32>) -> vec4<f32>`); no call site masks, shifts or indexes channels.
-  - `shape_pipeline.rs` + `shape.wgsl`: instanced rectangles and ellipses, filled or stroked: world backdrop, shadow, body, border, toxin and neutralize rings and fills, secretions, crosshair bars.
-- Skins in the fragment shader: Grid (fill plus rgb(40,40,40) 0.25 px stroke), Circles (disc radius 3), Ghost (1 px outline, no fill), None (fill plus 1 px stroke in own colour).
-- Camera: `world_to_view` centred on the local crosshair, `view_to_clip` orthographic with device pixel ratio; uniform `world_to_clip` (names per `shading.md`).
-- Draw order: backdrop (70,70,70), shadow (backdrop minus 20, offset (+7,+6) square or (+5,+4) circle), world body (black), border (210,210,210) 1 px, toxin rings (255,111,92) weight 3, secretions (owner colour), neutralize rings (0,179,12) weight 3 for every player, organisms, spores and shots, crosshair (white plus, ±4 px).
-- Cell instance buffer rebuilt only when a tick is applied; per frame only the camera uniform and interpolated projectile instances change.
-- `render/scene.rs`: `RenderScene::from_state(&GameState, &InterpolationFrame, camera)`; GPU-free, unit-testable.
+  - `shape_pipeline.rs` + `shape.wgsl`: instanced rectangles and ellipses, filled, stroked or both (stroke centred on the edge, over the fill): shadow, world body and border, toxin and neutralize rings and fills, secretions, crosshair bars; per instance `center`, `half_extent`, fill and stroke colours (`unorm8x4`), stroke width, shape kind; 32 B stride.
+- Skins in the fragment shader: Grid (fill plus rgb(40,40,40) 0.25 px stroke), Circles (disc radius 3), Ghost (1 px outline, no fill), None (fill plus 1 px stroke in own colour); spores and shots of Circles and Ghost as their cells, of Grid and None as unstroked squares (`InstanceSkinKind::Solid`, faithful).
+- Colours (`render_color.rs`): the original's palette for its black world; scene colours below.
+- Camera (`camera.rs`): `Camera::centred_on(crosshair, ViewportSize)` for an online game, `Camera::for_local_game` (world origin at the 25 px margin) for the title scene and the tutorial; `world_to_view` translates the view origin, `view_to_clip` is orthographic over the view size in CSS pixels (physical size over device pixel ratio); uniform `world_to_clip` plus `physical_pixels_per_world_pixel` (names per `shading.md`); `get_view_point` for name labels.
+- Draw order: backdrop (70,70,70, the clear colour), shadow (backdrop minus 20, offset (+7,+6) square or (+5,+4) circle), world body (black), border (210,210,210) 1 px, toxin rings (255,111,92) weight 3, secretions (owner colour; a 2 px ring for Ghost), neutralize rings (0,179,12) weight 3 for every player, fields filled rgb(100,100,100), organisms, spores and shots, crosshair (white plus, ±4 px, when the scene is given one).
+- `TickLayer` (background shapes, organism cells) uploaded only when a tick is applied (`GameRenderer::upload_tick_layer`); per frame (`draw_frame`) only the camera uniform and the `FrameLayer` (interpolated projectiles, crosshair bars) change.
+- `render/scene.rs`: `RenderScene::from_state(&GameState, &InterpolationFrame, Camera, crosshair: Option<InterpolatedPoint>) -> RenderScene { tick_layer, frame_layer, camera }`; `refresh_frame` for a frame which applied no tick; GPU-free, unit-testable.
 - WebGL2 constraints observed: no storage buffers, stride at most 255, uniform blocks at most 16 KiB.
 
 ## Client session, frame pacing and driving

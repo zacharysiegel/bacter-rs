@@ -300,6 +300,15 @@ tutorial/         tutorial.rs            Tutorial, TutorialTaskKind
 title/            title_scene.rs         TitleScene (10 dummy organisms)
 settings/         settings.rs            SettingKey, SettingValue, SettingsStore, Setting (eafora pattern), ClientSettingKind
 render/           (feature render)       client-web.md#renderer
+                  render_color.rs        RenderColor, organism palette, scene colours
+                  camera.rs              PhysicalSize, ViewportSize, AxisAlignedTransform, Camera, CameraUniform
+                  cell_pipeline.rs       CellInstance, InstanceSkinKind, CellScale, cell pipeline (cell.wgsl)
+                  shape_pipeline.rs      ShapeInstance, ShapeGeometry, ShapePaint, ShapeKind, shape pipeline (shape.wgsl)
+                  scene.rs               RenderScene, TickLayer, FrameLayer (GPU-free)
+                  scene_pipelines.rs     ScenePipelines, device descriptor, shared pipeline setup (scene_common.wgsl)
+                  instance_buffer.rs     InstanceBuffer
+                  surface.rs             WgpuSurface, ConfiguredSurface, WindowHandle (not wasm32)
+                  game_renderer.rs       GameRenderer, RendererBackendKind
 ```
 
 ### `server` crate

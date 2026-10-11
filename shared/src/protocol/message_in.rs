@@ -128,6 +128,7 @@ impl TryFrom<PlayerInputSerialIn> for PlayerInput {
     fn try_from(player_input_serial_in: PlayerInputSerialIn) -> Result<PlayerInput, AppError> {
         let ability_presses: AbilityPressSet =
             input_bundle_serial::convert_ability_presses(player_input_serial_in.ability_presses)?;
+
         if player_input_serial_in.aim.is_some() && !ability_presses.has_shot_slot_press() {
             return Err(AppError::new("an aim comes only with a first or second ability press"));
         }

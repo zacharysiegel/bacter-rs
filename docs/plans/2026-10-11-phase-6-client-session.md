@@ -3233,7 +3233,7 @@ with:
 In `shared/src/play/client_session.rs`, append inside `mod tests`, directly above its closing brace:
 
 ```rust
-    fn create_snapshot_request_frame(client_tick: Tick) -> ClientEffect {
+    fn create_snapshot_request_effect(client_tick: Tick) -> ClientEffect {
         ClientEffect::SendFrame(protocol::encode_message_in(&MessageSerialIn::RequestSnapshot {
             client_tick: client_tick.0,
         }))
@@ -3297,7 +3297,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             mismatch_effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
         assert_eq!(discarded_effects, Vec::<ClientEffect>::new());
         assert_eq!(session.render_state().unwrap().tick, Tick(1));
@@ -3323,7 +3323,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3349,7 +3349,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3363,7 +3363,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3385,7 +3385,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3418,7 +3418,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
         assert_eq!(within_limit_effects, Vec::<ClientEffect>::new());
         assert_eq!(
             beyond_limit_effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3444,7 +3444,47 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
         );
 
         assert_eq!(before_timeout_output.effects, Vec::<ClientEffect>::new());
-        assert_eq!(at_timeout_output.effects, vec![create_snapshot_request_frame(Tick(1))]);
+        assert_eq!(at_timeout_output.effects, vec![create_snapshot_request_effect(Tick(1))]);
+    }
+
+    #[test]
+    fn receive_does_not_restart_a_resync_already_in_progress() {
+        let mut controls: PlayerControls = PlayerControls::new();
+        let (mut session, server_state): (ClientSession, GameState) = create_playing_session(&mut controls);
+        let mismatch_message: MessageSerialOut = create_mismatched_checksum_message(&server_state);
+        receive_with_controls(&mut session, &mismatch_message, &mut controls);
+        let during_resync_milliseconds: f64 = NOW_MILLISECONDS + 1000.0;
+
+        let mismatch_effects: Vec<ClientEffect> =
+            receive_at(&mut session, &mismatch_message, &mut controls, during_resync_milliseconds);
+        let undecodable_effects: Vec<ClientEffect> =
+            session.receive(&[0xff, 0xff, 0xff], &mut controls, during_resync_milliseconds);
+        let at_timeout_output: FrameOutput = session.advance_frame(
+            NOW_MILLISECONDS + SNAPSHOT_RESPONSE_TIMEOUT_MILLISECONDS,
+            &mut controls,
+            InputFocusKind::Game,
+        );
+
+        assert_eq!(mismatch_effects, Vec::<ClientEffect>::new());
+        assert_eq!(undecodable_effects, Vec::<ClientEffect>::new());
+        assert_eq!(at_timeout_output.effects, vec![create_snapshot_request_effect(Tick(1))]);
+    }
+
+    #[test]
+    fn receive_ignores_a_checksum_for_a_tick_other_than_the_applied_tick() {
+        let mut controls: PlayerControls = PlayerControls::new();
+        let (mut session, server_state): (ClientSession, GameState) = create_playing_session(&mut controls);
+
+        let effects: Vec<ClientEffect> = receive_with_controls(
+            &mut session,
+            &MessageSerialOut::StateChecksum {
+                tick: server_state.tick.plus(1).0,
+                checksum: state_checksum::get_state_checksum(&server_state) ^ 1,
+            },
+            &mut controls,
+        );
+
+        assert_eq!(effects, Vec::<ClientEffect>::new());
     }
 
     #[test]
@@ -3495,7 +3535,7 @@ In `shared/src/play/client_session.rs`, append inside `mod tests`, directly abov
 
         assert_eq!(
             effects,
-            vec![create_snapshot_request_frame(Tick(1)), ClientEffect::ResyncStarted],
+            vec![create_snapshot_request_effect(Tick(1)), ClientEffect::ResyncStarted],
         );
     }
 
@@ -3998,22 +4038,12 @@ impl ClientSession {
             return Vec::new();
         };
 
-        let SynchronisationKind::AwaitingSnapshot {
-            requested_at_milliseconds: Some(requested_at_milliseconds),
-        } = game_session.synchronisation
-        else {
-            return Vec::new();
-        };
+        let overdue_snapshot_request: Option<Vec<u8>> = game_session.take_overdue_snapshot_request(now_milliseconds);
 
-        if now_milliseconds - requested_at_milliseconds < SNAPSHOT_RESPONSE_TIMEOUT_MILLISECONDS {
-            return Vec::new();
+        match overdue_snapshot_request {
+            Some(frame) => vec![ClientEffect::SendFrame(frame)],
+            None => Vec::new(),
         }
-
-        game_session.synchronisation = SynchronisationKind::AwaitingSnapshot {
-            requested_at_milliseconds: Some(now_milliseconds),
-        };
-
-        vec![ClientEffect::SendFrame(game_session.encode_snapshot_request())]
     }
 
     fn take_unreported_tick(&mut self) -> Option<Tick> {
@@ -4021,15 +4051,7 @@ impl ClientSession {
             return None;
         };
 
-        let applied_tick: Tick = game_session.confirmed_state.as_ref()?.tick;
-
-        if game_session.reported_tick == Some(applied_tick) {
-            return None;
-        }
-
-        game_session.reported_tick = Some(applied_tick);
-
-        Some(applied_tick)
+        game_session.take_unreported_tick()
     }
 
     /// `leave_effect` only when a game was left; the leave which ends a lost synchronisation is already reported.
@@ -4264,6 +4286,38 @@ impl GameSession {
         };
 
         ResyncStartKind::Started
+    }
+
+    /// Restarts the response timer of a resync's snapshot request once it has run out.
+    fn take_overdue_snapshot_request(&mut self, now_milliseconds: f64) -> Option<Vec<u8>> {
+        let SynchronisationKind::AwaitingSnapshot {
+            requested_at_milliseconds: Some(requested_at_milliseconds),
+        } = self.synchronisation
+        else {
+            return None;
+        };
+
+        if now_milliseconds - requested_at_milliseconds < SNAPSHOT_RESPONSE_TIMEOUT_MILLISECONDS {
+            return None;
+        }
+
+        self.synchronisation = SynchronisationKind::AwaitingSnapshot {
+            requested_at_milliseconds: Some(now_milliseconds),
+        };
+
+        Some(self.encode_snapshot_request())
+    }
+
+    fn take_unreported_tick(&mut self) -> Option<Tick> {
+        let applied_tick: Tick = self.confirmed_state.as_ref()?.tick;
+
+        if self.reported_tick == Some(applied_tick) {
+            return None;
+        }
+
+        self.reported_tick = Some(applied_tick);
+
+        Some(applied_tick)
     }
 
     fn encode_snapshot_request(&self) -> Vec<u8> {

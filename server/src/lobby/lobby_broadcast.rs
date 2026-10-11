@@ -19,7 +19,6 @@ const LOBBY_POLL_PERIOD: Duration = Duration::from_millis(250);
 
 pub static LOBBY_SUBSCRIBERS: LazyLock<DashMap<ConnectionId, mpsc::Sender<Bytes>>> = LazyLock::new(DashMap::new);
 
-/// The revision changes whenever the observed game list differs from the last observed one.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LobbyRevision {
     revision: u64,
@@ -114,6 +113,7 @@ mod tests {
     use shared::game::{GameId, GameModeKind, GameState, GameSummary};
     use shared::protocol;
     use shared::protocol::MessageSerialOut;
+    use tokio::sync::mpsc::error::TryRecvError;
 
     fn create_game_list(player_count: u8, online_client_count: u32) -> GameList {
         let state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 8);
@@ -170,10 +170,10 @@ mod tests {
 
         subscribe(registries, ConnectionId(1), lobby_sender);
 
-        assert!(matches!(
-            protocol::decode_message_out(&lobby_receiver.try_recv().unwrap()).unwrap(),
-            MessageSerialOut::GameList { .. },
-        ));
+        let game_list_frame: Bytes = lobby_receiver.try_recv().unwrap();
+        let message_serial_out: MessageSerialOut = protocol::decode_message_out(&game_list_frame).unwrap();
+
+        assert!(matches!(message_serial_out, MessageSerialOut::GameList { .. }));
         assert!(registries.lobby_subscribers.contains_key(&ConnectionId(1)));
     }
 
@@ -190,18 +190,30 @@ mod tests {
     }
 
     #[test]
-    fn broadcast_game_list_skips_a_full_subscriber_and_removes_a_closed_one() {
+    fn broadcast_game_list_delivers_to_a_free_subscriber_skips_a_full_one_and_removes_a_closed_one() {
         let registries: ServerRegistries = ServerRegistries::leaked();
-        let (full_sender, _full_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) = mpsc::channel(1);
-        let (closed_sender, closed_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) = mpsc::channel(1);
+        let (full_sender, mut full_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) = mpsc::channel(1);
+        let (closed_sender, mut closed_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) = mpsc::channel(1);
+        let (free_sender, mut free_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) = mpsc::channel(1);
+
         full_sender.try_send(Bytes::from_static(b"older list")).unwrap();
-        drop(closed_receiver);
+        closed_receiver.close();
+
         registries.lobby_subscribers.insert(ConnectionId(1), full_sender);
         registries.lobby_subscribers.insert(ConnectionId(2), closed_sender);
+        registries.lobby_subscribers.insert(ConnectionId(3), free_sender);
 
         broadcast_game_list(registries, &Bytes::from_static(b"list"));
 
+        let free_frame: Bytes = free_receiver.try_recv().unwrap();
+        let full_frame: Bytes = full_receiver.try_recv().unwrap();
+        let full_receive_after_older_frame: Result<Bytes, TryRecvError> = full_receiver.try_recv();
+
+        assert_eq!(free_frame, Bytes::from_static(b"list"));
+        assert_eq!(full_frame, Bytes::from_static(b"older list"));
+        assert_eq!(full_receive_after_older_frame, Err(TryRecvError::Empty));
         assert!(registries.lobby_subscribers.contains_key(&ConnectionId(1)));
         assert!(!registries.lobby_subscribers.contains_key(&ConnectionId(2)));
+        assert!(registries.lobby_subscribers.contains_key(&ConnectionId(3)));
     }
 }

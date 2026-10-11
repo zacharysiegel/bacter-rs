@@ -8179,3 +8179,22 @@ size budget tests
 **Problem:** the simulation could only encode its state for the checksum; nothing could decode a frame, validate a request, or record and replay a game.
 
 **Solution:** the full protocol layer in `shared/src/protocol/` (every wire type with its `From`/`TryFrom` conversions, `MessageSerialIn`/`MessageSerialOut` and their codec, `PROTOCOL_VERSION`, limits and validation, rejection and close-reason kinds), the `replay` module with a committed `scripted_game.replay` fixture whose checksums are unchanged from phase 3, and `tools/protocol_dump` for frames and replays. Repository: `bacter-rs` only.
+
+## Deviations from the plan
+
+- New functions and types not in the plan:
+  - `GameSettings::check_ranges` and `GameSettings::check_cross_field_rules` in `game_settings.rs`, so `validate` reads at one level; the plan's `get_below_range` and `get_not_applicable` became one `get_out_of_range(field, bound)`, shared with the tests, and `SettingNotApplicable` is built inline.
+  - `listed_close_reason_kind` in the `close_reason.rs` tests, so a variant missing from `CLOSE_REASON_KINDS` fails to compile.
+  - `create_bundle_serial_out_with_player_input_count` in the `input_bundle_serial.rs` tests.
+  - In `tools/protocol_dump/src/main.rs`: `read_file` and `read_standard_input`, which name the unreadable input in the error; `get_replay_output`; `APP_ERROR_MESSAGE_PREFIX`, so `get_error_text` does not repeat a foreign sub-error which `?` already put in the message; `write_dump`, added in the final review, so a reader which closes the pipe early (`protocol_dump replay FILE | head`) no longer makes the tool panic.
+  - `create_replay_log_with_bundle_ticks` and `get_replay_bytes_with_a_corrupted_bundle_record` in the `replay_dump.rs` tests.
+  - `SCRIPTED_GAME_TICK_COUNT` in `shared/tests/determinism.rs`; `MALFORMED_FRAME_MUTATION_COUNT` and the four size budget constants (`EIGHT_PLAYER_COUNT`, `EIGHT_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES`, `SIXTEEN_PLAYER_COUNT`, `SIXTEEN_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES`) in `shared/tests/protocol.rs`; `create_malformed_frames` returns a fixed-size array, and the expected malformed-input total is computed from the frame and mutation counts.
+- Renames:
+  - `get_ability_names` is `get_organism_phase_names` in `shared/tests/protocol.rs`.
+  - `input_bundle_frame_fits_the_size_budgets` is `encode_message_out_fits_pressing_input_bundles_within_size_budgets`; `snapshot_frame_at_the_player_cap_with_spores_in_flight_fits_the_size_budget` is `encode_message_out_fits_a_full_game_snapshot_with_spores_in_flight_within_size_budget`.
+  - `reason_text_names_the_protocol_version_on_a_mismatch` became `reason_text_gives_the_reason_of_every_close_reason`, which checks all nine reasons.
+- Tests added beyond the plan: `validate_accepts_a_player_cap_equal_to_the_cross_field_bound`, `validate_returns_the_first_broken_rule_in_order` (and a free-for-all player minimum case in `validate_rejects_a_field_the_mode_does_not_have`), `close_reason_kinds_lists_every_close_reason`, `try_from_accepts_player_inputs_up_to_the_member_limit`, the four `get_error_text_*` tests, `dump_replay_reports_a_truncated_replay`, `dump_replay_reports_a_replay_without_a_header`, `dump_replay_names_the_invalid_record_and_keeps_its_error`, `dump_replay_reports_a_replay_which_does_not_step`, and the three `write_dump_*` tests of the final review.
+- Test counts: Task 28 expects 12 passed for `protocol_dump` and 325 for the `shared` library; the final run gives 23 and 329, because of the tests above. Every other count is as planned.
+- Test literals replaced by the limits they stand for (`MEMBER_LIMIT_HIGHEST + 1`, `TEAM_COUNT_HIGHEST + 1`, `PLAYER_CAP_HIGHEST`, `VERSION_PREFIX_BYTE_COUNT`, `PROTOCOL_VERSION + 1`).
+- Commits: review-fix commits follow their tasks (`task N quality fixes`), then `phase verification formatting fix` (rustfmt of a Task 22 review test), `protocol_dump ends quietly when its output pipe closes` and `phase 4 deviations`.
+- Unnecessary steps: none. `./scripts/test/regenerate-replay-fixtures.sh` was also run in the final review; it rewrote `scripted_game.replay` and `scripted_game.checksums` byte-identically.

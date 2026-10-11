@@ -66,6 +66,10 @@ const LOADOUT_SERIAL: LoadoutSerial = LoadoutSerial {
 const SIZE_BUDGET_TICK: Tick = Tick(1_000_000);
 const GROWTH_TICK_COUNT: u32 = 300;
 const SNAPSHOT_SIZE_BUDGET_BYTES: usize = 32 * 1024;
+const EIGHT_PLAYER_COUNT: u32 = 8;
+const EIGHT_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES: usize = 128;
+const SIXTEEN_PLAYER_COUNT: u32 = 16;
+const SIXTEEN_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES: usize = 256;
 
 #[derive(Debug)]
 struct MalformedInputOutcomeCounts {
@@ -567,8 +571,14 @@ fn is_launching_spores(state: &GameState) -> bool {
 
 #[test]
 fn input_bundle_frame_fits_the_size_budgets() {
-    assert!(get_bundle_frame_length(&create_pressing_bundle(8)) <= 128);
-    assert!(get_bundle_frame_length(&create_pressing_bundle(16)) <= 256);
+    assert!(
+        get_bundle_frame_length(&create_pressing_bundle(EIGHT_PLAYER_COUNT))
+            <= EIGHT_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES
+    );
+    assert!(
+        get_bundle_frame_length(&create_pressing_bundle(SIXTEEN_PLAYER_COUNT))
+            <= SIXTEEN_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES
+    );
 }
 
 #[test]
@@ -579,7 +589,10 @@ fn snapshot_frame_at_the_player_cap_with_spores_in_flight_fits_the_size_budget()
         state: GameStateSerialOut::from(&state),
     }));
 
-    assert_eq!(state.alive_organism_count(), 32);
+    assert_eq!(
+        state.alive_organism_count(),
+        u32::from(protocol_limits::PLAYER_CAP_HIGHEST)
+    );
     assert!(is_launching_spores(&state));
     assert!(snapshot_frame.len() <= SNAPSHOT_SIZE_BUDGET_BYTES);
 }

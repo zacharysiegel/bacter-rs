@@ -120,14 +120,23 @@ mod tests {
     use shared::game::GameModeKind;
     use std::sync::atomic::Ordering;
 
+    const REMOVAL_POLL_ATTEMPTS: u32 = 500;
+    const REMOVAL_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    fn is_unregistered(registries: ServerRegistries) -> bool {
+        registries.games.is_empty()
+            && registries.game_titles.is_empty()
+            && registries.game_count.load(Ordering::SeqCst) == 0
+    }
+
     fn wait_for_removal(registries: ServerRegistries) {
         game_runtime::GAME_RUNTIME.block_on(async {
-            for _ in 0..500 {
-                if registries.games.is_empty() {
+            for _ in 0..REMOVAL_POLL_ATTEMPTS {
+                if is_unregistered(registries) {
                     break;
                 }
 
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(REMOVAL_POLL_INTERVAL).await;
             }
         });
     }

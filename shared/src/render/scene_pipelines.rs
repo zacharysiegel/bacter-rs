@@ -14,6 +14,12 @@ use crate::render::{cell_pipeline, shape_pipeline};
 /// Per instance; one triangle strip.
 pub const QUAD_VERTEX_COUNT: u32 = 4;
 
+/// Must match the camera's `@group` in scene_common.wgsl.
+pub const CAMERA_BIND_GROUP_INDEX: u32 = 0;
+
+/// Must match the camera's `@binding` in scene_common.wgsl.
+pub const CAMERA_UNIFORM_BINDING: u32 = 0;
+
 pub struct ScenePipelines {
     pub camera_bind_group_layout: BindGroupLayout,
     pub cell: RenderPipeline,
@@ -129,7 +135,7 @@ fn create_camera_bind_group_layout(device: &Device) -> BindGroupLayout {
     device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("bacter-camera-bind-group-layout"),
         entries: &[BindGroupLayoutEntry {
-            binding: 0,
+            binding: CAMERA_UNIFORM_BINDING,
             visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             ty: BindingType::Buffer {
                 ty: BufferBindingType::Uniform,

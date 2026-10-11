@@ -213,7 +213,7 @@ impl GameRenderer {
             multiview_mask: None,
         });
 
-        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        render_pass.set_bind_group(scene_pipelines::CAMERA_BIND_GROUP_INDEX, &self.camera_bind_group, &[]);
 
         draw_instances(&mut render_pass, &self.pipelines.shape, &self.tick_layer_buffers.shapes);
         draw_instances(&mut render_pass, &self.pipelines.cell, &self.tick_layer_buffers.cells);
@@ -285,7 +285,7 @@ fn create_camera_bind_group(device: &Device, pipelines: &ScenePipelines, camera_
         label: Some("bacter-camera-bind-group"),
         layout: &pipelines.camera_bind_group_layout,
         entries: &[BindGroupEntry {
-            binding: 0,
+            binding: scene_pipelines::CAMERA_UNIFORM_BINDING,
             resource: camera_buffer.as_entire_binding(),
         }],
     })

@@ -198,7 +198,8 @@ async fn join_game(
         return flow;
     }
 
-    let joiner: Joiner = match Joiner::try_from(joiner_serial_in) {
+    let joiner_conversion: Result<Joiner, RejectionKind> = Joiner::try_from(joiner_serial_in);
+    let joiner: Joiner = match joiner_conversion {
         Ok(joiner) => joiner,
         Err(rejection) => return reject(connection, RequestKind::JoinGame, rejection).await,
     };
@@ -225,7 +226,8 @@ async fn spectate_game(
         return flow;
     }
 
-    let screen_name: String = match protocol_limits::normalize_screen_name(&screen_name) {
+    let screen_name_normalization: Result<String, RejectionKind> = protocol_limits::normalize_screen_name(&screen_name);
+    let screen_name: String = match screen_name_normalization {
         Ok(screen_name) => screen_name,
         Err(rejection) => return reject(connection, RequestKind::SpectateGame, rejection).await,
     };
@@ -247,12 +249,14 @@ async fn enter_existing_game(
     password: Option<String>,
     join_kind: JoinKind,
 ) -> ConnectionFlow {
-    let password: Option<String> = match protocol_limits::normalize_password(password) {
+    let password_normalization: Result<Option<String>, RejectionKind> = protocol_limits::normalize_password(password);
+    let password: Option<String> = match password_normalization {
         Ok(password) => password,
         Err(rejection) => return reject(connection, request_kind, rejection).await,
     };
 
-    let Some(game_handle) = game_registry::get_game(connection.registries, game_id) else {
+    let registered_game_handle: Option<GameHandle> = game_registry::get_game(connection.registries, game_id);
+    let Some(game_handle) = registered_game_handle else {
         return reject(connection, request_kind, RejectionKind::GameNotFound).await;
     };
 
@@ -434,7 +438,8 @@ async fn update_appearance(connection: &mut Connection, appearance_serial: Appea
 
 /// Inputs outside a game, over the rate limit, or beyond a full input queue are dropped.
 fn send_input(connection: &mut Connection, player_input_serial_in: PlayerInputSerialIn) -> ConnectionFlow {
-    let Ok(input) = PlayerInput::try_from(player_input_serial_in) else {
+    let input_conversion: Result<PlayerInput, AppError> = PlayerInput::try_from(player_input_serial_in);
+    let Ok(input) = input_conversion else {
         return ConnectionFlow::Close(CloseCauseKind::ProtocolViolation(ProtocolViolationKind::Conversion));
     };
 

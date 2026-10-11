@@ -4,7 +4,11 @@ use tokio::sync::{mpsc, watch};
 
 use shared::ability::{FirstAbilityKind, Loadout, SecondAbilityKind, ThirdAbilityKind};
 use shared::game::{GameId, GameModeKind, GameSettings, GameState, GameSummary};
-use shared::member::{Appearance, Joiner, OrganismColorKind, SkinKind, TeamChoiceKind};
+use shared::geometry::WorldPoint;
+use shared::member::{
+    Appearance, Joiner, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind, TeamChoiceKind, TeamKind,
+};
+use shared::organism::Organism;
 use shared::world::WorldShapeKind;
 
 use crate::game::{GameHandle, GameInput, GameRequest};
@@ -55,6 +59,24 @@ pub fn create_joiner(screen_name: &str, team: TeamChoiceKind) -> Joiner {
         screen_name: String::from(screen_name),
         loadout: create_loadout(),
         team,
+    }
+}
+
+pub fn create_member(
+    member_id: MemberId,
+    screen_name: &str,
+    role: MemberRoleKind,
+    team: Option<TeamKind>,
+    is_alive: bool,
+) -> Member {
+    Member {
+        member_id,
+        screen_name: String::from(screen_name),
+        role,
+        loadout: Some(create_loadout()),
+        team,
+        score: Score::zero(),
+        organism: is_alive.then(|| Organism::new(WorldPoint { x: 100, y: 100 })),
     }
 }
 

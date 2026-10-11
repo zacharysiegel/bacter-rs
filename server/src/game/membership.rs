@@ -5,6 +5,7 @@ use shared::member::{
     Joiner, Member, MemberId, MemberRoleKind, TeamChoiceKind, TeamChoiceRejectionKind, TeamKind, TeamSizes,
 };
 use shared::protocol::{RejectionKind, protocol_limits};
+use shared::random::Pcg32;
 use shared::round::RoundPhase;
 
 use crate::game::PendingAdmissions;
@@ -16,9 +17,11 @@ pub struct JoinAdmission {
 }
 
 /// A survival join while a round is in progress admits the joiner without spawning it.
+/// `team_assignment_rng` is the server's own, never the game's.
 pub fn admit_join(
     state: &GameState,
     pending_admissions: &mut PendingAdmissions,
+    team_assignment_rng: &mut Pcg32,
     joiner: &Joiner,
 ) -> Result<JoinAdmission, RejectionKind> {
     check_new_member(state, pending_admissions, &joiner.screen_name)?;
@@ -30,7 +33,7 @@ pub fn admit_join(
         check_spawn_slot(state, pending_admissions)?;
     }
 
-    let team: Option<TeamKind> = resolve_team(state, pending_admissions, joiner.team, None, None)?;
+    let team: Option<TeamKind> = resolve_team(state, pending_admissions, team_assignment_rng, joiner.team, None, None)?;
     let mut member_events: Vec<MemberEvent> = vec![MemberEvent::Joined {
         member_id,
         screen_name: joiner.screen_name.clone(),
@@ -72,6 +75,7 @@ pub fn admit_spectate(
     check_member_limit(state, pending_admissions)?;
 
     let member_id: MemberId = pending_admissions.get_next_member_id(state);
+
     pending_admissions.record_member(screen_name, MemberRoleKind::Spectator);
 
     Ok(JoinAdmission {
@@ -86,9 +90,11 @@ pub fn admit_spectate(
     })
 }
 
+/// `team_assignment_rng` is the server's own, never the game's.
 pub fn admit_respawn(
     state: &GameState,
     pending_admissions: &mut PendingAdmissions,
+    team_assignment_rng: &mut Pcg32,
     member_id: MemberId,
     loadout: Loadout,
     team_choice: TeamChoiceKind,
@@ -101,7 +107,15 @@ pub fn admit_respawn(
         return Err(RejectionKind::RoundInProgress);
     }
 
-    let team: Option<TeamKind> = resolve_team(state, pending_admissions, team_choice, member.team, Some(member_id))?;
+    let team: Option<TeamKind> = resolve_team(
+        state,
+        pending_admissions,
+        team_assignment_rng,
+        team_choice,
+        member.team,
+        Some(member_id),
+    )?;
+
     pending_admissions.record_spawn(member_id, team);
 
     Ok(MemberEvent::SpawnRequested {
@@ -149,11 +163,13 @@ fn get_respawning_member<'state>(
 ) -> Result<&'state Member, RejectionKind> {
     let Some(member): Option<&Member> = state.members.get(&member_id) else {
         let is_pending_join: bool = member_id >= state.next_member_id;
-
-        return match is_pending_join {
-            true => Err(RejectionKind::NotDead),
-            false => Err(RejectionKind::NotInGame),
+        let rejection: RejectionKind = if is_pending_join {
+            RejectionKind::NotDead
+        } else {
+            RejectionKind::NotInGame
         };
+
+        return Err(rejection);
     };
 
     if member.organism.is_some() || pending_admissions.is_spawn_pending(member_id) {
@@ -167,10 +183,11 @@ fn is_round_in_progress(state: &GameState) -> bool {
     state.round.is_some_and(|round| matches!(round.phase, RoundPhase::Playing | RoundPhase::PostRound))
 }
 
-/// `None` outside skirmish; `Auto` takes the first smallest team in team order.
+/// `None` outside skirmish; `Auto` chooses uniformly among the smallest teams.
 fn resolve_team(
     state: &GameState,
     pending_admissions: &PendingAdmissions,
+    team_assignment_rng: &mut Pcg32,
     team_choice: TeamChoiceKind,
     current_team: Option<TeamKind>,
     excluded_member_id: Option<MemberId>,
@@ -180,10 +197,9 @@ fn resolve_team(
     };
 
     let team_sizes: TeamSizes = pending_admissions.get_team_sizes(state, team_count, excluded_member_id);
-    let smallest_team: Option<TeamKind> = team_sizes.get_smallest_teams().first().copied();
 
     let TeamChoiceKind::Team(requested_team) = team_choice else {
-        return Ok(smallest_team);
+        return Ok(choose_auto_team(&team_sizes, team_assignment_rng));
     };
 
     let team_choice_check: Result<(), TeamChoiceRejectionKind> =
@@ -197,9 +213,17 @@ fn resolve_team(
         }),
         Err(TeamChoiceRejectionKind::TeamNotInGame) => Err(RejectionKind::TeamUnbalanced {
             requested: requested_team,
-            smaller: smallest_team.unwrap_or(requested_team),
+            smaller: team_sizes.get_smallest_teams().first().copied().unwrap_or(requested_team),
         }),
     }
+}
+
+fn choose_auto_team(team_sizes: &TeamSizes, team_assignment_rng: &mut Pcg32) -> Option<TeamKind> {
+    let smallest_teams: Vec<TeamKind> = team_sizes.get_smallest_teams();
+    let smallest_team_count: u32 = u32::try_from(smallest_teams.len()).unwrap_or(u32::MAX);
+    let chosen_index: u32 = team_assignment_rng.below(smallest_team_count);
+
+    smallest_teams.get(chosen_index as usize).copied()
 }
 
 #[cfg(test)]
@@ -207,25 +231,18 @@ mod tests {
     use super::*;
     use crate::game::test_fixture;
     use shared::game::{GameModeKind, Tick};
-    use shared::geometry::WorldPoint;
-    use shared::member::Score;
-    use shared::organism::Organism;
     use shared::round::RoundState;
+
+    fn create_team_assignment_rng() -> Pcg32 {
+        Pcg32::from_seed(test_fixture::FIXTURE_SEED)
+    }
 
     fn add_participant(state: &mut GameState, screen_name: &str, team: Option<TeamKind>, is_alive: bool) -> MemberId {
         let member_id: MemberId = state.next_member_id;
-        state.members.insert(
-            member_id,
-            Member {
-                member_id,
-                screen_name: String::from(screen_name),
-                role: MemberRoleKind::Participant,
-                loadout: Some(test_fixture::create_loadout()),
-                team,
-                score: Score::zero(),
-                organism: is_alive.then(|| Organism::new(WorldPoint { x: 100, y: 100 })),
-            },
-        );
+        let member: Member =
+            test_fixture::create_member(member_id, screen_name, MemberRoleKind::Participant, team, is_alive);
+
+        state.members.insert(member_id, member);
         state.next_member_id = member_id.next();
 
         member_id
@@ -238,6 +255,14 @@ mod tests {
         member.loadout = None;
 
         member_id
+    }
+
+    fn get_joined_team(admission: &JoinAdmission) -> Option<TeamKind> {
+        let MemberEvent::Joined { team, .. } = admission.member_events[0] else {
+            panic!("the first member event of an admission is Joined");
+        };
+
+        team
     }
 
     fn set_round_phase(state: &mut GameState, phase: RoundPhase) {
@@ -254,7 +279,13 @@ mod tests {
         let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
         let joiner: Joiner = test_fixture::create_joiner("Blob", TeamChoiceKind::Auto);
 
-        let admission: JoinAdmission = admit_join(&state, &mut pending_admissions, &joiner).unwrap();
+        let admission: JoinAdmission = admit_join(
+            &state,
+            &mut pending_admissions,
+            &mut create_team_assignment_rng(),
+            &joiner,
+        )
+        .unwrap();
 
         assert_eq!(
             admission,
@@ -288,6 +319,7 @@ mod tests {
         let first_admission: JoinAdmission = admit_join(
             &state,
             &mut pending_admissions,
+            &mut create_team_assignment_rng(),
             &test_fixture::create_joiner("Blob", TeamChoiceKind::Auto),
         )
         .unwrap();
@@ -297,6 +329,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("Blob", TeamChoiceKind::Auto),
             ),
             Err(RejectionKind::ScreenNameTaken),
@@ -305,6 +338,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("Other", TeamChoiceKind::Auto),
             ),
             Err(RejectionKind::GameFull),
@@ -320,6 +354,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("Blob", TeamChoiceKind::Auto),
             ),
             Err(RejectionKind::ScreenNameTaken),
@@ -338,6 +373,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("Blob", TeamChoiceKind::Auto),
             ),
             Err(RejectionKind::GameFull),
@@ -355,11 +391,24 @@ mod tests {
         let admission: JoinAdmission = admit_join(
             &state,
             &mut pending_admissions,
+            &mut create_team_assignment_rng(),
             &test_fixture::create_joiner("Late", TeamChoiceKind::Auto),
         )
         .unwrap();
 
-        assert_eq!(admission.member_events.len(), 1);
+        assert_eq!(
+            admission,
+            JoinAdmission {
+                member_id: MemberId(2),
+                member_events: vec![MemberEvent::Joined {
+                    member_id: MemberId(2),
+                    screen_name: String::from("Late"),
+                    role: MemberRoleKind::Participant,
+                    loadout: Some(test_fixture::create_loadout()),
+                    team: None,
+                }],
+            },
+        );
         assert!(!pending_admissions.is_spawn_pending(admission.member_id));
     }
 
@@ -368,34 +417,55 @@ mod tests {
         let mut state: GameState = test_fixture::create_state(GameModeKind::Skirmish, 8);
         add_participant(&mut state, "First", Some(TeamKind::Red), true);
         let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
+        let mut team_assignment_rng: Pcg32 = create_team_assignment_rng();
 
-        let blue_admission: JoinAdmission = admit_join(
-            &state,
-            &mut pending_admissions,
-            &test_fixture::create_joiner("Second", TeamChoiceKind::Auto),
-        )
-        .unwrap();
-        let red_admission: JoinAdmission = admit_join(
-            &state,
-            &mut pending_admissions,
-            &test_fixture::create_joiner("Third", TeamChoiceKind::Auto),
-        )
-        .unwrap();
+        let joined_teams: Vec<Option<TeamKind>> = ["Second", "Third", "Fourth"]
+            .into_iter()
+            .map(|screen_name| {
+                let admission: JoinAdmission = admit_join(
+                    &state,
+                    &mut pending_admissions,
+                    &mut team_assignment_rng,
+                    &test_fixture::create_joiner(screen_name, TeamChoiceKind::Auto),
+                )
+                .unwrap();
 
+                get_joined_team(&admission)
+            })
+            .collect();
+
+        assert_eq!(joined_teams[0], Some(TeamKind::Blue));
         assert!(matches!(
-            blue_admission.member_events[0],
-            MemberEvent::Joined {
-                team: Some(TeamKind::Blue),
-                ..
-            },
+            (joined_teams[1], joined_teams[2]),
+            (Some(TeamKind::Red), Some(TeamKind::Blue)) | (Some(TeamKind::Blue), Some(TeamKind::Red)),
         ));
-        assert!(matches!(
-            red_admission.member_events[0],
-            MemberEvent::Joined {
-                team: Some(TeamKind::Red),
-                ..
-            },
-        ));
+    }
+
+    #[test]
+    fn resolve_team_auto_chooses_among_every_smallest_team() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::Skirmish, 8);
+        state.settings.team_count = Some(3);
+        add_participant(&mut state, "First", Some(TeamKind::Blue), true);
+        let pending_admissions: PendingAdmissions = PendingAdmissions::new();
+        let mut team_assignment_rng: Pcg32 = create_team_assignment_rng();
+
+        let chosen_teams: Vec<Option<TeamKind>> = (0..32)
+            .map(|_| {
+                resolve_team(
+                    &state,
+                    &pending_admissions,
+                    &mut team_assignment_rng,
+                    TeamChoiceKind::Auto,
+                    None,
+                    None,
+                )
+                .unwrap()
+            })
+            .collect();
+
+        assert!(chosen_teams.contains(&Some(TeamKind::Red)));
+        assert!(chosen_teams.contains(&Some(TeamKind::Green)));
+        assert!(chosen_teams.iter().all(|chosen_team| matches!(chosen_team, Some(TeamKind::Red | TeamKind::Green))));
     }
 
     #[test]
@@ -407,6 +477,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("Second", TeamChoiceKind::Team(TeamKind::Red)),
             ),
             Err(RejectionKind::TeamUnbalanced {
@@ -424,6 +495,7 @@ mod tests {
             admit_join(
                 &state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 &test_fixture::create_joiner("First", TeamChoiceKind::Team(TeamKind::Pink)),
             ),
             Err(RejectionKind::TeamUnbalanced {
@@ -440,6 +512,7 @@ mod tests {
         let admission: JoinAdmission = admit_join(
             &state,
             &mut PendingAdmissions::new(),
+            &mut create_team_assignment_rng(),
             &test_fixture::create_joiner("First", TeamChoiceKind::Team(TeamKind::Pink)),
         )
         .unwrap();
@@ -500,6 +573,7 @@ mod tests {
             admit_respawn(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Auto,
@@ -514,6 +588,7 @@ mod tests {
             admit_respawn(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Auto,
@@ -538,6 +613,7 @@ mod tests {
                 admit_respawn(
                     &state,
                     &mut pending_admissions,
+                    &mut create_team_assignment_rng(),
                     member_id,
                     test_fixture::create_loadout(),
                     TeamChoiceKind::Auto,
@@ -561,6 +637,7 @@ mod tests {
             admit_respawn(
                 &full_state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 full_member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Auto,
@@ -571,6 +648,7 @@ mod tests {
             admit_respawn(
                 &survival_state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 survival_member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Auto,
@@ -591,6 +669,7 @@ mod tests {
             admit_respawn(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Team(TeamKind::Red),
@@ -604,6 +683,7 @@ mod tests {
             admit_respawn(
                 &state,
                 &mut pending_admissions,
+                &mut create_team_assignment_rng(),
                 member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Team(TeamKind::Blue),
@@ -621,15 +701,20 @@ mod tests {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 8);
         let member_id: MemberId = add_spectator(&mut state, "Watcher");
 
-        assert!(
+        assert_eq!(
             admit_respawn(
                 &state,
                 &mut PendingAdmissions::new(),
+                &mut create_team_assignment_rng(),
                 member_id,
                 test_fixture::create_loadout(),
                 TeamChoiceKind::Auto,
-            )
-            .is_ok()
+            ),
+            Ok(MemberEvent::SpawnRequested {
+                member_id,
+                loadout: test_fixture::create_loadout(),
+                team: None,
+            }),
         );
     }
 }

@@ -91,20 +91,16 @@ mod tests {
     use super::*;
     use crate::game::test_fixture;
     use shared::game::GameModeKind;
-    use shared::geometry::WorldPoint;
-    use shared::member::{Member, Score};
-    use shared::organism::Organism;
+    use shared::member::Member;
 
     fn create_member(member_id: u32, role: MemberRoleKind, team: Option<TeamKind>, is_alive: bool) -> Member {
-        Member {
-            member_id: MemberId(member_id),
-            screen_name: format!("member {member_id}"),
+        test_fixture::create_member(
+            MemberId(member_id),
+            &format!("member {member_id}"),
             role,
-            loadout: Some(test_fixture::create_loadout()),
             team,
-            score: Score::zero(),
-            organism: is_alive.then(|| Organism::new(WorldPoint { x: 100, y: 100 })),
-        }
+            is_alive,
+        )
     }
 
     fn create_state_with_members(mode: GameModeKind, members: Vec<Member>) -> GameState {

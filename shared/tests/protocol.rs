@@ -570,7 +570,7 @@ fn is_launching_spores(state: &GameState) -> bool {
 }
 
 #[test]
-fn input_bundle_frame_fits_the_size_budgets() {
+fn encode_message_out_fits_pressing_input_bundles_within_size_budgets() {
     assert!(
         get_bundle_frame_length(&create_pressing_bundle(EIGHT_PLAYER_COUNT))
             <= EIGHT_PLAYER_INPUT_BUNDLE_SIZE_BUDGET_BYTES
@@ -582,7 +582,7 @@ fn input_bundle_frame_fits_the_size_budgets() {
 }
 
 #[test]
-fn snapshot_frame_at_the_player_cap_with_spores_in_flight_fits_the_size_budget() {
+fn encode_message_out_fits_a_full_game_snapshot_with_spores_in_flight_within_size_budget() {
     let state: GameState = create_full_game_with_spores_in_flight();
     let snapshot_frame: Vec<u8> = protocol::encode_message_out(&MessageSerialOut::Snapshot(GameSnapshotSerialOut {
         game_id: 1,

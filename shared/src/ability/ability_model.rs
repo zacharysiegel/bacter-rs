@@ -349,6 +349,12 @@ impl AbilityPressSet {
         }
     }
 
+    pub fn intersection(self, other: AbilityPressSet) -> AbilityPressSet {
+        AbilityPressSet {
+            bits: self.bits & other.bits,
+        }
+    }
+
     /// The first and second slots carry the shot abilities.
     pub fn has_shot_slot_press(self) -> bool {
         self.contains(AbilityPressSet::FIRST) || self.contains(AbilityPressSet::SECOND)
@@ -722,5 +728,14 @@ mod tests {
         assert!(AbilityPressSet::SECOND.with(AbilityPressSet::THIRD).has_shot_slot_press());
         assert!(!AbilityPressSet::THIRD.with(AbilityPressSet::FOURTH).has_shot_slot_press());
         assert!(!AbilityPressSet::NONE.has_shot_slot_press());
+    }
+
+    #[test]
+    fn intersection_keeps_only_the_presses_in_both_sets() {
+        let pressed: AbilityPressSet = AbilityPressSet::FIRST.with(AbilityPressSet::THIRD);
+        let enabled: AbilityPressSet = AbilityPressSet::THIRD.with(AbilityPressSet::FOURTH);
+
+        assert_eq!(pressed.intersection(enabled), AbilityPressSet::THIRD);
+        assert_eq!(pressed.intersection(AbilityPressSet::NONE), AbilityPressSet::NONE);
     }
 }

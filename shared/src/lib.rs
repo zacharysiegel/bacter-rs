@@ -9,6 +9,9 @@ pub mod organism;
 pub mod play;
 pub mod protocol;
 pub mod random;
+// The server builds shared without `render`, so it never links wgpu.
+#[cfg(feature = "render")]
+pub mod render;
 pub mod replay;
 pub mod round;
 pub mod settings;

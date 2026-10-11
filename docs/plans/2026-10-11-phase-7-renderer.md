@@ -3599,3 +3599,18 @@ architecture docs for the renderer
 **Problem:** bacter-rs could simulate and follow a game but had no way to draw one.
 
 **Solution:** `shared/src/render/` behind the `render` feature: `RenderScene::from_state` builds GPU-free instance lists from a `GameState`, a tick layer (world, fields, secretions, cells) and a frame layer (interpolated spores and shots, crosshair); `GameRenderer` creates the surface before a compatible adapter (WebGPU, WebGL2 fallback, WebGL2 limits everywhere but the texture dimensions), draws everything with two instanced pipelines whose WGSL antialiases cells, skins, rings and discs from signed distances, and re-uploads the tick layer only when a tick is applied. Unit tests cover the scene, camera and instance encodings; an ignored test builds both pipelines on a headless device (`scripts/test/test-shaders.sh`). Repository: `bacter-rs` only.
+
+## Deviations from the plan
+
+- `shared/src/play/interpolation.rs` was modified, though the file structure does not list it (Task 5 review): `InterpolatedPoint::from_world_point` and `interpolation::get_pixels` (over a private `get_pixels_from_unrounded_subpixels`, shared with `get_interpolated_pixels`) replace the scene-private `get_pixel_point` and `get_pixels` of `scene.rs`. Their direct tests, `from_world_point_keeps_the_pixel_coordinates` and `get_pixels_keeps_partial_pixels`, were added in the final review.
+- `scene.rs` tests write the shrunk bounds through `geometry::SUBPIXELS_PER_PIXEL` instead of the literals 512 and 1024 (Task 5 review).
+- WGSL (Task 7 review):
+  - `cell.wgsl` declares `INSTANCE_SKIN_SOLID`, `INSTANCE_SKIN_KIND_MASK` and `INSTANCE_SCALE_SHIFT` instead of literal codes, masks and shifts, and dispatches on the skin with a `switch` (`Solid` shares the `default` arm) instead of an `if` chain.
+  - `shape.wgsl` declares `SHAPE_KIND_RECTANGLE` and chooses the distance in a new `get_shape_distance` `switch`.
+  - New tests: `cell_shader_source_declares_every_shared_constant` (every constant `cell.wgsl` shares with `cell_pipeline.rs`, and `CELL_HALF_WIDTH_PIXELS` against `geometry::CELL_WIDTH_PIXELS`) and `code_matches_the_shader_constant_of_every_shape_kind`.
+- `surface.rs` (Task 9 review): the configuration field and binding are named `configuration`, not `config`; `CreateSurfaceError` is imported; the empty-list case is its own test, `choose_surface_format_returns_none_for_no_formats`.
+- `scene_pipelines.rs` (Task 10 review): `CAMERA_BIND_GROUP_INDEX`, `CAMERA_UNIFORM_BINDING` and `INSTANCE_VERTEX_BUFFER_SLOT` replace the literal 0s in the bind group layout, `set_bind_group`, the bind group entry and `set_vertex_buffer`; `game_renderer.rs` imports `RequestAdapterError` and `RequestDeviceError`. The final review added `scene_common_shader_source_declares_the_camera_at_its_bind_group_and_binding`, which checks the first two against `scene_common.wgsl`.
+- `ConfiguredSurface::size` was removed in the final review: nothing called it.
+- `docs/architecture/testing.md` also lists the shader-constant tests.
+- Test counts: the `shared` library has 503 tests (1 ignored) instead of 497, from the six tests above; `./scripts/test/test-shaders.sh` therefore reports `503 filtered out`.
+- The commit list of Task 12 Step 6 has review-fix commits after Tasks 5, 6, 7, 9 and 10 and a final `phase 7 review fixes` commit before this section's commit.

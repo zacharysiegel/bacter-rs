@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use shared::ability::{AbilityPressSet, AimVector};
 use shared::game::{GameState, InputBundle, MemberEvent, PlayerInput, PlayerTickInput, Tick};
@@ -47,7 +48,13 @@ impl BundleBuilder {
         }
 
         member_input.last_client_tick = Some(input.client_tick);
-        self.pending_inputs.entry(member_id).or_insert_with(PendingInput::new).merge(input);
+
+        match self.pending_inputs.entry(member_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(PendingInput::from_input(input));
+            }
+            Entry::Occupied(mut entry) => entry.get_mut().merge(input),
+        }
 
         InputAcceptanceKind::Accepted
     }
@@ -143,7 +150,7 @@ pub struct BuiltBundle {
     pub cursor_corrections: Vec<CursorCorrection>,
 }
 
-/// Sent only to the clamped player.
+/// The cursor the server applied in place of the member's input at `client_tick`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CursorCorrection {
     pub member_id: MemberId,
@@ -168,12 +175,12 @@ struct PendingInput {
 }
 
 impl PendingInput {
-    fn new() -> PendingInput {
+    fn from_input(input: PlayerInput) -> PendingInput {
         PendingInput {
-            client_tick: Tick(0),
-            target: SubpixelPoint { x: 0, y: 0 },
-            ability_presses: AbilityPressSet::NONE,
-            aim: None,
+            client_tick: input.client_tick,
+            target: input.cursor,
+            ability_presses: input.ability_presses,
+            aim: input.aim.filter(|_| input.ability_presses.has_shot_slot_press()),
         }
     }
 

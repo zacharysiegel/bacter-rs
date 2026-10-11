@@ -64,6 +64,7 @@ impl Recipients {
             .iter()
             .find(|(_, recipient)| recipient.endpoint.connection_id == connection_id)
             .map(|(member_id, _)| *member_id)?;
+
         self.recipients.remove(&member_id);
 
         Some(member_id)
@@ -207,6 +208,7 @@ mod tests {
     use crate::socket::connection_model;
 
     const MEMBER_ID: MemberId = MemberId(3);
+    const SNAPSHOT_REQUEST_START_TICK: Tick = Tick(10);
 
     fn add_recipient(recipients: &mut Recipients, member_id: MemberId, snapshot_tick: Tick) -> Membership {
         let (endpoint, membership): (ConnectionEndpoint, Membership) =
@@ -251,15 +253,22 @@ mod tests {
     #[test]
     fn get_snapshot_member_ids_waits_for_the_minimum_interval_and_coalesces_requests() {
         let mut recipients: Recipients = Recipients::new();
-        let _membership: Membership = add_recipient(&mut recipients, MEMBER_ID, Tick(10));
+        let _membership: Membership = add_recipient(&mut recipients, MEMBER_ID, SNAPSHOT_REQUEST_START_TICK);
+        let tick_before_interval: Tick = Tick(SNAPSHOT_REQUEST_START_TICK.0 + SNAPSHOT_MINIMUM_INTERVAL_TICKS - 1);
+        let tick_at_interval: Tick = Tick(SNAPSHOT_REQUEST_START_TICK.0 + SNAPSHOT_MINIMUM_INTERVAL_TICKS);
 
         recipients.request_snapshot(MEMBER_ID);
         recipients.request_snapshot(MEMBER_ID);
 
-        assert_eq!(recipients.get_snapshot_member_ids(Tick(38)), Vec::new());
-        assert_eq!(recipients.get_snapshot_member_ids(Tick(39)), vec![MEMBER_ID]);
+        assert_eq!(recipients.get_snapshot_member_ids(tick_before_interval), Vec::new());
+        assert_eq!(recipients.get_snapshot_member_ids(tick_at_interval), vec![MEMBER_ID]);
 
-        recipients.send_snapshot(MEMBER_ID, Bytes::from_static(b"snapshot"), Tick(39), Instant::now());
+        recipients.send_snapshot(
+            MEMBER_ID,
+            Bytes::from_static(b"snapshot"),
+            tick_at_interval,
+            Instant::now(),
+        );
 
         assert_eq!(recipients.get_snapshot_member_ids(Tick(100)), Vec::new());
     }
@@ -269,6 +278,7 @@ mod tests {
         let mut recipients: Recipients = Recipients::new();
         let mut membership: Membership = add_recipient(&mut recipients, MEMBER_ID, Tick(0));
         let now: Instant = Instant::now();
+
         fill_queue(&mut recipients, now);
 
         assert_eq!(recipients.get_snapshot_member_ids(Tick(1)), Vec::new());
@@ -296,11 +306,12 @@ mod tests {
         let mut recipients: Recipients = Recipients::new();
         let membership: Membership = add_recipient(&mut recipients, MEMBER_ID, Tick(0));
         let now: Instant = Instant::now();
+
         fill_queue(&mut recipients, now);
 
         assert_eq!(
-            recipients.remove_departed(now + Duration::from_millis(9_999)),
-            Vec::new()
+            recipients.remove_departed(now + SLOW_CONSUMER_LIMIT - Duration::from_millis(1)),
+            Vec::new(),
         );
         assert_eq!(recipients.remove_departed(now + SLOW_CONSUMER_LIMIT), vec![MEMBER_ID]);
         assert!(!recipients.contains(MEMBER_ID));
@@ -326,9 +337,11 @@ mod tests {
     fn remove_connection_finds_the_member_of_a_connection() {
         let mut recipients: Recipients = Recipients::new();
         let _membership: Membership = add_recipient(&mut recipients, MEMBER_ID, Tick(0));
+        let member_connection_id: ConnectionId = ConnectionId(u64::from(MEMBER_ID.0));
+        let absent_connection_id: ConnectionId = ConnectionId(member_connection_id.0 + 1);
 
-        assert_eq!(recipients.remove_connection(ConnectionId(9)), None);
-        assert_eq!(recipients.remove_connection(ConnectionId(3)), Some(MEMBER_ID));
+        assert_eq!(recipients.remove_connection(absent_connection_id), None);
+        assert_eq!(recipients.remove_connection(member_connection_id), Some(MEMBER_ID));
         assert!(recipients.is_empty());
     }
 }

@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn configurer_sends_no_cache_header_for_a_missing_pkg_file() {
+    async fn configurer_omits_cache_control_for_a_missing_pkg_file() {
         let site_root: PathBuf = create_site_root("site-missing-pkg-file");
         let missing_wasm_path: String = format!("/{PKG_DIRECTORY_PREFIX}bacter-ffff.wasm");
 

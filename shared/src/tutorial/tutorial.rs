@@ -485,10 +485,10 @@ impl Tutorial {
 
     /// The player at the crosshair, the bot at its own cursor.
     fn place_missing_organisms(&mut self, player_cursor: WorldPoint) {
-        let mut cursors: Vec<(MemberId, WorldPoint)> = vec![(TUTORIAL_PLAYER_ID, player_cursor)];
-        cursors.extend(self.bot.map(|bot| (bot.member_id, bot.cursor)));
+        let mut member_cursors: Vec<(MemberId, WorldPoint)> = vec![(TUTORIAL_PLAYER_ID, player_cursor)];
+        member_cursors.extend(self.bot.map(|bot| (bot.member_id, bot.cursor)));
 
-        self.local_game.place_missing_organisms(&cursors);
+        self.local_game.place_missing_organisms(&member_cursors);
     }
 
     fn pause_for_secretion_when_due(&mut self) {
@@ -496,9 +496,10 @@ impl Tutorial {
             return;
         }
 
-        let Some(SporePhase::Flying { ends_at, .. }) =
-            self.get_member_organism(TUTORIAL_PLAYER_ID).map(|organism| &organism.abilities.spore)
-        else {
+        let player_spore: Option<&SporePhase> =
+            self.get_member_organism(TUTORIAL_PLAYER_ID).map(|organism| &organism.abilities.spore);
+
+        let Some(SporePhase::Flying { ends_at, .. }) = player_spore else {
             return;
         };
 
@@ -640,6 +641,10 @@ mod tests {
 
         fn bot(&self) -> TutorialBot {
             self.tutorial.bot.unwrap()
+        }
+
+        fn bot_organism(&self) -> &Organism {
+            test_fixture::get_organism(self.tutorial.state(), self.bot().member_id)
         }
 
         fn bot_organism_mut(&mut self) -> &mut Organism {
@@ -933,7 +938,7 @@ mod tests {
         harness.run_ticks(1);
 
         let bot: TutorialBot = harness.bot();
-        let bot_cursor: WorldPoint = harness.bot_organism_mut().cursor;
+        let bot_cursor: WorldPoint = harness.bot_organism().cursor;
 
         assert_eq!(bot.member_id, MemberId(1));
         assert_eq!(bot_cursor, bot.cursor);
@@ -968,7 +973,7 @@ mod tests {
         harness.run_ticks(ability_constants::COMPRESS_EFFECT_TICKS);
 
         assert_eq!(harness.tutorial.task(), TutorialTaskKind::Freeze);
-        assert_eq!(harness.bot_organism_mut().last_hitter, None);
+        assert_eq!(harness.bot_organism().last_hitter, None);
     }
 
     #[test]
@@ -1016,10 +1021,7 @@ mod tests {
         harness.run_ticks(TICKS_RUN_WHILE_PAUSED);
 
         assert_eq!(harness.tutorial.state().tick, paused_tick);
-        assert_eq!(
-            harness.tutorial.message_text(),
-            "Reactivate the ability to cause all spores to secrete an acid, killing enemy cells",
-        );
+        assert_eq!(harness.tutorial.stepping, TutorialSteppingKind::PausedForSecretion);
 
         harness.press(GameKeyKind::FourthAbility);
         harness.run_ticks(1);
@@ -1047,10 +1049,7 @@ mod tests {
             harness.tutorial.state().tick,
             launch_tick.plus(ability_constants::SPORE_FLIGHT_TICKS / 2),
         );
-        assert_eq!(
-            harness.tutorial.message_text(),
-            "Reactivate the ability to cause all spores to secrete an acid, killing enemy cells",
-        );
+        assert_eq!(harness.tutorial.stepping, TutorialSteppingKind::PausedForSecretion);
     }
 
     #[test]
@@ -1091,7 +1090,7 @@ mod tests {
         harness.run_ticks(1);
 
         assert_eq!(harness.player_organism().cursor, crosshair_point);
-        assert_eq!(harness.bot_organism_mut().cursor, bot.cursor);
+        assert_eq!(harness.bot_organism().cursor, bot.cursor);
     }
 
     #[test]

@@ -208,46 +208,56 @@ mod tests {
     }
 
     #[test]
-    fn ability_kinds_switch_to_the_shot_abilities_and_then_to_toxin() {
-        let extend_task: TutorialTaskKind = TutorialTaskKind::Extend;
-        let shoot_task: TutorialTaskKind = TutorialTaskKind::Shoot;
-        let toxin_task: TutorialTaskKind = TutorialTaskKind::Toxin;
+    fn first_ability_switches_to_compress_from_the_shoot_task() {
+        let first_abilities: [FirstAbilityKind; 3] = [
+            TutorialTaskKind::Extend.first_ability(),
+            TutorialTaskKind::Shoot.first_ability(),
+            TutorialTaskKind::Toxin.first_ability(),
+        ];
 
         assert_eq!(
-            (
-                extend_task.first_ability(),
-                extend_task.second_ability(),
-                extend_task.third_ability()
-            ),
-            (
+            first_abilities,
+            [
                 FirstAbilityKind::Extend,
+                FirstAbilityKind::Compress,
+                FirstAbilityKind::Compress,
+            ],
+        );
+    }
+
+    #[test]
+    fn second_ability_switches_to_freeze_from_the_shoot_task() {
+        let second_abilities: [SecondAbilityKind; 3] = [
+            TutorialTaskKind::Extend.second_ability(),
+            TutorialTaskKind::Shoot.second_ability(),
+            TutorialTaskKind::Toxin.second_ability(),
+        ];
+
+        assert_eq!(
+            second_abilities,
+            [
                 SecondAbilityKind::Immortality,
-                ThirdAbilityKind::Neutralize
-            ),
-        );
-        assert_eq!(
-            (
-                shoot_task.first_ability(),
-                shoot_task.second_ability(),
-                shoot_task.third_ability()
-            ),
-            (
-                FirstAbilityKind::Compress,
                 SecondAbilityKind::Freeze,
-                ThirdAbilityKind::Neutralize
-            ),
-        );
-        assert_eq!(
-            (
-                toxin_task.first_ability(),
-                toxin_task.second_ability(),
-                toxin_task.third_ability()
-            ),
-            (
-                FirstAbilityKind::Compress,
                 SecondAbilityKind::Freeze,
-                ThirdAbilityKind::Toxin
-            ),
+            ],
+        );
+    }
+
+    #[test]
+    fn third_ability_switches_to_toxin_from_the_toxin_task() {
+        let third_abilities: [ThirdAbilityKind; 3] = [
+            TutorialTaskKind::Extend.third_ability(),
+            TutorialTaskKind::Shoot.third_ability(),
+            TutorialTaskKind::Toxin.third_ability(),
+        ];
+
+        assert_eq!(
+            third_abilities,
+            [
+                ThirdAbilityKind::Neutralize,
+                ThirdAbilityKind::Neutralize,
+                ThirdAbilityKind::Toxin,
+            ],
         );
     }
 

@@ -88,7 +88,7 @@
 - Create `shared/src/tutorial/tutorial.rs`: `TutorialTaskKind`, `DisplayModeKind`, `TutorialSteppingKind`, `Tutorial`.
 - Modify `server/tests/helpers/test_server.rs`: `TestClient::receive_binary_frame`.
 - Create `server/tests/client_session.rs`: two `ClientSession`s against the in-process server.
-- Modify `docs/architecture/overview.md`, `docs/architecture/client-web.md`, `docs/architecture/testing.md`: the module tree, `ConnectionLost`, the headless test.
+- Modify `docs/architecture/overview.md`, `docs/architecture/client-web.md`, `docs/architecture/testing.md`: the module tree, `ConnectionLost`, the further `ClientSession` functions, the headless test.
 
 ---
 
@@ -807,7 +807,6 @@ pub enum KeyTransitionKind {
     Released,
 }
 
-/// `KeyboardEvent.repeat` on the web.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyRepeatKind {
     Initial,
@@ -1301,7 +1300,6 @@ In `shared/src/play/player_controls.rs`, replace everything above `#[cfg(test)]`
 use crate::geometry::SubpixelPoint;
 use crate::play::{CrosshairController, KeyboardState};
 
-/// Owned by the platform and lent to every scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerControls {
     pub keyboard: KeyboardState,
@@ -4435,22 +4433,22 @@ impl SessionDriver {
     }
 
     async fn play_until_tick(&mut self, final_tick: Tick) {
-        let playing = async {
-            let mut frame_interval: Interval = tokio::time::interval(FRAME_PERIOD);
-
-            while self.applied_tick().is_none_or(|applied_tick| applied_tick < final_tick) {
-                let driver_event: DriverEventKind = tokio::select! {
-                    frame = self.client.receive_binary_frame() => DriverEventKind::FrameReceived(frame),
-                    _ = frame_interval.tick() => DriverEventKind::FrameDue,
-                };
-
-                self.handle_driver_event(driver_event).await;
-            }
-        };
-
-        tokio::time::timeout(test_server::PLAY_TIMEOUT, playing)
+        tokio::time::timeout(test_server::PLAY_TIMEOUT, self.play_frames_until_tick(final_tick))
             .await
             .expect("the session reaches the final tick within the play timeout");
+    }
+
+    async fn play_frames_until_tick(&mut self, final_tick: Tick) {
+        let mut frame_interval: Interval = tokio::time::interval(FRAME_PERIOD);
+
+        while self.applied_tick().is_none_or(|applied_tick| applied_tick < final_tick) {
+            let driver_event: DriverEventKind = tokio::select! {
+                frame = self.client.receive_binary_frame() => DriverEventKind::FrameReceived(frame),
+                _ = frame_interval.tick() => DriverEventKind::FrameDue,
+            };
+
+            self.handle_driver_event(driver_event).await;
+        }
     }
 
     async fn handle_driver_event(&mut self, driver_event: DriverEventKind) {
@@ -5589,7 +5587,6 @@ use crate::random::Pcg32;
 
 /// The original's default range plus 30.
 pub const TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS: i64 = 80;
-/// Bright colours which would hide the crosshair.
 pub const TUTORIAL_BOT_EXCLUDED_COLORS: [OrganismColorKind; 2] = [OrganismColorKind::Sun, OrganismColorKind::Lime];
 /// A world too small for the minimum distance takes the last candidate.
 const BOT_POSITION_ATTEMPT_LIMIT: u32 = 64;
@@ -7174,14 +7171,27 @@ with:
 ```text
                   interpolation.rs       projectile interpolation
                   local_game.rs          LocalGame, LocalJoiner, PixelSize (local settings, stepping, placement, resize)
-                  message_text.rs        get_message_text
+                  message_text.rs        get_message_text, TransientMessageKind
 tutorial/         tutorial.rs            Tutorial, TutorialTaskKind
                   tutorial_bot.rs        TutorialBot, bot placement
 title/            title_scene.rs         TitleScene (10 dummy organisms)
 settings/         settings.rs            SettingKey, SettingValue, SettingsStore, Setting (eafora pattern), ClientSettingKind
 ```
 
-- [ ] **Step 2: Edit the client effect**
+- [ ] **Step 2: Edit the client session**
+
+In `docs/architecture/client-web.md`, replace:
+
+```text
+  - `fn render_state(&self) -> Option<&GameState>`; `fn own_member_state(&self) -> Option<OwnMemberStateKind>`.
+```
+
+with:
+
+```text
+  - `fn render_state(&self) -> Option<&GameState>`; `fn own_member_state(&self) -> Option<OwnMemberStateKind>`.
+  - `fn advance_frame(&mut self, now_milliseconds: f64, controls: &mut PlayerControls, input_focus: InputFocusKind) -> FrameOutput` (the `Online` arm of `ActiveScene::advance_frame`); `fn game_id(&self) -> Option<GameId>`; `fn own_member_id(&self) -> Option<MemberId>`; `fn message_text(&self) -> Option<String>` (the game message, or "Catching up" during a resync).
+```
 
 In `docs/architecture/client-web.md`, replace:
 
@@ -7224,13 +7234,13 @@ with:
 
 - [ ] **Step 4: Verify the edits**
 
-Run: `grep -c "local_game.rs\|ConnectionLost(Option<CloseReasonKind>)\|used by every file below\|play one game and compute identical checksums" docs/architecture/overview.md docs/architecture/client-web.md docs/architecture/testing.md`
+Run: `grep -c "local_game.rs\|ConnectionLost(Option<CloseReasonKind>)\|fn own_member_id(&self)\|used by every file below\|play one game and compute identical checksums" docs/architecture/overview.md docs/architecture/client-web.md docs/architecture/testing.md`
 
 Expected, one line per file in any order:
 
 ```text
 docs/architecture/overview.md:1
-docs/architecture/client-web.md:1
+docs/architecture/client-web.md:2
 docs/architecture/testing.md:2
 ```
 
@@ -7302,6 +7312,7 @@ Expected, oldest first (review-fix commits, if any, sit after their task):
 
 ```text
 phase 6 plan
+phase 6 plan review
 subpixel rounding in shared geometry
 ability press set intersection
 client settings

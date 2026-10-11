@@ -49,6 +49,10 @@ impl GameState {
 
         u32::try_from(alive_organism_count).unwrap_or(u32::MAX)
     }
+
+    pub fn is_at_player_cap(&self) -> bool {
+        self.alive_organism_count() >= u32::from(self.settings.player_cap)
+    }
 }
 
 #[cfg(test)]

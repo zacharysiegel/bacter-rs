@@ -36,6 +36,10 @@ pub enum RoundPhase {
     PostRound,
 }
 
+pub fn is_round_in_progress(state: &GameState) -> bool {
+    state.round.is_some_and(|round| matches!(round.phase, RoundPhase::Playing | RoundPhase::PostRound))
+}
+
 pub fn run_survival_shrink_phase(state: &mut GameState) {
     let is_playing: bool = state.round.is_some_and(|round| round.phase == RoundPhase::Playing);
 
@@ -196,9 +200,7 @@ mod tests {
     #[test]
     fn run_round_transition_phase_counts_spectators_out() {
         let mut state: GameState = create_survival_state(1, RoundPhase::Waiting);
-        let mut spectator: Member = test_fixture::create_participant(MemberId(1));
-        spectator.role = MemberRoleKind::Spectator;
-        state.members.insert(MemberId(1), spectator);
+        state.members.insert(MemberId(1), test_fixture::create_spectator(MemberId(1)));
 
         assert_eq!(run_round_transition_phase(&mut state, Tick(1001)), Vec::new());
         assert_eq!(get_phase(&state), RoundPhase::Waiting);

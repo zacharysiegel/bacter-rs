@@ -6,7 +6,7 @@ use shared::member::{
 };
 use shared::protocol::{RejectionKind, protocol_limits};
 use shared::random::Pcg32;
-use shared::round::RoundPhase;
+use shared::round;
 
 use crate::game::PendingAdmissions;
 use crate::game::pending_admissions;
@@ -29,7 +29,7 @@ pub fn admit_join(
     check_member_limit(state, pending_admissions)?;
 
     let member_id: MemberId = pending_admissions.get_next_member_id(state);
-    let spawns: bool = !is_round_in_progress(state);
+    let spawns: bool = !round::is_round_in_progress(state);
 
     if spawns {
         check_spawn_slot(state, pending_admissions)?;
@@ -103,7 +103,7 @@ pub fn admit_respawn(
 
     check_spawn_slot(state, pending_admissions)?;
 
-    if is_round_in_progress(state) {
+    if round::is_round_in_progress(state) {
         return Err(RejectionKind::RoundInProgress);
     }
 
@@ -178,10 +178,6 @@ fn get_respawning_member<'state>(
     Ok(member)
 }
 
-fn is_round_in_progress(state: &GameState) -> bool {
-    state.round.is_some_and(|round| matches!(round.phase, RoundPhase::Playing | RoundPhase::PostRound))
-}
-
 /// `None` outside skirmish; `Auto` chooses uniformly among the smallest teams.
 fn resolve_team(
     state: &GameState,
@@ -232,7 +228,7 @@ mod tests {
     use super::*;
     use crate::game::test_fixture;
     use shared::game::{GameModeKind, Tick};
-    use shared::round::RoundState;
+    use shared::round::{RoundPhase, RoundState};
 
     fn create_team_assignment_rng() -> Pcg32 {
         Pcg32::from_seed(test_fixture::FIXTURE_SEED)

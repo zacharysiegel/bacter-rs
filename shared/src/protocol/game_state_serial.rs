@@ -461,10 +461,7 @@ mod tests {
             state.members.insert(member_id, member);
         }
 
-        let mut spectator: Member = test_fixture::create_participant(MemberId(5));
-        spectator.role = MemberRoleKind::Spectator;
-        spectator.loadout = None;
-        state.members.insert(MemberId(5), spectator);
+        state.members.insert(MemberId(5), test_fixture::create_spectator(MemberId(5)));
 
         state
     }

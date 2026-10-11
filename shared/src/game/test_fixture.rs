@@ -65,6 +65,14 @@ pub fn create_participant(member_id: MemberId) -> Member {
     }
 }
 
+pub fn create_spectator(member_id: MemberId) -> Member {
+    let mut member: Member = create_participant(member_id);
+    member.role = MemberRoleKind::Spectator;
+    member.loadout = None;
+
+    member
+}
+
 pub fn create_participant_with_organism(member_id: MemberId, position: WorldPoint) -> Member {
     let mut member: Member = create_participant(member_id);
     member.organism = Some(Organism::new(position));

@@ -58,7 +58,7 @@ mod tests {
     use super::*;
     use crate::game::test_fixture;
     use crate::geometry::WorldPoint;
-    use crate::member::{Member, MemberId, MemberRoleKind};
+    use crate::member::{Member, MemberId};
     use crate::world::WorldShapeKind;
 
     #[test]
@@ -67,10 +67,7 @@ mod tests {
             test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
         state.members.insert(MemberId(1), test_fixture::create_participant(MemberId(1)));
 
-        let mut spectator: Member = test_fixture::create_participant(MemberId(2));
-        spectator.role = MemberRoleKind::Spectator;
-        spectator.loadout = None;
-        state.members.insert(MemberId(2), spectator);
+        state.members.insert(MemberId(2), test_fixture::create_spectator(MemberId(2)));
 
         assert_eq!(
             GameSummary::from_game_state(GameId(4), &state, true),

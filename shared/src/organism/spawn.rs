@@ -7,7 +7,7 @@ use crate::geometry::{SubpixelPoint, WorldPoint};
 use crate::member::{Member, MemberId, MemberRoleKind, TeamKind};
 use crate::organism::Organism;
 use crate::random::Pcg32;
-use crate::round::RoundPhase;
+use crate::round;
 use crate::world::{World, WorldBounds, WorldShapeKind};
 
 pub const SPAWN_ATTEMPT_LIMIT: u32 = 64;
@@ -66,9 +66,7 @@ pub fn force_spawn_participants(state: &mut GameState) -> Vec<SimulationEvent> {
     let mut simulation_events: Vec<SimulationEvent> = Vec::new();
 
     for member_id in participant_ids {
-        let is_at_player_cap: bool = state.alive_organism_count() >= u32::from(state.settings.player_cap);
-
-        if is_at_player_cap {
+        if state.is_at_player_cap() {
             break;
         }
 
@@ -147,18 +145,15 @@ fn spawn_at_found_position(state: &mut GameState, member_id: MemberId) -> Simula
 }
 
 fn get_spawn_rejection(state: &GameState, member: &Member) -> Option<SpawnRejectionKind> {
-    let is_round_in_progress: bool =
-        state.round.is_some_and(|round| matches!(round.phase, RoundPhase::Playing | RoundPhase::PostRound));
-
     if member.organism.is_some() {
         return Some(SpawnRejectionKind::AlreadyAlive);
     }
 
-    if state.alive_organism_count() >= u32::from(state.settings.player_cap) {
+    if state.is_at_player_cap() {
         return Some(SpawnRejectionKind::CapReached);
     }
 
-    if is_round_in_progress {
+    if round::is_round_in_progress(state) {
         return Some(SpawnRejectionKind::RoundInProgress);
     }
 
@@ -226,7 +221,7 @@ mod tests {
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelVector};
     use crate::member::OrganismColorKind;
-    use crate::round::RoundState;
+    use crate::round::{RoundPhase, RoundState};
 
     const SPAWNING_MEMBER_ID: MemberId = MemberId(0);
     const HAZARD_OWNER_ID: MemberId = MemberId(1);
@@ -428,10 +423,7 @@ mod tests {
     #[test]
     fn spawn_member_converts_a_spectator_and_spawns_one_cell() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::Skirmish, WorldShapeKind::Rectangle, 800);
-        let mut spectator: Member = test_fixture::create_participant(SPAWNING_MEMBER_ID);
-        spectator.role = MemberRoleKind::Spectator;
-        spectator.loadout = None;
-        state.members.insert(SPAWNING_MEMBER_ID, spectator);
+        state.members.insert(SPAWNING_MEMBER_ID, test_fixture::create_spectator(SPAWNING_MEMBER_ID));
 
         let simulation_event: Option<SimulationEvent> = spawn_member(
             &mut state,
@@ -646,10 +638,7 @@ mod tests {
     #[test]
     fn force_spawn_participants_never_spawns_a_spectator() {
         let mut state: GameState = create_survival_state_with_participants(1);
-        let mut spectator: Member = test_fixture::create_participant(MemberId(1));
-        spectator.role = MemberRoleKind::Spectator;
-        spectator.loadout = None;
-        state.members.insert(MemberId(1), spectator);
+        state.members.insert(MemberId(1), test_fixture::create_spectator(MemberId(1)));
 
         force_spawn_participants(&mut state);
 

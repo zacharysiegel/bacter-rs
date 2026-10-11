@@ -1,7 +1,7 @@
 use crate::game::GameState;
 use crate::member::{Member, MemberId, MemberRoleKind};
 use crate::play::crosshair;
-use crate::round::RoundPhase;
+use crate::round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OwnMemberStateKind {
@@ -49,21 +49,15 @@ pub fn get_respawn_key_outcome(state: &GameState, member_id: MemberId) -> Respaw
         Some(OwnMemberStateKind::DeadParticipant | OwnMemberStateKind::Spectator)
     );
 
-    if !is_without_organism || !is_spawn_allowed_by_round(state) {
+    if !is_without_organism || round::is_round_in_progress(state) {
         return RespawnKeyOutcomeKind::Ignore;
     }
 
-    let is_at_player_cap: bool = state.alive_organism_count() >= u32::from(state.settings.player_cap);
-
-    if is_at_player_cap {
+    if state.is_at_player_cap() {
         return RespawnKeyOutcomeKind::ShowGameAtCapacity;
     }
 
     RespawnKeyOutcomeKind::OpenRespawnMenu
-}
-
-fn is_spawn_allowed_by_round(state: &GameState) -> bool {
-    state.round.is_none_or(|round| matches!(round.phase, RoundPhase::Waiting | RoundPhase::PreRound))
 }
 
 #[cfg(test)]
@@ -71,19 +65,11 @@ mod tests {
     use super::*;
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::WorldPoint;
-    use crate::round::RoundState;
+    use crate::round::{RoundPhase, RoundState};
     use crate::world::WorldShapeKind;
 
     const OWN_MEMBER_ID: MemberId = MemberId(0);
     const OTHER_MEMBER_ID: MemberId = MemberId(1);
-
-    fn create_spectator(member_id: MemberId) -> Member {
-        let mut member: Member = test_fixture::create_participant(member_id);
-        member.role = MemberRoleKind::Spectator;
-        member.loadout = None;
-
-        member
-    }
 
     fn create_state_with_own_member(mode: GameModeKind, own_member: Member) -> GameState {
         let mut state: GameState = test_fixture::create_state(mode, WorldShapeKind::Rectangle, 800);
@@ -113,7 +99,7 @@ mod tests {
             OwnMemberStateKind::DeadParticipant,
         );
         assert_eq!(
-            OwnMemberStateKind::from_member(&create_spectator(OWN_MEMBER_ID)),
+            OwnMemberStateKind::from_member(&test_fixture::create_spectator(OWN_MEMBER_ID)),
             OwnMemberStateKind::Spectator,
         );
     }
@@ -167,7 +153,7 @@ mod tests {
     #[test]
     fn get_respawn_key_outcome_shows_the_capacity_message_at_the_cap() {
         let mut state: GameState =
-            create_state_with_own_member(GameModeKind::Skirmish, create_spectator(OWN_MEMBER_ID));
+            create_state_with_own_member(GameModeKind::Skirmish, test_fixture::create_spectator(OWN_MEMBER_ID));
         state.settings.player_cap = 1;
         state.members.insert(
             OTHER_MEMBER_ID,

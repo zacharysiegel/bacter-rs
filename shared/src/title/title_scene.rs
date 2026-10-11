@@ -7,10 +7,11 @@ use crate::play::{FrameOutput, FramePacer, LocalGame, LocalJoiner, PixelSize};
 use crate::random::Pcg32;
 
 pub const TITLE_DUMMY_COUNT: usize = 10;
-pub const TITLE_QUADRANT_LIMIT: u32 = TITLE_DUMMY_COUNT as u32 / 4 + 1;
-const TITLE_PLAYER_CAP: u8 = 10;
+const QUADRANT_COUNT: usize = 4;
+pub const TITLE_QUADRANT_LIMIT: u32 = TITLE_DUMMY_COUNT as u32 / QUADRANT_COUNT as u32 + 1;
+const TITLE_PLAYER_CAP: u8 = TITLE_DUMMY_COUNT as u8;
 /// In half-world units: top left, top right, bottom right, bottom left.
-const QUADRANT_OFFSETS: [(i64, i64); 4] = [(0, 0), (1, 0), (1, 1), (0, 1)];
+const QUADRANT_OFFSETS: [(i64, i64); QUADRANT_COUNT] = [(0, 0), (1, 0), (1, 1), (0, 1)];
 
 /// Dummy organisms growing in a local game, never steered.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,7 +79,7 @@ impl TitleScene {
 }
 
 fn create_dummies(scene_rng: &mut Pcg32, world_size: PixelSize) -> Vec<LocalJoiner> {
-    let mut quadrant_counts: [u32; 4] = [0; 4];
+    let mut quadrant_counts: [u32; QUADRANT_COUNT] = [0; QUADRANT_COUNT];
 
     (0..TITLE_DUMMY_COUNT)
         .map(|index| LocalJoiner {
@@ -98,7 +99,11 @@ fn draw_appearance(scene_rng: &mut Pcg32) -> Appearance {
 }
 
 /// Uniform in a quadrant drawn among those still below the quadrant limit.
-fn draw_cursor(scene_rng: &mut Pcg32, world_size: PixelSize, quadrant_counts: &mut [u32; 4]) -> WorldPoint {
+fn draw_cursor(
+    scene_rng: &mut Pcg32,
+    world_size: PixelSize,
+    quadrant_counts: &mut [u32; QUADRANT_COUNT],
+) -> WorldPoint {
     let open_quadrant_indices: Vec<usize> = (0..QUADRANT_OFFSETS.len())
         .filter(|quadrant_index| quadrant_counts[*quadrant_index] < TITLE_QUADRANT_LIMIT)
         .collect();
@@ -158,7 +163,7 @@ mod tests {
         let title_scene: TitleScene = TitleScene::new(WINDOW_SIZE, SEED);
         let world_size: PixelSize = local_game::get_world_size(WINDOW_SIZE);
         let dummy_organisms: Vec<&Organism> = get_dummy_organisms(&title_scene);
-        let mut quadrant_counts: [u32; 4] = [0; 4];
+        let mut quadrant_counts: [u32; QUADRANT_COUNT] = [0; QUADRANT_COUNT];
 
         for organism in &dummy_organisms {
             quadrant_counts[get_quadrant_index(organism.cursor, world_size)] += 1;

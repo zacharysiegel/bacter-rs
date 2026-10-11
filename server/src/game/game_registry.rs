@@ -133,7 +133,9 @@ mod tests {
         let registries: ServerRegistries = ServerRegistries::leaked();
         registries.game_count.store(protocol_limits::GAME_LIMIT_PER_SERVER, Ordering::SeqCst);
 
-        assert_eq!(reserve_game(registries, "Arena"), Err(RejectionKind::ServerFull));
+        let over_limit_reservation: Result<GameReservation, RejectionKind> = reserve_game(registries, "Arena");
+
+        assert_eq!(over_limit_reservation, Err(RejectionKind::ServerFull));
         assert_eq!(
             registries.game_count.load(Ordering::SeqCst),
             protocol_limits::GAME_LIMIT_PER_SERVER

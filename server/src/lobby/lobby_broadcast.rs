@@ -19,7 +19,7 @@ const LOBBY_POLL_PERIOD: Duration = Duration::from_millis(250);
 
 pub static LOBBY_SUBSCRIBERS: LazyLock<DashMap<ConnectionId, mpsc::Sender<Bytes>>> = LazyLock::new(DashMap::new);
 
-/// The revision changes whenever a summary or the online client count does.
+/// The revision changes whenever the observed game list differs from the last observed one.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LobbyRevision {
     revision: u64,
@@ -65,9 +65,11 @@ impl LobbyRevision {
 
 /// Sends the current list at once.
 pub fn subscribe(registries: ServerRegistries, connection_id: ConnectionId, lobby_sender: mpsc::Sender<Bytes>) {
+    registries.lobby_subscribers.insert(connection_id, lobby_sender.clone());
+
     let game_list_frame: Bytes = game_list::get_game_list(registries).encode_frame();
+
     let _ = lobby_sender.try_send(game_list_frame);
-    registries.lobby_subscribers.insert(connection_id, lobby_sender);
 }
 
 pub fn unsubscribe(registries: ServerRegistries, connection_id: ConnectionId) {
@@ -77,6 +79,7 @@ pub fn unsubscribe(registries: ServerRegistries, connection_id: ConnectionId) {
 pub async fn run_lobby_task(registries: ServerRegistries) {
     let mut interval: Interval = tokio::time::interval(LOBBY_POLL_PERIOD);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
     let mut lobby_revision: LobbyRevision = LobbyRevision::new();
 
     loop {
@@ -86,6 +89,7 @@ pub async fn run_lobby_task(registries: ServerRegistries) {
         password_failure_limit::forget_expired_failures(registries.password_failures_per_ip, now);
 
         lobby_revision.observe(game_list::get_game_list(registries));
+
         let due_game_list: Option<&GameList> = lobby_revision.take_due_list(now);
 
         if let Some(game_list) = due_game_list {
@@ -148,7 +152,7 @@ mod tests {
 
         lobby_revision.observe(create_game_list(1, 1));
 
-        assert_eq!(lobby_revision.take_due_list(start + Duration::from_millis(999)), None);
+        assert_eq!(lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL - Duration::from_millis(1)), None);
         assert_eq!(
             lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL),
             Some(&create_game_list(1, 1)),
@@ -168,6 +172,14 @@ mod tests {
             MessageSerialOut::GameList { .. },
         ));
         assert!(registries.lobby_subscribers.contains_key(&ConnectionId(1)));
+    }
+
+    #[test]
+    fn unsubscribe_removes_the_subscriber() {
+        let registries: ServerRegistries = ServerRegistries::leaked();
+        let (lobby_sender, _lobby_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) =
+            mpsc::channel(LOBBY_CHANNEL_CAPACITY);
+        subscribe(registries, ConnectionId(1), lobby_sender);
 
         unsubscribe(registries, ConnectionId(1));
 

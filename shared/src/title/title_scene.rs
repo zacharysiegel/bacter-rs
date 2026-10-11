@@ -10,6 +10,7 @@ pub const TITLE_DUMMY_COUNT: usize = 10;
 const QUADRANT_COUNT: usize = 4;
 pub const TITLE_QUADRANT_LIMIT: u32 = TITLE_DUMMY_COUNT as u32 / QUADRANT_COUNT as u32 + 1;
 const TITLE_PLAYER_CAP: u8 = TITLE_DUMMY_COUNT as u8;
+const _: () = assert!(TITLE_QUADRANT_LIMIT as usize * QUADRANT_COUNT >= TITLE_DUMMY_COUNT);
 /// In half-world units: top left, top right, bottom right, bottom left.
 const QUADRANT_OFFSETS: [(i64, i64); QUADRANT_COUNT] = [(0, 0), (1, 0), (1, 1), (0, 1)];
 
@@ -69,7 +70,9 @@ impl TitleScene {
 
     pub fn resize(&mut self, window_size: PixelSize) {
         let old_size: PixelSize = self.local_game.world_size();
+
         self.local_game.resize(window_size);
+
         let new_size: PixelSize = self.local_game.world_size();
 
         for (_, cursor) in self.dummy_cursors.iter_mut() {
@@ -108,6 +111,7 @@ fn draw_cursor(
         .filter(|quadrant_index| quadrant_counts[*quadrant_index] < TITLE_QUADRANT_LIMIT)
         .collect();
     let quadrant_index: usize = local_game::draw_element(scene_rng, &open_quadrant_indices).unwrap_or(0);
+
     quadrant_counts[quadrant_index] += 1;
 
     let (x_offset, y_offset): (i64, i64) = QUADRANT_OFFSETS[quadrant_index];

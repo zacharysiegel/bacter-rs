@@ -28,7 +28,7 @@
 - `mod.rs` files and `server/src/lib.rs` are given whole each time they change.
 - Builds stay warning-free, tests included; a warning is a defect to fix before committing.
 - Expected outputs were observed while writing this plan, by executing it end to end in a scratch copy of this branch; test counts and filtered counts assume the tasks are done in order with the code exactly as given, and only the `finished in` timings vary. A compile failure is quoted by its first `error` line; later lines differ only in the names they report.
-- From Task 24 on, the integration tests start in-process servers on `127.0.0.1:0`; the sandbox must allow binding loopback ports.
+- From Task 24 on, the integration tests start in-process servers on `127.0.0.1:0`; the sandbox must allow binding loopback ports. A bind failing with `Operation not permitted (os error 1)` (`the test server binds` panics) means the command ran sandboxed: run it from a script in `/tmp`, in the foreground.
 - Task 26 tests behaviour finished in earlier tasks, so its first run passes; it says so where it runs.
 
 ## Decisions taken where the design is silent or contradictory
@@ -63,6 +63,8 @@
 
 - Modify `shared/src/error/error.rs`: `AppErrorStatic` and the conversions both ways.
 - Modify `shared/src/game/game_summary.rs`: `GameSummary::from_game_state`.
+- Modify `shared/src/ability/ability_model.rs`: `AbilityPressSet::has_shot_slot_press`.
+- Modify `shared/src/protocol/message_in.rs`: `TryFrom<PlayerInputSerialIn>` uses it.
 - Modify `server/src/lib.rs`: module declarations, `CreatedServer`, `create_server`, `run`.
 - Modify `server/src/main.rs`: `.env`, logger, configuration, `server::run`.
 - Create `server/src/config/mod.rs`, `server/src/config/config.rs`: `ServerConfig`, `TlsFiles`, the environment variables.
@@ -148,8 +150,7 @@ In `shared/src/error/error.rs`, replace everything above `#[cfg(test)]` with:
 ```rust
 minimer::define_app_error!(pub AppError);
 
-// Returned from work moved to another thread, which requires a `Send` result. Holds the message and backtrace but
-// no source error.
+// For work moved to another thread, which needs a `Send` result; keeps the message but no source error.
 minimer::define_app_error_static!(pub AppErrorStatic);
 
 impl From<AppError> for AppErrorStatic {
@@ -438,9 +439,9 @@ mod tests {
     fn is_origin_allowed_matches_exactly() {
         let config: ServerConfig = from_pairs(&[]).unwrap();
 
-        assert!(config.is_origin_allowed("http://localhost:3011"));
-        assert!(!config.is_origin_allowed("http://localhost:3012"));
-        assert!(!config.is_origin_allowed("http://evil.example"));
+        assert!(is_origin_allowed(&config.allowed_origins, "http://localhost:3011"));
+        assert!(!is_origin_allowed(&config.allowed_origins, "http://localhost:3012"));
+        assert!(!is_origin_allowed(&config.allowed_origins, "http://evil.example"));
     }
 }
 ```
@@ -543,10 +544,6 @@ impl ServerConfig {
             tick_period: Duration::from_millis(u64::from(tick::TICK_PERIOD_MILLISECONDS)),
         })
     }
-
-    pub fn is_origin_allowed(&self, origin: &str) -> bool {
-        self.allowed_origins.iter().any(|allowed_origin: &String| allowed_origin == origin)
-    }
 }
 
 /// PEM files.
@@ -554,6 +551,11 @@ impl ServerConfig {
 pub struct TlsFiles {
     pub certificate_chain_path: PathBuf,
     pub private_key_path: PathBuf,
+}
+
+/// Exact match.
+pub fn is_origin_allowed(allowed_origins: &[String], origin: &str) -> bool {
+    allowed_origins.iter().any(|allowed_origin: &String| allowed_origin == origin)
 }
 
 fn get_tls_files(
@@ -2868,7 +2870,7 @@ mod tests {
     }
 
     #[test]
-    fn counts_add_pending_admissions_to_the_state() {
+    fn get_member_count_and_the_other_counts_add_pending_admissions_to_the_state() {
         let state: GameState = create_state_with_members(
             GameModeKind::FreeForAll,
             vec![
@@ -3754,13 +3756,91 @@ git commit -m "join spectate and respawn admission"
 ### Task 16: Bundle builder
 
 **Files:**
+- Modify: `shared/src/ability/ability_model.rs`
+- Modify: `shared/src/protocol/message_in.rs`
 - Create: `server/src/game/bundle_builder.rs`
 - Modify: `server/src/game/mod.rs`
-- Test: inline `mod tests` in `server/src/game/bundle_builder.rs`
+- Test: inline `mod tests` in `shared/src/ability/ability_model.rs` and `server/src/game/bundle_builder.rs`
 
-Admitted member events in arrival order and the latest input per member become the bundle for the next tick (protocol.md, input bundle; server.md, input validation). Presses received during the tick are OR-ed, the aim comes from the input which pressed a shot slot, and a member appears in `player_inputs` only when its rounded cursor moved or it pressed. Inputs from members without an organism, not after the last accepted `client_tick`, or sampled before the member's spawn are dropped; a `client_tick` ahead of the server is reported for the game task to close the connection.
+Admitted member events in arrival order and the latest input per member become the bundle for the next tick (protocol.md, input bundle; server.md, input validation). Presses received during the tick are OR-ed, the aim comes from the input which pressed a shot slot, and a member appears in `player_inputs` only when its rounded cursor moved or it pressed. Inputs from members without an organism, not after the last accepted `client_tick`, or sampled before the member's spawn are dropped; a `client_tick` ahead of the server is reported for the game task to close the connection. The shot-slot test which `TryFrom<PlayerInputSerialIn>` already makes moves first into `AbilityPressSet::has_shot_slot_press`, so the conversion and the builder share one definition.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test of the shot-slot predicate**
+
+In `shared/src/ability/ability_model.rs`, append inside `mod tests`, directly above its closing brace:
+
+```rust
+    #[test]
+    fn has_shot_slot_press_holds_for_a_first_or_second_press() {
+        assert!(AbilityPressSet::FIRST.has_shot_slot_press());
+        assert!(AbilityPressSet::SECOND.with(AbilityPressSet::THIRD).has_shot_slot_press());
+        assert!(!AbilityPressSet::THIRD.with(AbilityPressSet::FOURTH).has_shot_slot_press());
+        assert!(!AbilityPressSet::NONE.has_shot_slot_press());
+    }
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cargo test -p shared --lib ability::ability_model`
+
+Expected: compile failure, first line ``error[E0599]: no method named `has_shot_slot_press` found for struct `AbilityPressSet` in the current scope``.
+
+- [ ] **Step 3: Implement the predicate and use it in the input conversion**
+
+In `shared/src/ability/ability_model.rs`, replace:
+
+```rust
+    pub fn with(self, press: AbilityPressSet) -> AbilityPressSet {
+        AbilityPressSet {
+            bits: self.bits | press.bits,
+        }
+    }
+```
+
+with:
+
+```rust
+    pub fn with(self, press: AbilityPressSet) -> AbilityPressSet {
+        AbilityPressSet {
+            bits: self.bits | press.bits,
+        }
+    }
+
+    /// The first and second slots carry the shot abilities.
+    pub fn has_shot_slot_press(self) -> bool {
+        self.contains(AbilityPressSet::FIRST) || self.contains(AbilityPressSet::SECOND)
+    }
+```
+
+In `shared/src/protocol/message_in.rs`, replace:
+
+```rust
+        let has_shot_slot_press: bool =
+            ability_presses.contains(AbilityPressSet::FIRST) || ability_presses.contains(AbilityPressSet::SECOND);
+
+        if player_input_serial_in.aim.is_some() && !has_shot_slot_press {
+```
+
+with:
+
+```rust
+        if player_input_serial_in.aim.is_some() && !ability_presses.has_shot_slot_press() {
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `cargo test -p shared --lib -- ability::ability_model protocol::message_in`
+
+Expected: `test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 303 filtered out`.
+
+- [ ] **Step 5: Commit**
+
+```sh
+git status
+git add shared/src/ability/ability_model.rs shared/src/protocol/message_in.rs
+git commit -m "shot slot press predicate"
+```
+
+- [ ] **Step 6: Write the failing test of the bundle builder**
 
 Create `server/src/game/bundle_builder.rs`:
 
@@ -4063,13 +4143,13 @@ pub use membership::*;
 pub use pending_admissions::*;
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 7: Run the test to verify it fails**
 
 Run: `cargo test -p server --lib game::bundle_builder`
 
 Expected: compile failure, first line ``error[E0425]: cannot find type `MemberId` in this scope``.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 8: Implement**
 
 In `server/src/game/bundle_builder.rs`, replace everything above `#[cfg(test)]` with:
 
@@ -4258,15 +4338,11 @@ impl PendingInput {
         self.client_tick = input.client_tick;
         self.target = input.cursor;
 
-        let ability_presses: AbilityPressSet = input.ability_presses;
-        let has_shot_slot_press: bool =
-            ability_presses.contains(AbilityPressSet::FIRST) || ability_presses.contains(AbilityPressSet::SECOND);
-
-        if has_shot_slot_press {
+        if input.ability_presses.has_shot_slot_press() {
             self.aim = input.aim;
         }
 
-        self.ability_presses = self.ability_presses.with(ability_presses);
+        self.ability_presses = self.ability_presses.with(input.ability_presses);
     }
 }
 
@@ -4283,13 +4359,13 @@ fn get_rounded_pixels(subpixels: i32) -> i32 {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 9: Run the test to verify it passes**
 
 Run: `cargo test -p server --lib game::bundle_builder`
 
 Expected: `test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 63 filtered out`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 10: Commit**
 
 ```sh
 git status
@@ -6832,7 +6908,7 @@ use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::{Request, Response};
 use tokio_tungstenite::tungstenite::http::HeaderValue;
-use tokio_tungstenite::tungstenite::http::header::ORIGIN;
+use tokio_tungstenite::tungstenite::http::header;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -6887,7 +6963,7 @@ impl TestClient {
         let mut request: Request = format!("ws://{}/ws{query}", test_server.address).into_client_request()?;
 
         if let Some(origin) = origin {
-            request.headers_mut().insert(ORIGIN, HeaderValue::from_str(origin).unwrap());
+            request.headers_mut().insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
         }
 
         let (stream, _): (TestSocket, Response) = tokio_tungstenite::connect_async(request).await?;
@@ -7310,9 +7386,9 @@ Expected: compile failure, first line ``error[E0432]: unresolved import `server:
 Create `server/src/shutdown/shutdown.rs`:
 
 ```rust
-#[cfg(not(unix))]
+#[cfg(not(unix))] // unix targets also wait for SIGTERM
 pub use other::wait_for_termination_signal;
-#[cfg(unix)]
+#[cfg(unix)] // other targets have no SIGTERM
 pub use unix::wait_for_termination_signal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7321,7 +7397,7 @@ pub enum ServerRunState {
     ShuttingDown,
 }
 
-#[cfg(unix)]
+#[cfg(unix)] // other targets have no SIGTERM
 mod unix {
     use std::io;
 
@@ -7344,8 +7420,7 @@ mod unix {
     }
 }
 
-// Other targets have no SIGTERM.
-#[cfg(not(unix))]
+#[cfg(not(unix))] // unix targets also wait for SIGTERM
 mod other {
     use actix_web::rt::signal;
 
@@ -7925,6 +8000,7 @@ use tokio::task::JoinHandle;
 use shared::protocol;
 use shared::protocol::{CloseReasonKind, protocol_limits};
 
+use crate::config;
 use crate::game::GameTaskConfig;
 use crate::lobby::lobby_broadcast;
 use crate::registries::ServerRegistries;
@@ -7954,7 +8030,7 @@ async fn open_socket(
 ) -> Result<HttpResponse, actix_web::Error> {
     let origin: Option<&str> = request.headers().get(header::ORIGIN).and_then(|origin| origin.to_str().ok());
     let is_origin_allowed: bool =
-        origin.is_some_and(|origin| context.allowed_origins.iter().any(|allowed_origin| allowed_origin == origin));
+        origin.is_some_and(|origin| config::is_origin_allowed(&context.allowed_origins, origin));
 
     if !is_origin_allowed {
         return Ok(HttpResponse::Forbidden().finish());
@@ -8388,7 +8464,7 @@ async fn leave_game_then_join_another_game_receives_no_frame_of_the_first_game_a
 }
 
 #[actix_web::test]
-async fn closing_the_connection_removes_the_member() {
+async fn finish_connection_removes_the_member_of_a_closed_connection() {
     let test_server: TestServer = test_server::start_test_server(|_| {});
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
     let leaver: TestPlayer = test_server::join_game(&test_server, creator.game_id, "Leaver").await;
@@ -8454,7 +8530,7 @@ async fn join_game_admits_only_one_of_two_joins_for_the_last_slot() {
 }
 
 #[actix_web::test]
-async fn an_empty_game_is_removed_after_the_grace_period() {
+async fn run_game_task_removes_an_empty_game_after_the_grace_period() {
     let test_server: TestServer =
         test_server::start_test_server(|config| config.empty_game_grace_period = Duration::from_millis(200));
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
@@ -8484,7 +8560,7 @@ async fn an_empty_game_is_removed_after_the_grace_period() {
 }
 
 #[actix_web::test]
-async fn a_join_during_the_grace_period_keeps_the_game() {
+async fn join_game_during_the_grace_period_keeps_the_game() {
     let test_server: TestServer =
         test_server::start_test_server(|config| config.empty_game_grace_period = Duration::from_millis(200));
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
@@ -9456,7 +9532,7 @@ Append to the end of `server/tests/game_lifecycle.rs`, after one blank line:
 ```rust
 #[actix_web::test]
 #[ignore = "fills the loopback socket buffers; run by scripts/test/test-slow-consumer.sh"]
-async fn a_member_which_stops_reading_is_removed_while_the_others_continue() {
+async fn run_socket_writer_drops_a_member_which_stops_reading_while_the_others_continue() {
     let test_server: TestServer =
         test_server::start_test_server(|config| config.tick_period = Duration::from_millis(1));
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
@@ -9685,9 +9761,9 @@ Run: `cargo build -p server`
 
 Expected: `Finished` with no `warning`.
 
-Run: `RUST_LOG=info BACTER_PORT=3197 ./target/debug/server & sleep 1; curl -s http://127.0.0.1:3197/health; echo; kill -INT $!; sleep 2; jobs`
+Run: `BACTER_PORT=3197 ./scripts/dev/server.sh & sleep 3; curl -s http://127.0.0.1:3197/health; echo; kill -INT $!; sleep 2; jobs`
 
-Expected: the log lines `server listening; [addresses=[127.0.0.1:3197]]` and, after the interrupt, `server shutting down`; `curl` prints `ok`; `jobs` lists nothing, because the server exited.
+Expected: the log lines `server listening; [addresses=[127.0.0.1:3197]]` and, after the interrupt, `server shutting down`; `curl` prints `ok`; `jobs` lists nothing, because the server exited. The script loads `./.env` (created by `./setup.sh`), whose `RUST_LOG=info` shows the log lines; dotenvy keeps the `BACTER_PORT` given on the command line, and `cargo run` replaces its own process with the server's, so `$!` is the server.
 
 - [ ] **Step 3: Commit**
 
@@ -9721,7 +9797,7 @@ test result: ok. 110 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.99s
 test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
-test result: ok. 333 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 334 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.36s
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
@@ -9762,6 +9838,7 @@ Expected, oldest first (review-fix commits, if any, sit after their task):
 
 ```text
 phase 5 plan
+phase 5 plan review
 app error static
 game summary from game state
 server config
@@ -9777,6 +9854,7 @@ connection limits
 game registry
 pending admissions
 join spectate and respawn admission
+shot slot press predicate
 bundle builder
 recipients and slow consumers
 replay capture

@@ -18,6 +18,7 @@
 - `scripts/test/test-wasm.sh`: `wasm-pack test --headless --chrome` from `web/` with `--features hydrate` (the `LocalStorageSettingsStore` tests, [other tests](./testing.md#other-tests)).
 - `scripts/test/test-replay-wasm.sh`: [determinism tests](./testing.md#determinism-tests).
 - `scripts/test/test-shaders.sh`, `scripts/test/test-growth-statistics.sh`: run the `#[ignore]` tests of [other tests](./testing.md#other-tests) and [growth statistics against the original rules](./testing.md#growth-statistics-against-the-original-rules).
+- `scripts/test/test-slow-consumer.sh`: runs the `#[ignore]` test of a member which stops reading ([server integration tests](./testing.md#server-integration-tests)).
 - `scripts/test/regenerate-replay-fixtures.sh`: runs `regenerate_scripted_game_fixture`, then `protocol_dump replay --checksums` for every fixture ([replay tests](./testing.md#replay-tests)).
 - `scripts/git/branch-init.sh`, `pr-integrate.sh`, `cleanup-merged.sh`: adapted from eafora; `pr-integrate.sh` has no `--budget` mode (bacter-rs has no site budget script).
 

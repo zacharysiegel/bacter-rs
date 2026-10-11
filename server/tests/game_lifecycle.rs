@@ -3,14 +3,19 @@ mod helpers;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use futures_util::SinkExt;
+use futures_util::stream::{SplitSink, SplitStream};
+use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
+
 use helpers::test_server;
-use helpers::test_server::{TestClient, TestPlayer, TestServer};
+use helpers::test_server::{TestClient, TestPlayer, TestServer, TestSocket};
 use server::game::{cursor_clamp, game_task};
 use shared::ability::AbilityPressSet;
 use shared::game::{GameModeKind, InputBundle, MemberEvent, Tick};
 use shared::geometry;
 use shared::geometry::{SubpixelPoint, WorldPoint};
 use shared::member::{MemberId, MemberRoleKind};
+use shared::protocol;
 use shared::protocol::{
     MemberEventSerialOut, MessageSerialIn, MessageSerialOut, PlayerInputSerialIn, RejectionKindSerialOut,
     RequestKindSerialOut, SubpixelPointSerial, TeamChoiceKindSerialIn,
@@ -422,4 +427,35 @@ async fn replay_capture_records_a_replay_with_the_server_checksums() {
             }
         );
     }
+}
+
+#[actix_web::test]
+#[ignore = "fills the loopback socket buffers; run by scripts/test/test-slow-consumer.sh"]
+async fn run_socket_writer_drops_a_member_which_stops_reading_while_the_others_continue() {
+    let test_server: TestServer =
+        test_server::start_test_server(|config| config.tick_period = Duration::from_millis(1));
+    let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
+    let stalled: TestPlayer = test_server::join_game(&test_server, creator.game_id, "Stalled").await;
+    let (mut stalled_sender, _unread_stream): (SplitSink<TestSocket, Message>, SplitStream<TestSocket>) =
+        stalled.client.split();
+    let snapshot_request: Message =
+        Message::Binary(protocol::encode_message_in(&MessageSerialIn::RequestSnapshot { client_tick: 0 }).into());
+
+    actix_web::rt::spawn(async move {
+        loop {
+            let send_result: Result<(), WebSocketError> = stalled_sender.send(snapshot_request.clone()).await;
+
+            if send_result.is_err() {
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    });
+
+    play_until_member_event(&mut creator, |member_event| {
+        *member_event == MemberEvent::Left { member_id: MemberId(1) }
+    })
+    .await;
+    creator.play_until(|player| player.verified_checksum_count >= 3).await;
 }

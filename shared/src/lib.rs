@@ -6,6 +6,7 @@ pub mod game;
 pub mod geometry;
 pub mod member;
 pub mod organism;
+pub mod play;
 pub mod protocol;
 pub mod random;
 pub mod replay;

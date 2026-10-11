@@ -6,11 +6,11 @@ use crate::geometry;
 use crate::geometry::WorldPoint;
 use crate::member::SkinKind;
 use crate::organism::Organism;
-use crate::play::InterpolatedPoint;
 use crate::play::interpolation;
+use crate::play::{InterpolatedPoint, InterpolationFrame};
 use crate::render::render_color;
 use crate::render::{
-    CellInstance, CellScale, InstanceSkinKind, RenderColor, ShapeGeometry, ShapeInstance, ShapeKind, ShapePaint,
+    Camera, CellInstance, CellScale, InstanceSkinKind, RenderColor, ShapeGeometry, ShapeInstance, ShapeKind, ShapePaint,
 };
 use crate::world::{World, WorldShapeKind};
 
@@ -24,6 +24,44 @@ const WORLD_BORDER_WIDTH_PIXELS: f32 = 1.0;
 const GHOST_SECRETION_RING_WIDTH_PIXELS: f32 = 2.0;
 const RECTANGLE_WORLD_SHADOW_OFFSET: InterpolatedPoint = InterpolatedPoint { x: 7.0, y: 6.0 };
 const ELLIPSE_WORLD_SHADOW_OFFSET: InterpolatedPoint = InterpolatedPoint { x: 5.0, y: 4.0 };
+const CROSSHAIR_HALF_LENGTH_PIXELS: f32 = 4.0;
+const CROSSHAIR_HALF_THICKNESS_PIXELS: f32 = 0.5;
+
+/// Everything one frame draws, in world pixels, built without a GPU.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderScene {
+    pub tick_layer: TickLayer,
+    pub frame_layer: FrameLayer,
+    pub camera: Camera,
+}
+
+impl RenderScene {
+    /// `crosshair` is drawn when given.
+    pub fn from_state(
+        state: &GameState,
+        interpolation: &InterpolationFrame,
+        camera: Camera,
+        crosshair: Option<InterpolatedPoint>,
+    ) -> RenderScene {
+        RenderScene {
+            tick_layer: TickLayer::from_state(state),
+            frame_layer: FrameLayer::from_state(state, interpolation, crosshair),
+            camera,
+        }
+    }
+
+    /// For a frame without a newly applied tick; the tick layer is kept.
+    pub fn refresh_frame(
+        &mut self,
+        state: &GameState,
+        interpolation: &InterpolationFrame,
+        camera: Camera,
+        crosshair: Option<InterpolatedPoint>,
+    ) {
+        self.frame_layer = FrameLayer::from_state(state, interpolation, crosshair);
+        self.camera = camera;
+    }
+}
 
 /// Instances which change only when a tick is applied; drawn under the frame layer.
 #[derive(Clone, Debug, PartialEq)]
@@ -48,6 +86,34 @@ impl TickLayer {
         TickLayer {
             background_shapes,
             organism_cells,
+        }
+    }
+}
+
+/// Instances which change every frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrameLayer {
+    /// Per organism: flying spores, then flying shots in slot order.
+    pub projectile_cells: Vec<CellInstance>,
+    /// Drawn over the projectiles.
+    pub crosshair_shapes: Vec<ShapeInstance>,
+}
+
+impl FrameLayer {
+    pub fn from_state(
+        state: &GameState,
+        interpolation: &InterpolationFrame,
+        crosshair: Option<InterpolatedPoint>,
+    ) -> FrameLayer {
+        let projectile_cells: Vec<CellInstance> = get_rendered_organisms(state)
+            .iter()
+            .flat_map(|rendered_organism| rendered_organism.get_projectile_instances(interpolation))
+            .collect();
+        let crosshair_shapes: Vec<ShapeInstance> = crosshair.map(get_crosshair_shapes).unwrap_or_default();
+
+        FrameLayer {
+            projectile_cells,
+            crosshair_shapes,
         }
     }
 }
@@ -129,6 +195,35 @@ impl RenderedOrganism<'_> {
             })
             .collect()
     }
+
+    fn get_projectile_instances(&self, interpolation: &InterpolationFrame) -> Vec<CellInstance> {
+        let skin: InstanceSkinKind = InstanceSkinKind::for_projectile(self.skin());
+        let mut projectile_instances: Vec<CellInstance> = Vec::new();
+
+        if let SporePhase::Flying { spores, .. } = &self.organism.abilities.spore {
+            projectile_instances.extend(spores.iter().map(|spore| {
+                CellInstance::new(
+                    interpolation.get_flying_projectile_position(spore),
+                    self.color(),
+                    skin,
+                    CellScale::FULL,
+                )
+            }));
+        }
+
+        for shot_phase in &self.organism.abilities.shots {
+            if let ShotPhase::Flying { shot, .. } = shot_phase {
+                projectile_instances.push(CellInstance::new(
+                    interpolation.get_flying_projectile_position(shot),
+                    self.color(),
+                    skin,
+                    CellScale::SHOT,
+                ));
+            }
+        }
+
+        projectile_instances
+    }
 }
 
 /// Members with an organism, in member id order.
@@ -186,6 +281,28 @@ fn get_world_shapes(world: &World) -> Vec<ShapeInstance> {
     ]
 }
 
+/// A horizontal bar, then a vertical one.
+fn get_crosshair_shapes(crosshair: InterpolatedPoint) -> Vec<ShapeInstance> {
+    let bar_paint: ShapePaint = ShapePaint::fill(render_color::CROSSHAIR_COLOR);
+    let horizontal_bar: ShapeGeometry = ShapeGeometry {
+        kind: ShapeKind::Rectangle,
+        center: crosshair,
+        half_width_pixels: CROSSHAIR_HALF_LENGTH_PIXELS,
+        half_height_pixels: CROSSHAIR_HALF_THICKNESS_PIXELS,
+    };
+    let vertical_bar: ShapeGeometry = ShapeGeometry {
+        kind: ShapeKind::Rectangle,
+        center: crosshair,
+        half_width_pixels: CROSSHAIR_HALF_THICKNESS_PIXELS,
+        half_height_pixels: CROSSHAIR_HALF_LENGTH_PIXELS,
+    };
+
+    vec![
+        ShapeInstance::new(horizontal_bar, bar_paint),
+        ShapeInstance::new(vertical_bar, bar_paint),
+    ]
+}
+
 fn get_field_shape(field_center: WorldPoint, ring_color: RenderColor) -> ShapeInstance {
     ShapeInstance::new(
         get_circle_geometry(InterpolatedPoint::from_world_point(field_center), FIELD_RADIUS_PIXELS),
@@ -209,6 +326,7 @@ mod tests {
     use crate::game::{GameModeKind, Tick, test_fixture};
     use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, Subpixels};
     use crate::member::{Member, MemberId, OrganismColorKind};
+    use crate::render::{PhysicalSize, ViewportSize};
 
     const OCEAN_COLOR: RenderColor = RenderColor::opaque(102, 136, 244);
     /// At (10, 0) px; at (9.5, 1) px half a tick earlier.
@@ -216,6 +334,14 @@ mod tests {
         position: SubpixelPoint { x: 10_240, y: 0 },
         velocity: SubpixelVector { x: 1024, y: -2048 },
     };
+    const VIEWPORT: ViewportSize = ViewportSize {
+        physical_size: PhysicalSize {
+            width_pixels: 1024,
+            height_pixels: 512,
+        },
+        device_pixel_ratio: 2.0,
+    };
+    const HALFWAY: InterpolationFrame = InterpolationFrame { alpha: 0.5 };
 
     fn create_state_with_one_organism() -> GameState {
         test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }])
@@ -437,5 +563,133 @@ mod tests {
             (FIELD_RADIUS_PIXELS * FIELD_RADIUS_PIXELS) as i64,
             ability_constants::FIELD_RADIUS_SQUARED_PIXELS,
         );
+    }
+
+    #[test]
+    fn frame_layer_from_state_interpolates_flying_spores_then_flying_shots() {
+        let mut state: GameState = create_state_with_one_organism();
+        let member: &mut Member = get_member_mut(&mut state, MemberId(0));
+        member.loadout.as_mut().unwrap().appearance.skin = SkinKind::Grid;
+        let organism: &mut Organism = member.organism.as_mut().unwrap();
+        organism.abilities.spore = SporePhase::Flying {
+            ends_at: Tick(9),
+            spores: vec![PROJECTILE],
+        };
+        organism.abilities.shots[0] = ShotPhase::Flying {
+            ends_at: Tick(9),
+            shot: PROJECTILE,
+        };
+
+        let frame_layer: FrameLayer = FrameLayer::from_state(&state, &HALFWAY, None);
+
+        assert_eq!(
+            frame_layer.projectile_cells,
+            vec![
+                CellInstance::new(
+                    InterpolatedPoint { x: 9.5, y: 1.0 },
+                    OCEAN_COLOR,
+                    InstanceSkinKind::Solid,
+                    CellScale::FULL,
+                ),
+                CellInstance::new(
+                    InterpolatedPoint { x: 9.5, y: 1.0 },
+                    OCEAN_COLOR,
+                    InstanceSkinKind::Solid,
+                    CellScale::SHOT,
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn frame_layer_from_state_draws_no_secreting_projectile() {
+        let mut state: GameState = create_state_with_one_organism();
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, MemberId(0));
+        organism.abilities.spore = SporePhase::Secreting {
+            ends_at: Tick(9),
+            spores: vec![PROJECTILE],
+        };
+        organism.abilities.shots[1] = ShotPhase::Secreting {
+            ends_at: Tick(9),
+            center: PROJECTILE.position,
+        };
+
+        let frame_layer: FrameLayer = FrameLayer::from_state(&state, &HALFWAY, None);
+
+        assert_eq!(frame_layer.projectile_cells, Vec::new());
+    }
+
+    #[test]
+    fn frame_layer_from_state_draws_the_crosshair_only_when_given() {
+        let state: GameState = create_state_with_one_organism();
+        let crosshair: InterpolatedPoint = InterpolatedPoint { x: 50.5, y: 60.0 };
+
+        let shown: FrameLayer = FrameLayer::from_state(&state, &HALFWAY, Some(crosshair));
+        let hidden: FrameLayer = FrameLayer::from_state(&state, &HALFWAY, None);
+
+        assert_eq!(
+            shown.crosshair_shapes,
+            vec![
+                ShapeInstance {
+                    center: [50.5, 60.0],
+                    half_extent: [4.0, 0.5],
+                    fill_color: RenderColor::opaque(255, 255, 255),
+                    stroke_color: render_color::TRANSPARENT_COLOR,
+                    stroke_width_pixels: 0.0,
+                    shape_kind: ShapeKind::Rectangle.code(),
+                },
+                ShapeInstance {
+                    center: [50.5, 60.0],
+                    half_extent: [0.5, 4.0],
+                    fill_color: RenderColor::opaque(255, 255, 255),
+                    stroke_color: render_color::TRANSPARENT_COLOR,
+                    stroke_width_pixels: 0.0,
+                    shape_kind: ShapeKind::Rectangle.code(),
+                },
+            ],
+        );
+        assert_eq!(hidden.crosshair_shapes, Vec::new());
+    }
+
+    #[test]
+    fn render_scene_from_state_builds_both_layers_with_the_camera() {
+        let state: GameState = create_state_with_one_organism();
+        let camera: Camera = Camera::centred_on(InterpolatedPoint { x: 100.0, y: 100.0 }, VIEWPORT);
+
+        let render_scene: RenderScene = RenderScene::from_state(&state, &HALFWAY, camera, None);
+
+        assert_eq!(
+            render_scene,
+            RenderScene {
+                tick_layer: TickLayer::from_state(&state),
+                frame_layer: FrameLayer::from_state(&state, &HALFWAY, None),
+                camera,
+            },
+        );
+    }
+
+    #[test]
+    fn refresh_frame_replaces_the_frame_layer_and_the_camera_and_keeps_the_tick_layer() {
+        let mut state: GameState = create_state_with_one_organism();
+        let first_camera: Camera = Camera::centred_on(InterpolatedPoint { x: 100.0, y: 100.0 }, VIEWPORT);
+        let mut render_scene: RenderScene = RenderScene::from_state(&state, &HALFWAY, first_camera, None);
+        let tick_layer: TickLayer = render_scene.tick_layer.clone();
+        let organism: &mut Organism = test_fixture::get_organism_mut(&mut state, MemberId(0));
+        organism.cells.insert(LatticeCoordinate { i: 0, j: 1 });
+        organism.abilities.spore = SporePhase::Flying {
+            ends_at: Tick(9),
+            spores: vec![PROJECTILE],
+        };
+        let second_camera: Camera = Camera::for_local_game(VIEWPORT);
+        let crosshair: InterpolatedPoint = InterpolatedPoint { x: 1.0, y: 2.0 };
+
+        render_scene.refresh_frame(&state, &HALFWAY, second_camera, Some(crosshair));
+
+        assert_eq!(render_scene.tick_layer, tick_layer);
+        assert_eq!(
+            render_scene.frame_layer,
+            FrameLayer::from_state(&state, &HALFWAY, Some(crosshair))
+        );
+        assert_eq!(render_scene.camera, second_camera);
     }
 }

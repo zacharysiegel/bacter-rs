@@ -154,13 +154,13 @@ fn check_spawn_slot(state: &GameState, pending_admissions: &PendingAdmissions) -
     Ok(())
 }
 
-/// A member whose join is still pending has not died either.
 fn get_respawning_member<'state>(
     state: &'state GameState,
     pending_admissions: &PendingAdmissions,
     member_id: MemberId,
 ) -> Result<&'state Member, RejectionKind> {
     let Some(member): Option<&Member> = state.members.get(&member_id) else {
+        // A member whose join is still pending has not died either.
         let is_pending_join: bool = member_id >= state.next_member_id;
         let rejection: RejectionKind = if is_pending_join {
             RejectionKind::NotDead
@@ -611,13 +611,22 @@ mod tests {
     fn admit_respawn_rejects_an_alive_or_unknown_member() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 8);
         let alive_member_id: MemberId = add_participant(&mut state, "First", None, true);
-        let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
         state.next_member_id = MemberId(5);
+        let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
+
+        let pending_join_member_id: MemberId = admit_join(
+            &state,
+            &mut pending_admissions,
+            &mut create_team_assignment_rng(),
+            &test_fixture::create_joiner("Second", TeamChoiceKind::Auto),
+        )
+        .unwrap()
+        .member_id;
 
         for (member_id, rejection) in [
             (alive_member_id, RejectionKind::NotDead),
             (MemberId(3), RejectionKind::NotInGame),
-            (MemberId(5), RejectionKind::NotDead),
+            (pending_join_member_id, RejectionKind::NotDead),
         ] {
             assert_eq!(
                 admit_respawn(

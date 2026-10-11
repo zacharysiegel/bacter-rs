@@ -5,4 +5,5 @@ pub mod game;
 pub mod lobby;
 pub mod password;
 pub mod registries;
+pub mod site;
 pub mod socket;

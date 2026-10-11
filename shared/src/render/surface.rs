@@ -31,7 +31,7 @@ impl WgpuSurface {
         let alpha_mode: CompositeAlphaMode =
             capabilities.alpha_modes.first().copied().unwrap_or(CompositeAlphaMode::Auto);
         let configured_size: PhysicalSize = size.at_least_one_pixel();
-        let config: SurfaceConfiguration = SurfaceConfiguration {
+        let configuration: SurfaceConfiguration = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
             format,
             color_space: SurfaceColorSpace::Auto,
@@ -43,19 +43,18 @@ impl WgpuSurface {
             view_formats: vec![],
         };
 
-        self.inner.configure(device, &config);
+        self.inner.configure(device, &configuration);
 
         Ok(ConfiguredSurface {
             inner: self.inner,
-            config,
+            configuration,
         })
     }
 }
 
-/// Keeps the `SurfaceConfiguration` so a resize or a reconfigure need not derive it again.
 pub struct ConfiguredSurface {
     inner: Surface<'static>,
-    config: SurfaceConfiguration,
+    configuration: SurfaceConfiguration,
 }
 
 impl ConfiguredSurface {
@@ -64,26 +63,26 @@ impl ConfiguredSurface {
     }
 
     pub fn format(&self) -> TextureFormat {
-        self.config.format
+        self.configuration.format
     }
 
     pub fn size(&self) -> PhysicalSize {
         PhysicalSize {
-            width_pixels: self.config.width,
-            height_pixels: self.config.height,
+            width_pixels: self.configuration.width,
+            height_pixels: self.configuration.height,
         }
     }
 
     pub fn resize(&mut self, device: &Device, size: PhysicalSize) {
         let configured_size: PhysicalSize = size.at_least_one_pixel();
-        self.config.width = configured_size.width_pixels;
-        self.config.height = configured_size.height_pixels;
+        self.configuration.width = configured_size.width_pixels;
+        self.configuration.height = configured_size.height_pixels;
 
-        self.inner.configure(device, &self.config);
+        self.inner.configure(device, &self.configuration);
     }
 
     pub fn reconfigure(&self, device: &Device) {
-        self.inner.configure(device, &self.config);
+        self.inner.configure(device, &self.configuration);
     }
 }
 

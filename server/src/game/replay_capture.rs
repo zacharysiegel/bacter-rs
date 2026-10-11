@@ -31,20 +31,38 @@ impl ReplayCapture {
         let (record_sender, record_receiver): (mpsc::Sender<ReplayRecord>, mpsc::Receiver<ReplayRecord>) =
             mpsc::channel(REPLAY_CAPTURE_CHANNEL_CAPACITY);
         let path: PathBuf = directory.join(format!("{}.replay", game_id.0));
-        let mut replay_capture: ReplayCapture = ReplayCapture {
-            game_id,
-            records: Some(record_sender),
-        };
 
-        replay_capture.send(ReplayRecord::Header(header_serial_out));
+        let replay_capture: ReplayCapture =
+            ReplayCapture::from_record_sender(game_id, record_sender, header_serial_out);
+
         let writer_handle: JoinHandle<()> =
             game_runtime::GAME_RUNTIME.spawn(run_replay_writer(game_id, path, record_receiver));
 
         (replay_capture, writer_handle)
     }
 
+    pub fn from_record_sender(
+        game_id: GameId,
+        record_sender: mpsc::Sender<ReplayRecord>,
+        header_serial_out: ReplayHeaderSerialOut,
+    ) -> ReplayCapture {
+        let mut replay_capture: ReplayCapture = ReplayCapture {
+            game_id,
+            records: Some(record_sender),
+        };
+
+        replay_capture.send(ReplayRecord::Header(header_serial_out));
+
+        replay_capture
+    }
+
     pub fn record_bundle(&mut self, bundle_serial_out: InputBundleSerialOut) {
         self.send(ReplayRecord::Bundle(bundle_serial_out));
+    }
+
+    /// Closes the channel; the writer task ends once it has written every record sent before.
+    pub fn finish(self) {
+        drop(self.records);
     }
 
     /// A full or closed channel abandons the capture.
@@ -62,7 +80,7 @@ impl ReplayCapture {
     }
 }
 
-enum ReplayRecord {
+pub enum ReplayRecord {
     Header(ReplayHeaderSerialOut),
     Bundle(InputBundleSerialOut),
 }
@@ -129,7 +147,7 @@ mod tests {
             ReplayCapture::start(&directory.join("nested"), GameId(5), header_serial_out);
         replay_capture.record_bundle(InputBundleSerialOut::from(&create_bundle(1)));
         replay_capture.record_bundle(InputBundleSerialOut::from(&create_bundle(2)));
-        drop(replay_capture);
+        replay_capture.finish();
         game_runtime::GAME_RUNTIME.block_on(writer_handle).unwrap();
 
         let replay_bytes: Vec<u8> = std::fs::read(directory.join("nested/5.replay")).unwrap();
@@ -139,6 +157,42 @@ mod tests {
             ReplayLog {
                 header: ReplayHeader { settings, seed: 77 },
                 input_bundles: vec![create_bundle(1), create_bundle(2)],
+            },
+        );
+    }
+
+    #[test]
+    fn record_bundle_abandons_the_capture_when_the_channel_is_full() {
+        let directory: PathBuf = test_fixture::create_temporary_directory("replay-capture-full");
+        let settings: GameSettings = test_fixture::create_settings(GameModeKind::FreeForAll, 8);
+        let header_serial_out: ReplayHeaderSerialOut = ReplayHeaderSerialOut {
+            settings: GameSettingsSerialOut::from(&settings),
+            seed: 77,
+        };
+        let (record_sender, record_receiver): (mpsc::Sender<ReplayRecord>, mpsc::Receiver<ReplayRecord>) =
+            mpsc::channel(2);
+
+        let mut replay_capture: ReplayCapture =
+            ReplayCapture::from_record_sender(GameId(6), record_sender, header_serial_out);
+        replay_capture.record_bundle(InputBundleSerialOut::from(&create_bundle(1)));
+        replay_capture.record_bundle(InputBundleSerialOut::from(&create_bundle(2)));
+        replay_capture.record_bundle(InputBundleSerialOut::from(&create_bundle(3)));
+
+        assert!(replay_capture.records.is_none());
+
+        let path: PathBuf = directory.join("6.replay");
+        let writer_handle: JoinHandle<()> =
+            game_runtime::GAME_RUNTIME.spawn(run_replay_writer(GameId(6), path.clone(), record_receiver));
+        replay_capture.finish();
+        game_runtime::GAME_RUNTIME.block_on(writer_handle).unwrap();
+
+        let replay_bytes: Vec<u8> = std::fs::read(&path).unwrap();
+
+        assert_eq!(
+            replay::read_replay(&replay_bytes).unwrap(),
+            ReplayLog {
+                header: ReplayHeader { settings, seed: 77 },
+                input_bundles: vec![create_bundle(1)],
             },
         );
     }

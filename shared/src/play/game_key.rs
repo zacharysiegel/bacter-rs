@@ -90,7 +90,6 @@ pub struct KeyboardState {
     held_keys: BTreeSet<GameKeyKind>,
     /// Keydown edges since the last sample.
     pending_sample: AbilityPressSample,
-    /// Mouse offset from the on-screen crosshair.
     pointer_aim: AimVector,
 }
 
@@ -292,6 +291,21 @@ mod tests {
 
         assert_eq!(keyboard.movement_direction(), MovementDirection { x: 0, y: -1 });
         assert!(keyboard.is_any_movement_key_held());
+    }
+
+    #[test]
+    fn key_changed_releases_a_held_key() {
+        let mut keyboard: KeyboardState = KeyboardState::new();
+        press(&mut keyboard, GameKeyKind::MoveRight);
+
+        keyboard.key_changed(
+            GameKeyKind::MoveRight,
+            KeyTransitionKind::Released,
+            KeyRepeatKind::Initial,
+        );
+
+        assert!(!keyboard.is_held(GameKeyKind::MoveRight));
+        assert_eq!(keyboard.movement_direction(), MovementDirection { x: 0, y: 0 });
     }
 
     #[test]

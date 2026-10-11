@@ -20,7 +20,7 @@ pub fn reserve_connection(registries: ServerRegistries, ip: IpAddr) -> Result<()
     let previous_connection_count: u32 = registries.connection_count.fetch_add(1, Ordering::SeqCst);
 
     if previous_connection_count >= protocol_limits::CONNECTION_LIMIT_PER_SERVER {
-        registries.connection_count.fetch_sub(1, Ordering::SeqCst);
+        release_server_connection(registries);
 
         return Err(ConnectionLimitReached);
     }
@@ -28,14 +28,14 @@ pub fn reserve_connection(registries: ServerRegistries, ip: IpAddr) -> Result<()
     let ip_reservation: Result<(), ConnectionLimitReached> = reserve_ip_connection(registries, ip);
 
     if ip_reservation.is_err() {
-        registries.connection_count.fetch_sub(1, Ordering::SeqCst);
+        release_server_connection(registries);
     }
 
     ip_reservation
 }
 
 pub fn release_connection(registries: ServerRegistries, ip: IpAddr) {
-    registries.connection_count.fetch_sub(1, Ordering::SeqCst);
+    release_server_connection(registries);
 
     let Entry::Occupied(mut occupied_entry) = registries.connections_per_ip.entry(ip) else {
         return;
@@ -46,6 +46,10 @@ pub fn release_connection(registries: ServerRegistries, ip: IpAddr) {
     } else {
         *occupied_entry.get_mut() -= 1;
     }
+}
+
+fn release_server_connection(registries: ServerRegistries) {
+    registries.connection_count.fetch_sub(1, Ordering::SeqCst);
 }
 
 fn reserve_ip_connection(registries: ServerRegistries, ip: IpAddr) -> Result<(), ConnectionLimitReached> {

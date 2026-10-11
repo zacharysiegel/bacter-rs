@@ -1,3 +1,4 @@
+pub mod bundle_builder;
 pub mod cursor_clamp;
 pub mod game_handle;
 pub mod game_registry;
@@ -8,6 +9,7 @@ pub mod pending_admissions;
 #[cfg(test)]
 pub mod test_fixture;
 
+pub use bundle_builder::*;
 pub use cursor_clamp::*;
 pub use game_handle::*;
 pub use game_registry::*;

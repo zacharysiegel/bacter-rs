@@ -10,4 +10,5 @@ pub mod protocol;
 pub mod random;
 pub mod replay;
 pub mod round;
+pub mod settings;
 pub mod world;

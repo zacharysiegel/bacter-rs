@@ -5,8 +5,10 @@ use std::time::Duration;
 
 use helpers::test_server;
 use helpers::test_server::{TestClient, TestPlayer, TestServer};
+use server::game::{cursor_clamp, game_task};
 use shared::ability::AbilityPressSet;
 use shared::game::{GameModeKind, InputBundle, MemberEvent, Tick};
+use shared::geometry;
 use shared::geometry::{SubpixelPoint, WorldPoint};
 use shared::member::{MemberId, MemberRoleKind};
 use shared::protocol::{
@@ -135,11 +137,16 @@ async fn respawn_brings_back_a_dead_participant() {
     player.play_until(|player| player.get_own_organism().is_some()).await;
 
     let target: SubpixelPoint = WorldPoint { x: -2000, y: 150 }.to_subpixel_point();
+    let dying = async {
+        while player.get_own_organism().is_some() {
+            player.client.send(&create_input(player.applied_tick(), target)).await;
+            player.receive_bundle().await;
+        }
+    };
 
-    while player.get_own_organism().is_some() {
-        player.client.send(&create_input(player.applied_tick(), target)).await;
-        player.receive_bundle().await;
-    }
+    tokio::time::timeout(test_server::PLAY_TIMEOUT, dying)
+        .await
+        .expect("the organism dies within the play timeout");
 
     player
         .client
@@ -325,7 +332,7 @@ async fn input_beyond_the_move_budget_is_clamped_and_corrected() {
     let client_tick: Tick = player.applied_tick();
 
     let target: SubpixelPoint = SubpixelPoint {
-        x: spawn_cursor.x + 500 * 1024,
+        x: spawn_cursor.x + 500 * geometry::SUBPIXELS_PER_PIXEL,
         y: spawn_cursor.y,
     };
     player.client.send(&create_input(client_tick, target)).await;
@@ -346,12 +353,16 @@ async fn input_beyond_the_move_budget_is_clamped_and_corrected() {
     };
 
     let own_cursor: WorldPoint = player.get_own_organism().unwrap().cursor;
+    let move_budget_cap_subpixels: i64 = cursor_clamp::MOVE_BUDGET_CAP_TICKS
+        * (cursor_clamp::MOVE_SUBPIXELS_PER_TICK + cursor_clamp::MOVE_TOLERANCE_SUBPIXELS_PER_TICK);
+    let rounded_corrected_cursor_x: i32 =
+        (corrected_cursor.x + geometry::SUBPIXELS_PER_PIXEL / 2).div_euclid(geometry::SUBPIXELS_PER_PIXEL);
 
     assert_eq!(corrected_cursor.y, spawn_cursor.y);
     assert!(corrected_cursor.x > spawn_cursor.x);
-    assert!(corrected_cursor.x - spawn_cursor.x <= 15 * 3174);
-    assert_eq!(own_cursor.x, (corrected_cursor.x + 512).div_euclid(1024));
-    assert!(own_cursor.x < target.x / 1024);
+    assert!(i64::from(corrected_cursor.x - spawn_cursor.x) <= move_budget_cap_subpixels);
+    assert_eq!(own_cursor.x, rounded_corrected_cursor_x);
+    assert!(own_cursor.x < target.x / geometry::SUBPIXELS_PER_PIXEL);
 }
 
 #[actix_web::test]
@@ -363,9 +374,10 @@ async fn replay_capture_records_a_replay_with_the_server_checksums() {
         test_server::start_test_server(move |config| config.replay_capture_directory = Some(configured_directory));
     let mut player: TestPlayer = test_server::create_game(&test_server, "Recorded", "Blob").await;
 
+    let wanted_checksum_count: u32 = 2;
     let mut received_checksums: Vec<(u32, u64)> = Vec::new();
 
-    while received_checksums.len() < 2 {
+    while received_checksums.len() < usize::try_from(wanted_checksum_count).unwrap() {
         let message_serial_out: MessageSerialOut = player.client.receive().await;
         player.apply(&message_serial_out);
 
@@ -375,16 +387,25 @@ async fn replay_capture_records_a_replay_with_the_server_checksums() {
     }
 
     let replay_path: PathBuf = replay_directory.join(format!("{}.replay", player.game_id));
-    let replay_log: ReplayLog = loop {
-        let replay_bytes: Vec<u8> = std::fs::read(&replay_path).unwrap_or_default();
-        let replay_log: Option<ReplayLog> = replay::read_replay(&replay_bytes).ok();
+    let bundle_count_through_last_checksum: usize =
+        usize::try_from(wanted_checksum_count * game_task::CHECKSUM_INTERVAL_TICKS).unwrap();
+    let replay_written = async {
+        loop {
+            let replay_bytes: Vec<u8> = std::fs::read(&replay_path).unwrap_or_default();
+            let replay_log: Option<ReplayLog> = replay::read_replay(&replay_bytes).ok();
+            let complete_replay_log: Option<ReplayLog> =
+                replay_log.filter(|replay_log| replay_log.input_bundles.len() >= bundle_count_through_last_checksum);
 
-        if let Some(replay_log) = replay_log.filter(|replay_log| replay_log.input_bundles.len() >= 28) {
-            break replay_log;
+            if let Some(replay_log) = complete_replay_log {
+                return replay_log;
+            }
+
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
-
-        tokio::time::sleep(Duration::from_millis(20)).await;
     };
+    let replay_log: ReplayLog = tokio::time::timeout(test_server::PLAY_TIMEOUT, replay_written)
+        .await
+        .expect("the replay is written within the play timeout");
 
     let tick_checksums: Vec<TickChecksum> = replay::run_replay(&replay_log).unwrap();
 

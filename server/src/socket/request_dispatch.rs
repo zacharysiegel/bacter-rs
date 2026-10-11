@@ -256,7 +256,7 @@ async fn enter_existing_game(
     request_membership(connection, request_kind, game_id, game_handle, join_kind).await
 }
 
-/// Five failures on one connection close it; an IP past its failure limit is refused without hashing.
+/// Reaching the failure limit on one connection closes it; an IP past its failure limit is refused without hashing.
 async fn check_game_password(
     connection: &mut Connection,
     request_kind: RequestKind,
@@ -347,24 +347,29 @@ async fn request_membership(
     connection.send_to_writer(WriterCommand::AttachMembership(membership.outbound)).await
 }
 
-/// A full request queue answers `ServerBusy`; a closed one, or a dropped reply, means the game is gone.
+/// A dropped reply means the game is gone.
 async fn send_answered_request<T>(
     game_handle: &GameHandle,
     request: GameRequest,
     reply_receiver: oneshot::Receiver<Result<T, RejectionKind>>,
 ) -> Result<T, RejectionKind> {
-    let send_result: Result<(), SendTimeoutError<GameRequest>> =
-        game_handle.requests.send_timeout(request, game_handle::REQUEST_SEND_TIMEOUT).await;
-
-    match send_result {
-        Ok(()) => {}
-        Err(SendTimeoutError::Timeout(_)) => return Err(RejectionKind::ServerBusy),
-        Err(SendTimeoutError::Closed(_)) => return Err(RejectionKind::GameNotFound),
-    }
+    send_request(game_handle, request).await?;
 
     let reply: Result<Result<T, RejectionKind>, RecvError> = reply_receiver.await;
 
     reply.unwrap_or(Err(RejectionKind::GameNotFound))
+}
+
+/// A full request queue answers `ServerBusy`; a closed one means the game is gone.
+async fn send_request(game_handle: &GameHandle, request: GameRequest) -> Result<(), RejectionKind> {
+    let send_result: Result<(), SendTimeoutError<GameRequest>> =
+        game_handle.requests.send_timeout(request, game_handle::REQUEST_SEND_TIMEOUT).await;
+
+    match send_result {
+        Ok(()) => Ok(()),
+        Err(SendTimeoutError::Timeout(_)) => Err(RejectionKind::ServerBusy),
+        Err(SendTimeoutError::Closed(_)) => Err(RejectionKind::GameNotFound),
+    }
 }
 
 async fn respawn(
@@ -379,7 +384,7 @@ async fn respawn(
     }
 
     let Some(joined_game) = &connection.joined_game else {
-        return ConnectionFlow::Continue;
+        return reject(connection, RequestKind::Respawn, RejectionKind::NotInGame).await;
     };
 
     let (reply_sender, reply_receiver): (
@@ -410,24 +415,18 @@ async fn update_appearance(connection: &mut Connection, appearance_serial: Appea
     }
 
     let Some(joined_game) = &connection.joined_game else {
-        return ConnectionFlow::Continue;
+        return reject(connection, RequestKind::UpdateAppearance, RejectionKind::NotInGame).await;
     };
 
     let request: GameRequest = GameRequest::UpdateAppearance {
         member_id: joined_game.member_id,
         appearance: Appearance::from(appearance_serial),
     };
-    let send_result: Result<(), SendTimeoutError<GameRequest>> =
-        joined_game.handle.requests.send_timeout(request, game_handle::REQUEST_SEND_TIMEOUT).await;
+    let send_result: Result<(), RejectionKind> = send_request(&joined_game.handle, request).await;
 
     match send_result {
         Ok(()) => ConnectionFlow::Continue,
-        Err(SendTimeoutError::Timeout(_)) => {
-            reject(connection, RequestKind::UpdateAppearance, RejectionKind::ServerBusy).await
-        }
-        Err(SendTimeoutError::Closed(_)) => {
-            reject(connection, RequestKind::UpdateAppearance, RejectionKind::GameNotFound).await
-        }
+        Err(rejection) => reject(connection, RequestKind::UpdateAppearance, rejection).await,
     }
 }
 
@@ -486,7 +485,7 @@ async fn leave_game(connection: &mut Connection) -> ConnectionFlow {
     }
 
     let Some(joined_game) = &connection.joined_game else {
-        return ConnectionFlow::Continue;
+        return reject(connection, RequestKind::LeaveGame, RejectionKind::NotInGame).await;
     };
 
     let (reply_sender, reply_receiver): (oneshot::Sender<()>, oneshot::Receiver<()>) = oneshot::channel();
@@ -501,6 +500,7 @@ async fn leave_game(connection: &mut Connection) -> ConnectionFlow {
     }
 
     connection.return_to_lobby();
+
     let left_game_frame: Bytes = connection_model::encode_frame(&MessageSerialOut::LeftGame);
 
     connection

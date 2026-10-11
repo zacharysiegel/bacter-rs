@@ -4,6 +4,7 @@ use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 
 use helpers::test_server;
 use helpers::test_server::{TestClient, TestPlayer, TestServer};
+use server::password;
 use server::shutdown::ServerRunState;
 use server::socket;
 use shared::game::GameModeKind;
@@ -197,14 +198,14 @@ async fn join_game_checks_the_password() {
 }
 
 #[actix_web::test]
-async fn join_game_closes_a_connection_after_five_wrong_passwords() {
+async fn join_game_closes_a_connection_at_the_password_failure_limit() {
     let test_server: TestServer = test_server::start_test_server(|_| {});
     let mut creator: TestClient = TestClient::connect(&test_server).await;
     creator.send(&test_server::create_game_message("Private", Some("secret"), "Owner")).await;
     let creator_player: TestPlayer = TestPlayer::enter(creator).await;
     let mut joiner: TestClient = TestClient::connect(&test_server).await;
 
-    for _ in 0..4 {
+    for _ in 0..password::PASSWORD_FAILURE_LIMIT - 1 {
         joiner
             .send(&test_server::join_game_message(
                 creator_player.game_id,

@@ -113,7 +113,11 @@ mod tests {
         let half_limit: u32 = protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP / 2;
         let later: Instant = start + PASSWORD_FAILURE_WINDOW / 2;
         record_failures(&failures, half_limit, start);
-        record_failures(&failures, protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP - half_limit, later);
+        record_failures(
+            &failures,
+            protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP - half_limit,
+            later,
+        );
 
         assert_eq!(
             check_attempt(&failures, IP, start + PASSWORD_FAILURE_WINDOW - Duration::from_secs(1)),
@@ -148,6 +152,9 @@ mod tests {
         forget_expired_failures(&failures, start + PASSWORD_FAILURE_WINDOW);
 
         assert!(!failures.contains_key(&IP));
-        assert_eq!(failures.get(&OTHER_IP).unwrap().failure_instants, VecDeque::from([later]));
+        assert_eq!(
+            failures.get(&OTHER_IP).unwrap().failure_instants,
+            VecDeque::from([later])
+        );
     }
 }

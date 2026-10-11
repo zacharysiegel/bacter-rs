@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs;
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::ExitCode;
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -23,13 +23,10 @@ fn main() -> ExitCode {
 
     let matches: ArgMatches = create_command().get_matches();
     let dump_result: Result<String, AppError> = run_subcommand(&matches);
+    let output_result: Result<(), AppError> = dump_result.and_then(|dump| write_dump(&mut io::stdout().lock(), &dump));
 
-    match dump_result {
-        Ok(dump) => {
-            print!("{dump}");
-
-            ExitCode::SUCCESS
-        }
+    match output_result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{}", get_error_text(&error));
 
@@ -143,6 +140,17 @@ fn read_standard_input() -> Result<Vec<u8>, AppError> {
     Ok(input_bytes)
 }
 
+fn write_dump(writer: &mut impl Write, dump: &str) -> Result<(), AppError> {
+    let write_result: io::Result<()> = writer.write_all(dump.as_bytes()).and_then(|()| writer.flush());
+
+    match write_result {
+        Ok(()) => Ok(()),
+        // A reader which stops early, such as `head`, closes the pipe.
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(AppError::from_error("cannot write standard output", Box::new(error))),
+    }
+}
+
 /// The message and its chain of causes, without backtraces.
 fn get_error_text(error: &AppError) -> String {
     let Some(sub_error): Option<&Box<dyn Error>> = error.sub_error.as_ref() else {
@@ -204,5 +212,48 @@ mod tests {
         let error: AppError = AppError::from(io::Error::other("permission denied"));
 
         assert_eq!(get_error_text(&error), "Error: permission denied");
+    }
+
+    struct FailingWriter {
+        error_kind: io::ErrorKind,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(self.error_kind))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_dump_writes_the_whole_dump() {
+        let mut output_bytes: Vec<u8> = Vec::new();
+
+        write_dump(&mut output_bytes, "1 00000000000000ff\n").unwrap();
+
+        assert_eq!(output_bytes, b"1 00000000000000ff\n");
+    }
+
+    #[test]
+    fn write_dump_ends_quietly_when_the_reader_closes_the_pipe() {
+        let mut writer: FailingWriter = FailingWriter {
+            error_kind: io::ErrorKind::BrokenPipe,
+        };
+
+        assert!(write_dump(&mut writer, "dump").is_ok());
+    }
+
+    #[test]
+    fn write_dump_reports_any_other_write_error() {
+        let mut writer: FailingWriter = FailingWriter {
+            error_kind: io::ErrorKind::PermissionDenied,
+        };
+
+        let error: AppError = write_dump(&mut writer, "dump").unwrap_err();
+
+        assert_eq!(error.message, "Error: cannot write standard output");
     }
 }

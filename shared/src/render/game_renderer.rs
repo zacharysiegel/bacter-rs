@@ -301,7 +301,7 @@ fn draw_instances<T: bytemuck::Pod>(
     };
 
     render_pass.set_pipeline(pipeline);
-    render_pass.set_vertex_buffer(0, written_slice);
+    render_pass.set_vertex_buffer(scene_pipelines::INSTANCE_VERTEX_BUFFER_SLOT, written_slice);
     render_pass.draw(0..scene_pipelines::QUAD_VERTEX_COUNT, 0..instance_buffer.count());
 }
 

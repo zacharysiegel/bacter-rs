@@ -20,6 +20,9 @@ pub const CAMERA_BIND_GROUP_INDEX: u32 = 0;
 /// Must match the camera's `@binding` in scene_common.wgsl.
 pub const CAMERA_UNIFORM_BINDING: u32 = 0;
 
+/// Must match the position of `instance_layout` in the pipeline's vertex `buffers`.
+pub const INSTANCE_VERTEX_BUFFER_SLOT: u32 = 0;
+
 pub struct ScenePipelines {
     pub camera_bind_group_layout: BindGroupLayout,
     pub cell: RenderPipeline,

@@ -9,12 +9,15 @@ pub mod shutdown;
 pub mod site;
 pub mod socket;
 
+use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::time::Duration;
 
-use actix_web::dev::Server;
+use actix_web::dev::{Server, ServerHandle};
 use actix_web::{App, HttpServer, web};
 use tokio::sync::watch;
+use tokio::task::{JoinError, JoinHandle};
 
 use shared::error::AppError;
 
@@ -28,6 +31,9 @@ use crate::shutdown::ServerRunState;
 use crate::site::site_api;
 use crate::socket::SocketContext;
 use crate::socket::socket_api;
+
+/// Lets the connections write their close frames before the server stops.
+const SHUTDOWN_CLOSE_DELAY: Duration = Duration::from_millis(500);
 
 /// A bound server which runs once awaited.
 pub struct CreatedServer {
@@ -72,4 +78,32 @@ pub fn create_server(config: ServerConfig, registries: ServerRegistries) -> Resu
         local_addresses,
         run_state: run_state_sender,
     })
+}
+
+/// Until an interrupt or terminate signal, which closes every connection first.
+pub async fn run(config: ServerConfig, registries: ServerRegistries) -> Result<(), AppError> {
+    let created_server: CreatedServer = create_server(config, registries)?;
+    let server_handle: ServerHandle = created_server.server.handle();
+    let mut server_task: JoinHandle<io::Result<()>> = actix_web::rt::spawn(created_server.server);
+
+    log::info!("server listening; [addresses={:?}]", created_server.local_addresses);
+
+    tokio::select! {
+        server_result = &mut server_task => return get_server_result(server_result),
+        _ = shutdown::wait_for_termination_signal() => {}
+    }
+
+    log::info!("server shutting down");
+    let _ = created_server.run_state.send(ServerRunState::ShuttingDown);
+    tokio::time::sleep(SHUTDOWN_CLOSE_DELAY).await;
+    server_handle.stop(true).await;
+
+    get_server_result(server_task.await)
+}
+
+fn get_server_result(server_result: Result<io::Result<()>, JoinError>) -> Result<(), AppError> {
+    let io_result: io::Result<()> =
+        server_result.map_err(|error| AppError::from_error("the server task failed", Box::new(error)))?;
+
+    Ok(io_result?)
 }

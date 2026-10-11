@@ -11,7 +11,6 @@ use crate::game::{GameHandle, GameInput, GameRequest};
 
 pub const FIXTURE_SEED: u64 = 0x5eed;
 
-/// Square 800 px rectangle; survival has a player minimum of 2 and skirmish two teams.
 pub fn create_settings(mode: GameModeKind, player_cap: u8) -> GameSettings {
     let player_minimum: Option<u8> = match mode {
         GameModeKind::Survival => Some(2),

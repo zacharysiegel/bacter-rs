@@ -45,8 +45,7 @@ pub fn reserve_game(registries: ServerRegistries, title: &str) -> Result<GameRes
 }
 
 pub fn cancel_reservation(registries: ServerRegistries, reservation: &GameReservation) {
-    release_title(registries, &reservation.title, reservation.game_id);
-    registries.game_count.fetch_sub(1, Ordering::SeqCst);
+    release_title_and_game_slot(registries, &reservation.title, reservation.game_id);
 }
 
 pub fn insert_game(registries: ServerRegistries, game_id: GameId, game_handle: GameHandle) {
@@ -61,8 +60,7 @@ pub fn get_game(registries: ServerRegistries, game_id: GameId) -> Option<GameHan
 /// A newer game holding the same title keeps it.
 pub fn remove_game(registries: ServerRegistries, game_id: GameId, title: &str) {
     registries.games.remove(&game_id);
-    release_title(registries, title, game_id);
-    registries.game_count.fetch_sub(1, Ordering::SeqCst);
+    release_title_and_game_slot(registries, title, game_id);
 }
 
 fn reserve_title(registries: ServerRegistries, title: &str, game_id: GameId) -> Result<(), RejectionKind> {
@@ -84,12 +82,21 @@ fn reserve_game_slot(registries: ServerRegistries) -> Result<(), RejectionKind> 
     let previous_game_count: u32 = registries.game_count.fetch_add(1, Ordering::SeqCst);
 
     if previous_game_count >= protocol_limits::GAME_LIMIT_PER_SERVER {
-        registries.game_count.fetch_sub(1, Ordering::SeqCst);
+        release_game_slot(registries);
 
         return Err(RejectionKind::ServerFull);
     }
 
     Ok(())
+}
+
+fn release_game_slot(registries: ServerRegistries) {
+    registries.game_count.fetch_sub(1, Ordering::SeqCst);
+}
+
+fn release_title_and_game_slot(registries: ServerRegistries, title: &str, game_id: GameId) {
+    release_title(registries, title, game_id);
+    release_game_slot(registries);
 }
 
 #[cfg(test)]
@@ -102,14 +109,11 @@ mod tests {
     fn reserve_game_allocates_increasing_game_ids() {
         let registries: ServerRegistries = ServerRegistries::leaked();
 
-        assert_eq!(
-            reserve_game(registries, "First").unwrap().game_id,
-            GameId(FIRST_GAME_ID)
-        );
-        assert_eq!(
-            reserve_game(registries, "Second").unwrap().game_id,
-            GameId(FIRST_GAME_ID + 1)
-        );
+        let first_reservation: GameReservation = reserve_game(registries, "First").unwrap();
+        let second_reservation: GameReservation = reserve_game(registries, "Second").unwrap();
+
+        assert_eq!(first_reservation.game_id, GameId(FIRST_GAME_ID));
+        assert_eq!(second_reservation.game_id, GameId(FIRST_GAME_ID + 1));
         assert_eq!(registries.game_count.load(Ordering::SeqCst), 2);
     }
 
@@ -118,7 +122,9 @@ mod tests {
         let registries: ServerRegistries = ServerRegistries::leaked();
         reserve_game(registries, "Arena").unwrap();
 
-        assert_eq!(reserve_game(registries, "Arena"), Err(RejectionKind::TitleTaken));
+        let duplicate_reservation: Result<GameReservation, RejectionKind> = reserve_game(registries, "Arena");
+
+        assert_eq!(duplicate_reservation, Err(RejectionKind::TitleTaken));
         assert_eq!(registries.game_count.load(Ordering::SeqCst), 1);
     }
 
@@ -159,8 +165,14 @@ mod tests {
             ),
         );
 
-        assert!(get_game(registries, reservation.game_id).is_some());
-        assert!(get_game(registries, GameId(99)).is_none());
+        let registered_game_handle: Option<GameHandle> = get_game(registries, reservation.game_id);
+        let unregistered_game_handle: Option<GameHandle> = get_game(registries, GameId(99));
+
+        assert_eq!(
+            registered_game_handle.map(|game_handle| game_handle.summary.borrow().game_id),
+            Some(reservation.game_id)
+        );
+        assert!(unregistered_game_handle.is_none());
     }
 
     #[test]

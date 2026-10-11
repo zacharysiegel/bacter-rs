@@ -3,12 +3,15 @@ use std::path::Path;
 use actix_files::Files;
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
+use actix_web::http::StatusCode;
 use actix_web::http::header;
 use actix_web::http::header::HeaderValue;
 use actix_web::middleware::Next;
 use actix_web::{HttpResponse, middleware, web};
 
 const INDEX_FILE_NAME: &str = "index.html";
+const GAME_SERVER_CONFIG_FILE_NAME: &str = "game-server.json";
+const PKG_DIRECTORY_PREFIX: &str = "pkg/";
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 const NO_CACHE_CONTROL: &str = "no-cache";
 
@@ -37,8 +40,12 @@ async fn set_cache_control(
 ) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
     let cache_control: Option<&'static str> = get_cache_control(request.path());
     let mut response: ServiceResponse<_> = next.call(request).await?;
+    let status: StatusCode = response.status();
+    let is_cacheable_status: bool = status.is_success() || status == StatusCode::NOT_MODIFIED;
 
-    if let Some(cache_control) = cache_control {
+    if let Some(cache_control) = cache_control
+        && is_cacheable_status
+    {
         response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control));
     }
 
@@ -47,12 +54,14 @@ async fn set_cache_control(
 
 /// Hashed `/pkg/` files never change; the entry points must be revalidated.
 fn get_cache_control(path: &str) -> Option<&'static str> {
-    if path.starts_with("/pkg/") {
+    let site_relative_path: &str = path.strip_prefix('/').unwrap_or(path);
+
+    if site_relative_path.starts_with(PKG_DIRECTORY_PREFIX) {
         return Some(IMMUTABLE_CACHE_CONTROL);
     }
 
-    match path {
-        "/" | "/index.html" | "/game-server.json" => Some(NO_CACHE_CONTROL),
+    match site_relative_path {
+        "" | INDEX_FILE_NAME | GAME_SERVER_CONFIG_FILE_NAME => Some(NO_CACHE_CONTROL),
         _ => None,
     }
 }
@@ -61,16 +70,17 @@ fn get_cache_control(path: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::game::test_fixture;
-    use actix_web::http::StatusCode;
     use actix_web::{App, test};
     use std::path::PathBuf;
 
+    const HASHED_WASM_FILE_NAME: &str = "bacter-0a1b.wasm";
+
     fn create_site_root(name: &str) -> PathBuf {
         let site_root: PathBuf = test_fixture::create_temporary_directory(name);
-        std::fs::create_dir_all(site_root.join("pkg")).unwrap();
-        std::fs::write(site_root.join("index.html"), "<!doctype html>").unwrap();
-        std::fs::write(site_root.join("game-server.json"), "{}").unwrap();
-        std::fs::write(site_root.join("pkg/bacter-0a1b.wasm"), "wasm").unwrap();
+        std::fs::create_dir_all(site_root.join(PKG_DIRECTORY_PREFIX)).unwrap();
+        std::fs::write(site_root.join(INDEX_FILE_NAME), "<!doctype html>").unwrap();
+        std::fs::write(site_root.join(GAME_SERVER_CONFIG_FILE_NAME), "{}").unwrap();
+        std::fs::write(site_root.join(PKG_DIRECTORY_PREFIX).join(HASHED_WASM_FILE_NAME), "wasm").unwrap();
         std::fs::write(site_root.join("favicon.ico"), "icon").unwrap();
 
         site_root
@@ -103,9 +113,12 @@ mod tests {
         let site_root: PathBuf = create_site_root("site-cache-headers");
         let no_cache: Option<String> = Some(String::from(NO_CACHE_CONTROL));
 
+        let game_server_config_path: String = format!("/{GAME_SERVER_CONFIG_FILE_NAME}");
+        let hashed_wasm_path: String = format!("/{PKG_DIRECTORY_PREFIX}{HASHED_WASM_FILE_NAME}");
+
         let responses: Vec<(StatusCode, Option<String>, String)> = get_responses(
             Some(&site_root),
-            &["/", "/game-server.json", "/pkg/bacter-0a1b.wasm", "/favicon.ico"],
+            &["/", &game_server_config_path, &hashed_wasm_path, "/favicon.ico"],
         )
         .await;
 
@@ -122,6 +135,17 @@ mod tests {
                 (StatusCode::OK, None, String::from("icon")),
             ],
         );
+    }
+
+    #[actix_web::test]
+    async fn configurer_sends_no_cache_header_for_a_missing_pkg_file() {
+        let site_root: PathBuf = create_site_root("site-missing-pkg-file");
+        let missing_wasm_path: String = format!("/{PKG_DIRECTORY_PREFIX}bacter-ffff.wasm");
+
+        let responses: Vec<(StatusCode, Option<String>, String)> =
+            get_responses(Some(&site_root), &[&missing_wasm_path]).await;
+
+        assert_eq!((responses[0].0, responses[0].1.clone()), (StatusCode::NOT_FOUND, None));
     }
 
     #[actix_web::test]

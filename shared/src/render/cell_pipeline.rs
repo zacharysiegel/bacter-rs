@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn every_shared_constant_matches_its_shader_declaration() {
+    fn cell_shader_source_declares_every_shared_constant() {
         let skin_constant_names: [(InstanceSkinKind, &str); 5] = [
             (InstanceSkinKind::Grid, "INSTANCE_SKIN_GRID"),
             (InstanceSkinKind::Circles, "INSTANCE_SKIN_CIRCLES"),

@@ -3,10 +3,11 @@ use std::f32::consts::SQRT_2;
 use crate::ability::{Loadout, ShotPhase, SporePhase};
 use crate::game::GameState;
 use crate::geometry;
-use crate::geometry::{Subpixels, WorldPoint};
+use crate::geometry::WorldPoint;
 use crate::member::SkinKind;
 use crate::organism::Organism;
 use crate::play::InterpolatedPoint;
+use crate::play::interpolation;
 use crate::render::render_color;
 use crate::render::{
     CellInstance, CellScale, InstanceSkinKind, RenderColor, ShapeGeometry, ShapeInstance, ShapeKind, ShapePaint,
@@ -15,7 +16,6 @@ use crate::world::{World, WorldShapeKind};
 
 /// The original's `cell_width / cos 45° * 2.9`.
 pub const SPORE_SECRETION_RADIUS_PIXELS: f32 = geometry::CELL_WIDTH_PIXELS as f32 * SQRT_2 * 2.9;
-/// Half a spore's.
 pub const SHOT_SECRETION_RADIUS_PIXELS: f32 = SPORE_SECRETION_RADIUS_PIXELS / 2.0;
 /// The square root of `ability_constants::FIELD_RADIUS_SQUARED_PIXELS`.
 pub const FIELD_RADIUS_PIXELS: f32 = 60.0;
@@ -121,7 +121,7 @@ impl RenderedOrganism<'_> {
             .iter()
             .map(|lattice_coordinate| {
                 CellInstance::new(
-                    get_pixel_point(self.organism.cell_center(lattice_coordinate)),
+                    InterpolatedPoint::from_world_point(self.organism.cell_center(lattice_coordinate)),
                     self.color(),
                     skin,
                     CellScale::FULL,
@@ -147,11 +147,11 @@ fn get_rendered_organisms(state: &GameState) -> Vec<RenderedOrganism<'_>> {
 
 /// The shadow, then the world body with its border.
 fn get_world_shapes(world: &World) -> Vec<ShapeInstance> {
-    let half_width_pixels: f32 = get_pixels(world.bounds.width) / 2.0;
-    let half_height_pixels: f32 = get_pixels(world.bounds.height) / 2.0;
+    let half_width_pixels: f32 = interpolation::get_pixels(world.bounds.width) / 2.0;
+    let half_height_pixels: f32 = interpolation::get_pixels(world.bounds.height) / 2.0;
     let world_center: InterpolatedPoint = InterpolatedPoint {
-        x: get_pixels(world.bounds.left) + half_width_pixels,
-        y: get_pixels(world.bounds.top) + half_height_pixels,
+        x: interpolation::get_pixels(world.bounds.left) + half_width_pixels,
+        y: interpolation::get_pixels(world.bounds.top) + half_height_pixels,
     };
     let (shape_kind, shadow_offset): (ShapeKind, InterpolatedPoint) = match world.shape {
         WorldShapeKind::Rectangle => (ShapeKind::Rectangle, RECTANGLE_WORLD_SHADOW_OFFSET),
@@ -188,7 +188,7 @@ fn get_world_shapes(world: &World) -> Vec<ShapeInstance> {
 
 fn get_field_shape(field_center: WorldPoint, ring_color: RenderColor) -> ShapeInstance {
     ShapeInstance::new(
-        get_circle_geometry(get_pixel_point(field_center), FIELD_RADIUS_PIXELS),
+        get_circle_geometry(InterpolatedPoint::from_world_point(field_center), FIELD_RADIUS_PIXELS),
         ShapePaint::fill_and_stroke(render_color::FIELD_FILL_COLOR, ring_color, FIELD_RING_WIDTH_PIXELS),
     )
 }
@@ -202,23 +202,12 @@ fn get_circle_geometry(center: InterpolatedPoint, radius_pixels: f32) -> ShapeGe
     }
 }
 
-fn get_pixel_point(point: WorldPoint) -> InterpolatedPoint {
-    InterpolatedPoint {
-        x: point.x as f32,
-        y: point.y as f32,
-    }
-}
-
-fn get_pixels(subpixels: Subpixels) -> f32 {
-    (f64::from(subpixels.0) / f64::from(geometry::SUBPIXELS_PER_PIXEL)) as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ability::{AbilityPhase, Projectile, ThirdAbilityKind, ability_constants};
     use crate::game::{GameModeKind, Tick, test_fixture};
-    use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector};
+    use crate::geometry::{LatticeCoordinate, SubpixelPoint, SubpixelVector, Subpixels};
     use crate::member::{Member, MemberId, OrganismColorKind};
 
     const OCEAN_COLOR: RenderColor = RenderColor::opaque(102, 136, 244);
@@ -287,8 +276,8 @@ mod tests {
     #[test]
     fn tick_layer_from_state_follows_the_shrunk_world_bounds() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::Survival, WorldShapeKind::Rectangle, 800);
-        state.world.bounds.left = Subpixels(512);
-        state.world.bounds.width = Subpixels(799 * 1024);
+        state.world.bounds.left = Subpixels(geometry::SUBPIXELS_PER_PIXEL / 2);
+        state.world.bounds.width = Subpixels(799 * geometry::SUBPIXELS_PER_PIXEL);
 
         let tick_layer: TickLayer = TickLayer::from_state(&state);
 
@@ -343,16 +332,20 @@ mod tests {
             800,
             &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 300, y: 300 }],
         );
+
         let neutralizer: &mut Member = get_member_mut(&mut state, MemberId(0));
         let neutralizer_organism: &mut Organism = neutralizer.organism.as_mut().unwrap();
         neutralizer_organism.abilities.third = AbilityPhase::Active { ends_at: Tick(50) };
         neutralizer_organism.abilities.third_center = Some(WorldPoint { x: 100, y: 100 });
+
         let poisoner: &mut Member = get_member_mut(&mut state, MemberId(1));
         poisoner.loadout.as_mut().unwrap().third = ThirdAbilityKind::Toxin;
         poisoner.loadout.as_mut().unwrap().appearance.color = OrganismColorKind::Fire;
+
         let poisoner_organism: &mut Organism = poisoner.organism.as_mut().unwrap();
         poisoner_organism.abilities.third = AbilityPhase::Active { ends_at: Tick(50) };
         poisoner_organism.abilities.third_center = Some(WorldPoint { x: 300, y: 300 });
+
         poisoner_organism.abilities.spore = SporePhase::Secreting {
             ends_at: Tick(9),
             spores: vec![PROJECTILE],

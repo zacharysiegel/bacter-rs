@@ -1,6 +1,6 @@
 use crate::ability::Projectile;
 use crate::geometry;
-use crate::geometry::SubpixelPoint;
+use crate::geometry::{SubpixelPoint, Subpixels, WorldPoint};
 
 const SUBPIXELS_PER_PIXEL: f64 = geometry::SUBPIXELS_PER_PIXEL as f64;
 
@@ -14,8 +14,15 @@ pub struct InterpolatedPoint {
 impl InterpolatedPoint {
     pub fn from_subpixel_point(point: SubpixelPoint) -> InterpolatedPoint {
         InterpolatedPoint {
-            x: (f64::from(point.x) / SUBPIXELS_PER_PIXEL) as f32,
-            y: (f64::from(point.y) / SUBPIXELS_PER_PIXEL) as f32,
+            x: get_pixels(Subpixels(point.x)),
+            y: get_pixels(Subpixels(point.y)),
+        }
+    }
+
+    pub fn from_world_point(point: WorldPoint) -> InterpolatedPoint {
+        InterpolatedPoint {
+            x: point.x as f32,
+            y: point.y as f32,
         }
     }
 }
@@ -38,9 +45,17 @@ impl InterpolationFrame {
     }
 }
 
+pub fn get_pixels(subpixels: Subpixels) -> f32 {
+    get_pixels_from_unrounded_subpixels(f64::from(subpixels.0))
+}
+
 fn get_interpolated_pixels(position: i32, velocity: i32, remaining_proportion: f64) -> f32 {
     let subpixels: f64 = f64::from(position) - f64::from(velocity) * remaining_proportion;
 
+    get_pixels_from_unrounded_subpixels(subpixels)
+}
+
+fn get_pixels_from_unrounded_subpixels(subpixels: f64) -> f32 {
     (subpixels / SUBPIXELS_PER_PIXEL) as f32
 }
 

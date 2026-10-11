@@ -170,17 +170,21 @@ async fn two_client_sessions_compute_identical_checksums_for_one_game() {
     let test_server: TestServer = test_server::start_test_server(|_| {});
     let mut creator: SessionDriver =
         SessionDriver::connect(&test_server, &[GameKeyKind::MoveRight, GameKeyKind::FirstAbility]).await;
+
     creator.send_request(test_server::create_game_message("Arena", None, "Creator")).await;
     creator.play_until_tick(CREATOR_HEAD_START_TICK).await;
 
     let game_id: GameId = creator.session.game_id().expect("the creator is in its game");
     let mut joiner: SessionDriver = SessionDriver::connect(&test_server, &[GameKeyKind::MoveDown]).await;
+
     joiner.send_request(test_server::join_game_message(game_id.0, None, "Joiner")).await;
 
     let creator_task: JoinHandle<SessionDriver> = spawn_play_until_tick(creator, FINAL_TICK);
     let joiner_task: JoinHandle<SessionDriver> = spawn_play_until_tick(joiner, FINAL_TICK);
+
     let creator: SessionDriver = creator_task.await.expect("the creator plays");
     let joiner: SessionDriver = joiner_task.await.expect("the joiner plays");
+
     let common_ticks: Vec<Tick> = get_common_ticks(&creator, &joiner);
 
     assert!(common_ticks.len() >= COMMON_TICK_MINIMUM);

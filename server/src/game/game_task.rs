@@ -368,20 +368,12 @@ impl GameTask {
 
         self.empty_since.get_or_insert(now);
     }
-}
 
-fn create_team_assignment_rng(game_id: GameId) -> Pcg32 {
-    let seed_result: Result<u64, getrandom::Error> = getrandom::u64();
+    fn finish_replay_capture(&mut self) {
+        let replay_capture: Option<ReplayCapture> = self.replay_capture.take();
 
-    match seed_result {
-        Ok(seed) => Pcg32::from_seed(seed),
-        Err(error) => {
-            log::warn!(
-                "cannot draw a team assignment seed; [game_id={} error={error}]",
-                game_id.0
-            );
-
-            Pcg32::from_seed(u64::from(game_id.0))
+        if let Some(replay_capture) = replay_capture {
+            replay_capture.finish();
         }
     }
 }
@@ -483,7 +475,7 @@ pub async fn run_game_task(
         }
     }
 
-    close_game(&mut requests, &mut inputs);
+    close_game(&mut game_task, &mut requests, &mut inputs);
 
     log::info!(
         "game ended; [game_id={} tick={} stale_inputs={}]",
@@ -525,7 +517,13 @@ fn run_tick_and_drain(
     game_task.get_flow(now)
 }
 
-fn close_game(requests: &mut mpsc::Receiver<GameRequest>, inputs: &mut mpsc::Receiver<GameInput>) {
+fn close_game(
+    game_task: &mut GameTask,
+    requests: &mut mpsc::Receiver<GameRequest>,
+    inputs: &mut mpsc::Receiver<GameInput>,
+) {
+    game_task.finish_replay_capture();
+
     requests.close();
     inputs.close();
 
@@ -551,17 +549,35 @@ fn answer_closed_game(request: GameRequest) {
     }
 }
 
+fn create_team_assignment_rng(game_id: GameId) -> Pcg32 {
+    let seed_result: Result<u64, getrandom::Error> = getrandom::u64();
+
+    match seed_result {
+        Ok(seed) => Pcg32::from_seed(seed),
+        Err(error) => {
+            log::warn!(
+                "cannot draw a team assignment seed; [game_id={} error={error}]",
+                game_id.0
+            );
+
+            Pcg32::from_seed(u64::from(game_id.0))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::test_fixture;
+    use crate::game::ReplayRecord;
+    use crate::game::{recipients, replay_capture, test_fixture};
     use crate::socket::{ConnectionControl, ConnectionId, Membership};
     use shared::ability::AbilityPressSet;
-    use shared::game::{GameModeKind, PlayerInput};
+    use shared::game::{GameModeKind, GameSettings, PlayerInput};
     use shared::geometry::SubpixelPoint;
-    use shared::member::{Joiner, MemberRoleKind};
+    use shared::member::{Appearance, Joiner, MemberRoleKind, OrganismColorKind, SkinKind};
     use shared::protocol;
-    use shared::protocol::{GameSummarySerialOut, MemberEventSerialOut};
+    use shared::protocol::{GameSettingsSerialOut, GameSummarySerialOut, MemberEventSerialOut, ReplayHeaderSerialOut};
+    use tokio::sync::mpsc::error::TryRecvError;
 
     const GAME_ID: GameId = GameId(7);
     const GRACE_PERIOD: Duration = Duration::from_millis(200);
@@ -572,14 +588,32 @@ mod tests {
     }
 
     fn create_test_game(player_cap: u8) -> TestGame {
-        let state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, player_cap);
+        create_custom_test_game(GameModeKind::FreeForAll, player_cap, None)
+    }
+
+    fn create_custom_test_game(mode: GameModeKind, player_cap: u8, replay_capture: Option<ReplayCapture>) -> TestGame {
+        let state: GameState = test_fixture::create_state(mode, player_cap);
         let (summary_sender, summary_receiver): (watch::Sender<GameSummary>, watch::Receiver<GameSummary>) =
             watch::channel(GameSummary::from_game_state(GAME_ID, &state, false));
 
         TestGame {
-            game_task: GameTask::new(GAME_ID, state, false, summary_sender, None, GRACE_PERIOD),
+            game_task: GameTask::new(GAME_ID, state, false, summary_sender, replay_capture, GRACE_PERIOD),
             summary: summary_receiver,
         }
+    }
+
+    fn create_test_replay_capture(settings: &GameSettings) -> (ReplayCapture, mpsc::Receiver<ReplayRecord>) {
+        let (record_sender, record_receiver): (mpsc::Sender<ReplayRecord>, mpsc::Receiver<ReplayRecord>) =
+            mpsc::channel(replay_capture::REPLAY_CAPTURE_CHANNEL_CAPACITY);
+        let header_serial_out: ReplayHeaderSerialOut = ReplayHeaderSerialOut {
+            settings: GameSettingsSerialOut::from(settings),
+            seed: test_fixture::FIXTURE_SEED,
+        };
+
+        (
+            ReplayCapture::from_record_sender(GAME_ID, record_sender, header_serial_out),
+            record_receiver,
+        )
     }
 
     fn join(
@@ -607,6 +641,49 @@ mod tests {
         (reply_receiver.try_recv().unwrap(), membership)
     }
 
+    fn spectate(
+        game_task: &mut GameTask,
+        connection_id: u64,
+        screen_name: &str,
+    ) -> (Result<MemberId, RejectionKind>, Membership) {
+        let (endpoint, membership): (ConnectionEndpoint, Membership) =
+            connection_model::create_membership(ConnectionId(connection_id));
+        let (reply_sender, mut reply_receiver): (
+            oneshot::Sender<Result<MemberId, RejectionKind>>,
+            oneshot::Receiver<Result<MemberId, RejectionKind>>,
+        ) = oneshot::channel();
+
+        game_task.handle_request(
+            GameRequest::Spectate {
+                endpoint,
+                screen_name: String::from(screen_name),
+                reply: reply_sender,
+            },
+            Instant::now(),
+        );
+
+        (reply_receiver.try_recv().unwrap(), membership)
+    }
+
+    fn respawn(game_task: &mut GameTask, member_id: MemberId, team: TeamChoiceKind) -> Result<(), RejectionKind> {
+        let (reply_sender, mut reply_receiver): (
+            oneshot::Sender<Result<(), RejectionKind>>,
+            oneshot::Receiver<Result<(), RejectionKind>>,
+        ) = oneshot::channel();
+
+        game_task.handle_request(
+            GameRequest::Respawn {
+                member_id,
+                loadout: test_fixture::create_loadout(),
+                team,
+                reply: reply_sender,
+            },
+            Instant::now(),
+        );
+
+        reply_receiver.try_recv().unwrap()
+    }
+
     fn receive_messages(membership: &mut Membership) -> Vec<MessageSerialOut> {
         let mut message_serial_outs: Vec<MessageSerialOut> = Vec::new();
 
@@ -625,6 +702,16 @@ mod tests {
                 _ => None,
             })
             .flatten()
+            .collect()
+    }
+
+    fn get_bundles(message_serial_outs: &[MessageSerialOut]) -> Vec<InputBundleSerialOut> {
+        message_serial_outs
+            .iter()
+            .filter_map(|message_serial_out| match message_serial_out {
+                MessageSerialOut::InputBundle(bundle_serial_out) => Some(bundle_serial_out.clone()),
+                _ => None,
+            })
             .collect()
     }
 
@@ -653,7 +740,8 @@ mod tests {
         );
         assert!(matches!(
             &message_serial_outs[1],
-            MessageSerialOut::Snapshot(GameSnapshotSerialOut { game_id: 7, state }) if state.tick == 0 && state.members.is_empty()
+            MessageSerialOut::Snapshot(GameSnapshotSerialOut { game_id, state })
+                if *game_id == GAME_ID.0 && state.tick == 0 && state.members.is_empty()
         ));
         assert!(matches!(
             &message_serial_outs[2],
@@ -866,7 +954,10 @@ mod tests {
                 .handle_request(GameRequest::RequestSnapshot { member_id: MemberId(0) }, Instant::now());
         }
 
-        run_ticks(&mut test_game.game_task, 40);
+        run_ticks(
+            &mut test_game.game_task,
+            2 * recipients::SNAPSHOT_MINIMUM_INTERVAL_TICKS,
+        );
         let snapshot_ticks: Vec<u32> = receive_messages(&mut membership)
             .iter()
             .filter_map(|message_serial_out| match message_serial_out {
@@ -875,55 +966,138 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(snapshot_ticks, vec![29]);
+        assert_eq!(snapshot_ticks, vec![recipients::SNAPSHOT_MINIMUM_INTERVAL_TICKS]);
     }
 
     #[test]
     fn handle_request_respawn_rejects_a_member_without_a_connection() {
         let mut test_game: TestGame = create_test_game(8);
-        let (reply_sender, mut reply_receiver): (
-            oneshot::Sender<Result<(), RejectionKind>>,
-            oneshot::Receiver<Result<(), RejectionKind>>,
-        ) = oneshot::channel();
 
-        test_game.game_task.handle_request(
-            GameRequest::Respawn {
-                member_id: MemberId(0),
-                loadout: test_fixture::create_loadout(),
-                team: TeamChoiceKind::Auto,
-                reply: reply_sender,
-            },
-            Instant::now(),
+        let respawn_result: Result<(), RejectionKind> =
+            respawn(&mut test_game.game_task, MemberId(0), TeamChoiceKind::Auto);
+
+        assert_eq!(respawn_result, Err(RejectionKind::NotInGame));
+    }
+
+    #[test]
+    fn handle_request_respawn_queues_the_spawn_and_turns_a_spectator_into_a_participant() {
+        let mut test_game: TestGame = create_custom_test_game(GameModeKind::Skirmish, 8, None);
+        let (_, mut membership): (Result<MemberId, RejectionKind>, Membership) =
+            spectate(&mut test_game.game_task, 1, "Watcher");
+        test_game.game_task.run_tick(Instant::now());
+        receive_messages(&mut membership);
+
+        let respawn_result: Result<(), RejectionKind> =
+            respawn(&mut test_game.game_task, MemberId(0), TeamChoiceKind::Auto);
+        test_game.game_task.run_tick(Instant::now());
+        let member_event_serial_outs: Vec<MemberEventSerialOut> =
+            get_bundle_member_events(&receive_messages(&mut membership));
+
+        assert_eq!(respawn_result, Ok(()));
+        assert!(matches!(
+            member_event_serial_outs[..],
+            [MemberEventSerialOut::SpawnRequested {
+                member_id: 0,
+                team: Some(_),
+                ..
+            }]
+        ));
+        assert_eq!(
+            test_game.game_task.state.members[&MemberId(0)].role,
+            MemberRoleKind::Participant
         );
+        assert!(test_game.game_task.state.members[&MemberId(0)].team.is_some());
+        assert_eq!(test_game.game_task.state.alive_organism_count(), 1);
+    }
 
-        assert_eq!(reply_receiver.try_recv(), Ok(Err(RejectionKind::NotInGame)));
+    #[test]
+    fn handle_request_update_appearance_queues_the_change_only_for_a_current_recipient() {
+        let mut test_game: TestGame = create_test_game(8);
+        let (_, mut membership): (Result<MemberId, RejectionKind>, Membership) =
+            join(&mut test_game.game_task, 1, "Blob");
+        test_game.game_task.run_tick(Instant::now());
+        receive_messages(&mut membership);
+        let appearance: Appearance = Appearance {
+            color: OrganismColorKind::Fire,
+            skin: SkinKind::Circles,
+        };
+
+        for member_id in [MemberId(0), MemberId(5)] {
+            test_game
+                .game_task
+                .handle_request(GameRequest::UpdateAppearance { member_id, appearance }, Instant::now());
+        }
+
+        test_game.game_task.run_tick(Instant::now());
+
+        assert_eq!(
+            get_bundle_member_events(&receive_messages(&mut membership)),
+            vec![MemberEventSerialOut::from(&MemberEvent::AppearanceChanged {
+                member_id: MemberId(0),
+                appearance,
+            })],
+        );
     }
 
     #[test]
     fn handle_request_spectate_adds_a_spectator() {
         let mut test_game: TestGame = create_test_game(8);
-        let (endpoint, _membership): (ConnectionEndpoint, Membership) =
-            connection_model::create_membership(ConnectionId(1));
-        let (reply_sender, mut reply_receiver): (
-            oneshot::Sender<Result<MemberId, RejectionKind>>,
-            oneshot::Receiver<Result<MemberId, RejectionKind>>,
-        ) = oneshot::channel();
 
-        test_game.game_task.handle_request(
-            GameRequest::Spectate {
-                endpoint,
-                screen_name: String::from("Watcher"),
-                reply: reply_sender,
-            },
-            Instant::now(),
-        );
+        let (reply, _membership): (Result<MemberId, RejectionKind>, Membership) =
+            spectate(&mut test_game.game_task, 1, "Watcher");
         test_game.game_task.run_tick(Instant::now());
 
-        assert_eq!(reply_receiver.try_recv(), Ok(Ok(MemberId(0))));
+        assert_eq!(reply, Ok(MemberId(0)));
         assert_eq!(
             test_game.game_task.state.members[&MemberId(0)].role,
             MemberRoleKind::Spectator
         );
+    }
+
+    #[test]
+    fn run_tick_records_each_broadcast_bundle_after_the_replay_header() {
+        let settings: GameSettings = test_fixture::create_settings(GameModeKind::FreeForAll, 8);
+        let (replay_capture, mut record_receiver): (ReplayCapture, mpsc::Receiver<ReplayRecord>) =
+            create_test_replay_capture(&settings);
+        let mut test_game: TestGame = create_custom_test_game(GameModeKind::FreeForAll, 8, Some(replay_capture));
+        let (_, mut membership): (Result<MemberId, RejectionKind>, Membership) =
+            join(&mut test_game.game_task, 1, "Blob");
+
+        run_ticks(&mut test_game.game_task, 2);
+        let broadcast_bundle_serial_outs: Vec<InputBundleSerialOut> = get_bundles(&receive_messages(&mut membership));
+        let header_record: ReplayRecord = record_receiver.try_recv().unwrap();
+        let mut recorded_bundle_serial_outs: Vec<InputBundleSerialOut> = Vec::new();
+
+        while let Ok(record) = record_receiver.try_recv() {
+            let ReplayRecord::Bundle(bundle_serial_out) = record else {
+                panic!("only the first record is a header");
+            };
+
+            recorded_bundle_serial_outs.push(bundle_serial_out);
+        }
+
+        assert!(matches!(
+            header_record,
+            ReplayRecord::Header(header_serial_out) if header_serial_out.settings == GameSettingsSerialOut::from(&settings)
+        ));
+        assert_eq!(broadcast_bundle_serial_outs.len(), 2);
+        assert_eq!(recorded_bundle_serial_outs, broadcast_bundle_serial_outs);
+    }
+
+    #[test]
+    fn close_game_finishes_the_replay_capture() {
+        let settings: GameSettings = test_fixture::create_settings(GameModeKind::FreeForAll, 8);
+        let (replay_capture, mut record_receiver): (ReplayCapture, mpsc::Receiver<ReplayRecord>) =
+            create_test_replay_capture(&settings);
+        let mut test_game: TestGame = create_custom_test_game(GameModeKind::FreeForAll, 8, Some(replay_capture));
+        let (_request_sender, mut requests): (mpsc::Sender<GameRequest>, mpsc::Receiver<GameRequest>) =
+            mpsc::channel(1);
+        let (_input_sender, mut inputs): (mpsc::Sender<GameInput>, mpsc::Receiver<GameInput>) = mpsc::channel(1);
+
+        close_game(&mut test_game.game_task, &mut requests, &mut inputs);
+
+        assert!(matches!(record_receiver.try_recv(), Ok(ReplayRecord::Header(_))));
+        assert_eq!(record_receiver.try_recv().err(), Some(TryRecvError::Disconnected));
     }
 
     #[test]

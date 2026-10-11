@@ -16,6 +16,15 @@ impl TeamSizes {
         team_count: u8,
         excluded_member_id: Option<MemberId>,
     ) -> TeamSizes {
+        TeamSizes::from_members_excluding(members, team_count, excluded_member_id.as_slice())
+    }
+
+    /// `excluded_member_ids` are not counted.
+    pub fn from_members_excluding(
+        members: &BTreeMap<MemberId, Member>,
+        team_count: u8,
+        excluded_member_ids: &[MemberId],
+    ) -> TeamSizes {
         let mut team_sizes: TeamSizes = TeamSizes {
             participant_counts: member::get_game_teams(team_count).into_iter().map(|team| (team, 0)).collect(),
         };
@@ -26,7 +35,7 @@ impl TeamSizes {
             };
 
             let is_counted: bool =
-                member.role == MemberRoleKind::Participant && Some(member.member_id) != excluded_member_id;
+                member.role == MemberRoleKind::Participant && !excluded_member_ids.contains(&member.member_id);
 
             if is_counted {
                 team_sizes.add_member(team);
@@ -141,6 +150,16 @@ mod tests {
         let members: BTreeMap<MemberId, Member> = create_members(&[TeamKind::Red, TeamKind::Blue]);
 
         let team_sizes: TeamSizes = TeamSizes::from_members(&members, 2, Some(MemberId(0)));
+
+        assert_eq!(team_sizes.get_size(TeamKind::Red), Some(0));
+        assert_eq!(team_sizes.get_size(TeamKind::Blue), Some(1));
+    }
+
+    #[test]
+    fn from_members_excluding_leaves_out_every_excluded_member() {
+        let members: BTreeMap<MemberId, Member> = create_members(&[TeamKind::Red, TeamKind::Blue, TeamKind::Blue]);
+
+        let team_sizes: TeamSizes = TeamSizes::from_members_excluding(&members, 2, &[MemberId(0), MemberId(2)]);
 
         assert_eq!(team_sizes.get_size(TeamKind::Red), Some(0));
         assert_eq!(team_sizes.get_size(TeamKind::Blue), Some(1));

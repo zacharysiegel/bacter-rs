@@ -28,7 +28,7 @@ impl PendingAdmissions {
     }
 
     pub fn get_member_count(&self, state: &GameState) -> u32 {
-        get_count(state.members.len()) + self.member_count
+        saturating_count(state.members.len()).saturating_add(self.member_count)
     }
 
     /// Pure Spectators.
@@ -36,12 +36,12 @@ impl PendingAdmissions {
         let spectator_count: usize =
             state.members.values().filter(|member| member.role == MemberRoleKind::Spectator).count();
 
-        get_count(spectator_count) + self.spectator_count
+        saturating_count(spectator_count).saturating_add(self.spectator_count)
     }
 
     /// Alive organisms plus pending spawns.
     pub fn get_spawning_count(&self, state: &GameState) -> u32 {
-        state.alive_organism_count() + get_count(self.spawning_member_ids.len())
+        state.alive_organism_count().saturating_add(saturating_count(self.spawning_member_ids.len()))
     }
 
     pub fn is_spawn_pending(&self, member_id: MemberId) -> bool {
@@ -50,7 +50,11 @@ impl PendingAdmissions {
 
     /// `excluded_member_id` is not counted.
     pub fn get_team_sizes(&self, state: &GameState, team_count: u8, excluded_member_id: Option<MemberId>) -> TeamSizes {
-        let mut team_sizes: TeamSizes = TeamSizes::from_members(&state.members, team_count, excluded_member_id);
+        // A pending spawn's team replaces the member's team in the state.
+        let excluded_member_ids: Vec<MemberId> =
+            excluded_member_id.into_iter().chain(self.spawning_member_ids.iter().copied()).collect();
+        let mut team_sizes: TeamSizes =
+            TeamSizes::from_members_excluding(&state.members, team_count, &excluded_member_ids);
 
         for team in &self.team_additions {
             team_sizes.add_member(*team);
@@ -60,15 +64,15 @@ impl PendingAdmissions {
     }
 
     pub fn get_next_member_id(&self, state: &GameState) -> MemberId {
-        MemberId(state.next_member_id.0 + self.member_count)
+        MemberId(state.next_member_id.0.saturating_add(self.member_count))
     }
 
     pub fn record_member(&mut self, screen_name: &str, role: MemberRoleKind) {
         self.screen_names.push(String::from(screen_name));
-        self.member_count += 1;
+        self.member_count = self.member_count.saturating_add(1);
 
         if role == MemberRoleKind::Spectator {
-            self.spectator_count += 1;
+            self.spectator_count = self.spectator_count.saturating_add(1);
         }
     }
 
@@ -78,7 +82,7 @@ impl PendingAdmissions {
     }
 }
 
-fn get_count(length: usize) -> u32 {
+fn saturating_count(length: usize) -> u32 {
     u32::try_from(length).unwrap_or(u32::MAX)
 }
 
@@ -165,6 +169,24 @@ mod tests {
         pending_admissions.record_spawn(MemberId(2), Some(TeamKind::Blue));
 
         let team_sizes: TeamSizes = pending_admissions.get_team_sizes(&state, 2, Some(MemberId(1)));
+
+        assert_eq!(team_sizes.get_size(TeamKind::Red), Some(1));
+        assert_eq!(team_sizes.get_size(TeamKind::Blue), Some(1));
+    }
+
+    #[test]
+    fn get_team_sizes_counts_a_pending_respawn_only_on_its_pending_team() {
+        let state: GameState = create_state_with_members(
+            GameModeKind::Skirmish,
+            vec![
+                create_member(0, MemberRoleKind::Participant, Some(TeamKind::Red), true),
+                create_member(1, MemberRoleKind::Participant, Some(TeamKind::Red), false),
+            ],
+        );
+        let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
+        pending_admissions.record_spawn(MemberId(1), Some(TeamKind::Blue));
+
+        let team_sizes: TeamSizes = pending_admissions.get_team_sizes(&state, 2, None);
 
         assert_eq!(team_sizes.get_size(TeamKind::Red), Some(1));
         assert_eq!(team_sizes.get_size(TeamKind::Blue), Some(1));

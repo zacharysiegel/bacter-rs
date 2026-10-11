@@ -51,7 +51,7 @@ pub enum ClientEffect {
     ConnectionLost(Option<CloseReasonKind>),
 }
 
-/// One per WebSocket connection; frames come in through `receive` and go out as `ClientEffect::SendFrame`.
+/// One per WebSocket connection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientSession {
     phase: SessionPhase,
@@ -349,7 +349,7 @@ impl ClientSession {
                 ClientEffect::ResyncStarted,
             ],
             ResyncStartKind::LimitExceeded => {
-                log::warn!("synchronisation lost; leaving the game");
+                log::warn!("synchronisation lost, leaving the game");
 
                 self.phase = SessionPhase::Leaving;
 
@@ -667,7 +667,7 @@ enum ResyncStartKind {
     LimitExceeded,
 }
 
-/// An unconvertible summary drops the whole list; lists are latest-state, so the next one replaces it.
+/// An unconvertible summary drops the whole list.
 fn receive_game_list(
     game_summary_serial_outs: Vec<GameSummarySerialOut>,
     online_client_count: u32,
@@ -1243,8 +1243,10 @@ mod tests {
     fn create_playing_session(controls: &mut PlayerControls) -> (ClientSession, GameState) {
         let mut server_state: GameState = create_server_state_with_own_member(create_alive_own_member());
         let mut session: ClientSession = create_session_with_snapshot(&server_state, controls);
+
         let bundle_message: MessageSerialOut = create_bundle_message(Tick(1), Vec::new());
         receive_with_controls(&mut session, &bundle_message, controls);
+
         game::step(
             &mut server_state,
             &InputBundle {
@@ -1491,6 +1493,7 @@ mod tests {
             &mut controls,
             later_milliseconds,
         );
+
         let effects: Vec<ClientEffect> = receive_at(&mut session, &mismatch_message, &mut controls, later_milliseconds);
 
         assert_eq!(

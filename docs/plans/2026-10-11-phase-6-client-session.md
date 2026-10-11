@@ -2785,7 +2785,7 @@ pub enum ClientEffect {
     ConnectionLost(Option<CloseReasonKind>),
 }
 
-/// One per WebSocket connection; frames come in through `receive` and go out as `ClientEffect::SendFrame`.
+/// One per WebSocket connection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientSession {
     phase: SessionPhase,
@@ -3122,7 +3122,7 @@ impl GameSession {
     }
 }
 
-/// An unconvertible summary drops the whole list; lists are latest-state, so the next one replaces it.
+/// An unconvertible summary drops the whole list.
 fn receive_game_list(
     game_summary_serial_outs: Vec<GameSummarySerialOut>,
     online_client_count: u32,
@@ -3684,7 +3684,7 @@ pub enum ClientEffect {
     ConnectionLost(Option<CloseReasonKind>),
 }
 
-/// One per WebSocket connection; frames come in through `receive` and go out as `ClientEffect::SendFrame`.
+/// One per WebSocket connection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientSession {
     phase: SessionPhase,
@@ -3982,7 +3982,7 @@ impl ClientSession {
                 ClientEffect::ResyncStarted,
             ],
             ResyncStartKind::LimitExceeded => {
-                log::warn!("synchronisation lost; leaving the game");
+                log::warn!("synchronisation lost, leaving the game");
                 self.phase = SessionPhase::Leaving;
 
                 vec![
@@ -4299,7 +4299,7 @@ enum ResyncStartKind {
     LimitExceeded,
 }
 
-/// An unconvertible summary drops the whole list; lists are latest-state, so the next one replaces it.
+/// An unconvertible summary drops the whole list.
 fn receive_game_list(
     game_summary_serial_outs: Vec<GameSummarySerialOut>,
     online_client_count: u32,

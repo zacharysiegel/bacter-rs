@@ -12,4 +12,5 @@ pub mod random;
 pub mod replay;
 pub mod round;
 pub mod settings;
+pub mod title;
 pub mod world;

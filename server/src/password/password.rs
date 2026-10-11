@@ -2,6 +2,7 @@ use std::sync::LazyLock;
 
 use actix_web::error::BlockingError;
 use actix_web::web;
+use bcrypt::BcryptError;
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 use shared::error::{AppError, AppErrorStatic};
@@ -25,17 +26,15 @@ pub enum PasswordMatchKind {
 
 pub async fn hash_password(password: String) -> Result<String, RejectionKind> {
     run_password_check(&PASSWORD_CHECK_SEMAPHORE, move || {
-        bcrypt::hash(password, BCRYPT_COST)
-            .map_err(|error| AppErrorStatic::from(AppError::from_error("cannot hash the password", Box::new(error))))
+        bcrypt::hash(password, BCRYPT_COST).map_err(|error| create_bcrypt_error("cannot hash the password", error))
     })
     .await
 }
 
 pub async fn verify_password(password: String, password_hash: String) -> Result<PasswordMatchKind, RejectionKind> {
     run_password_check(&PASSWORD_CHECK_SEMAPHORE, move || {
-        let matches: bool = bcrypt::verify(password, &password_hash).map_err(|error| {
-            AppErrorStatic::from(AppError::from_error("cannot verify the password", Box::new(error)))
-        })?;
+        let matches: bool = bcrypt::verify(password, &password_hash)
+            .map_err(|error| create_bcrypt_error("cannot verify the password", error))?;
 
         match matches {
             true => Ok(PasswordMatchKind::Matches),
@@ -43,6 +42,10 @@ pub async fn verify_password(password: String, password_hash: String) -> Result<
         }
     })
     .await
+}
+
+fn create_bcrypt_error(message: &'static str, error: BcryptError) -> AppErrorStatic {
+    AppErrorStatic::from(AppError::from_error(message, Box::new(error)))
 }
 
 /// `ServerBusy` when every permit is taken or the check fails.
@@ -96,7 +99,7 @@ mod tests {
 
         assert_eq!(
             run_password_check(&semaphore, || Ok(1)).await,
-            Err(RejectionKind::ServerBusy)
+            Err(RejectionKind::ServerBusy),
         );
     }
 

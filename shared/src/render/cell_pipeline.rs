@@ -1,7 +1,16 @@
+use wgpu::{
+    BufferAddress, Device, PipelineLayout, RenderPipeline, TextureFormat, VertexAttribute, VertexBufferLayout,
+    VertexStepMode,
+};
+
 use crate::member::SkinKind;
 use crate::play::InterpolatedPoint;
-use crate::render::RenderColor;
+use crate::render::scene_pipelines;
+use crate::render::{InstancedQuadPipelineSource, RenderColor};
 
+const CELL_SHADER_SOURCE: &str = concat!(include_str!("scene_common.wgsl"), include_str!("cell.wgsl"));
+const CELL_INSTANCE_ATTRIBUTES: [VertexAttribute; 3] =
+    wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm8x4, 2 => Uint32];
 const INSTANCE_SKIN_KIND_MASK: u32 = 0xff;
 const INSTANCE_SCALE_SHIFT: u32 = 16;
 
@@ -90,6 +99,29 @@ impl CellInstance {
     pub fn scale(&self) -> CellScale {
         CellScale((self.params >> INSTANCE_SCALE_SHIFT) as u16)
     }
+}
+
+pub fn create_cell_pipeline(
+    device: &Device,
+    pipeline_layout: &PipelineLayout,
+    surface_format: TextureFormat,
+) -> RenderPipeline {
+    scene_pipelines::create_instanced_quad_pipeline(
+        device,
+        pipeline_layout,
+        surface_format,
+        InstancedQuadPipelineSource {
+            label: "bacter-cell-pipeline",
+            shader_source: CELL_SHADER_SOURCE,
+            vertex_entry_point: "cell_vertex_main",
+            fragment_entry_point: "cell_fragment_main",
+            instance_layout: VertexBufferLayout {
+                array_stride: std::mem::size_of::<CellInstance>() as BufferAddress,
+                step_mode: VertexStepMode::Instance,
+                attributes: &CELL_INSTANCE_ATTRIBUTES,
+            },
+        },
+    )
 }
 
 #[cfg(test)]

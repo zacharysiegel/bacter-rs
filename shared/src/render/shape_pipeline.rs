@@ -1,6 +1,21 @@
+use wgpu::{
+    BufferAddress, Device, PipelineLayout, RenderPipeline, TextureFormat, VertexAttribute, VertexBufferLayout,
+    VertexStepMode,
+};
+
 use crate::play::InterpolatedPoint;
-use crate::render::RenderColor;
-use crate::render::render_color;
+use crate::render::{InstancedQuadPipelineSource, RenderColor};
+use crate::render::{render_color, scene_pipelines};
+
+const SHAPE_SHADER_SOURCE: &str = concat!(include_str!("scene_common.wgsl"), include_str!("shape.wgsl"));
+const SHAPE_INSTANCE_ATTRIBUTES: [VertexAttribute; 6] = wgpu::vertex_attr_array![
+    0 => Float32x2,
+    1 => Float32x2,
+    2 => Unorm8x4,
+    3 => Unorm8x4,
+    4 => Float32,
+    5 => Uint32,
+];
 
 /// The codes match the `SHAPE_KIND_*` constants of `shape.wgsl`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +102,29 @@ impl ShapeInstance {
             shape_kind: geometry.kind.code(),
         }
     }
+}
+
+pub fn create_shape_pipeline(
+    device: &Device,
+    pipeline_layout: &PipelineLayout,
+    surface_format: TextureFormat,
+) -> RenderPipeline {
+    scene_pipelines::create_instanced_quad_pipeline(
+        device,
+        pipeline_layout,
+        surface_format,
+        InstancedQuadPipelineSource {
+            label: "bacter-shape-pipeline",
+            shader_source: SHAPE_SHADER_SOURCE,
+            vertex_entry_point: "shape_vertex_main",
+            fragment_entry_point: "shape_fragment_main",
+            instance_layout: VertexBufferLayout {
+                array_stride: std::mem::size_of::<ShapeInstance>() as BufferAddress,
+                step_mode: VertexStepMode::Instance,
+                attributes: &SHAPE_INSTANCE_ATTRIBUTES,
+            },
+        },
+    )
 }
 
 #[cfg(test)]

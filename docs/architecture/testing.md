@@ -53,10 +53,11 @@
 
 ## Server integration tests
 - Location: `server/tests/`.
-- In-process server bound to `127.0.0.1:0` with `ServerRegistries::leaked()` ([registries](./server.md#registries)), so tests in one binary run in parallel without sharing games or titles; clients over tokio-tungstenite; shared helper `tests/helpers/test_server.rs` (used by both files below).
+- In-process server bound to `127.0.0.1:0` with `ServerRegistries::leaked()` ([registries](./server.md#registries)), so tests in one binary run in parallel without sharing games or titles; clients over tokio-tungstenite; shared helper `tests/helpers/test_server.rs` (used by every file below).
 - `game_lifecycle.rs`: create plus join in one message; second client joins and receives snapshot then bundles; both clients' checksums agree with the server's; spectate; die and respawn; leave; leave then join another game at once (no frame of the first game after `LeftGame`); disconnect; a client that stops reading is removed from the simulation (`MemberEvent::Left`) while others continue; two joins with one name or for the last slot in one tick (one admitted); empty-game removal after the grace period (`ServerConfig.empty_game_grace_period` set to 200 ms); rejoin during grace.
 - `protocol_errors.rs`: wrong protocol version; text frame; oversize frame; garbage bytes close only that connection; wrong password; name taken; game full; team unbalanced; rate limits; disallowed `Origin`.
 - Clamp: an input jump beyond the budget yields `CursorCorrected` and a clamped bundle cursor.
+- `client_session.rs`: two `ClientSession`s, driven headless as a browser drives them (frames in, `SendFrame` out, `advance_frame` per display frame), play one game and compute identical checksums for every tick both applied, matching the server's `StateChecksum`s, without a resync.
 
 ## Growth statistics against the original rules
 - `shared/tests/growth_statistics.rs` (`#[ignore]`, run by script): one organism in a 100000 px world, cursor still or moving at 2.975 px/tick along x, 3000 ticks, first 200 discarded, 8 seeds.

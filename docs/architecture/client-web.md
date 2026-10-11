@@ -57,13 +57,14 @@ Platform-independent part (`shared/src/play/`):
   - `fn send_request(&mut self, request: MessageSerialIn) -> Vec<ClientEffect>`: encodes a menu request.
   - `fn connection_closed(&mut self, close_code: u16) -> Vec<ClientEffect>`.
   - `fn render_state(&self) -> Option<&GameState>`; `fn own_member_state(&self) -> Option<OwnMemberStateKind>`.
+  - `fn advance_frame(&mut self, now_milliseconds: f64, controls: &mut PlayerControls, input_focus: InputFocusKind) -> FrameOutput` (the `Online` arm of `ActiveScene::advance_frame`); `fn game_id(&self) -> Option<GameId>`; `fn own_member_id(&self) -> Option<MemberId>`; `fn message_text(&self) -> Option<String>` (the game message, or "Catching up" during a resync).
 - `ClientEffect`:
   - `SendFrame(Vec<u8>)`.
   - `GameListReceived { game_summaries: Vec<GameSummary>, online_client_count: u32 }`.
   - `JoinAccepted { game_id, member_id }`, `RequestRejected { request: RequestKind, reason: RejectionKind }`.
   - `OwnMemberStateChanged(OwnMemberStateKind)`, `OwnOrganismSpawned { cursor: WorldPoint }`, `OwnSpawnRejected`.
   - `TickApplied { tick }`, `ResyncStarted`, `ResyncFinished`.
-  - `LeftGame`, `GameEnded`, `SynchronisationLost`, `ConnectionLost(CloseReasonKind)`.
+  - `LeftGame`, `GameEnded`, `SynchronisationLost`, `ConnectionLost(Option<CloseReasonKind>)` (`None` for an abnormal close, a failed open or an unknown close code).
 - `ActiveScene { Online(ClientSession), Tutorial(Tutorial), Title(TitleScene) }` (`play/active_scene.rs`): `fn advance_frame(&mut self, now_milliseconds: f64, controls: &mut PlayerControls, input_focus: InputFocusKind) -> FrameOutput`; `InputFocusKind { Game, Menu }`.
 - `FramePacer` (`play/frame_pacing.rs`), used by every scene:
   - `dt = min(now - last, 250 ms)`.

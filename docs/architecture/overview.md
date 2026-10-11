@@ -293,11 +293,12 @@ play/             client_session.rs      ClientSession, ClientEffect
                   crosshair.rs           CrosshairController, SentCursorHistory
                   game_key.rs            GameKeyKind, KeyboardState, press edge accumulation
                   interpolation.rs       projectile interpolation
-                  message_text.rs        get_message_text
+                  local_game.rs          LocalGame, LocalJoiner, PixelSize (local settings, stepping, placement, resize)
+                  message_text.rs        get_message_text, TransientMessageKind
 tutorial/         tutorial.rs            Tutorial, TutorialTaskKind
-                  tutorial_bot.rs
+                  tutorial_bot.rs        TutorialBot, bot placement
 title/            title_scene.rs         TitleScene (10 dummy organisms)
-settings/         settings.rs            SettingKey, SettingValue, SettingsStore, Setting (eafora pattern)
+settings/         settings.rs            SettingKey, SettingValue, SettingsStore, Setting (eafora pattern), ClientSettingKind
 render/           (feature render)       client-web.md#renderer
 ```
 

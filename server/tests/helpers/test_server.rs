@@ -91,17 +91,22 @@ impl TestClient {
 
     /// The next server message; fails on a close or after the receive timeout.
     pub async fn receive(&mut self) -> MessageSerialOut {
+        let frame: Vec<u8> = self.receive_binary_frame().await;
+
+        protocol::decode_message_out(&frame).expect("a server message decodes")
+    }
+
+    /// The next binary frame, undecoded; fails on a close or after the receive timeout.
+    pub async fn receive_binary_frame(&mut self) -> Vec<u8> {
         let deadline: Instant = Instant::now() + RECEIVE_TIMEOUT;
 
         loop {
             let frame: Message = self.receive_frame(deadline).await;
 
             match frame {
-                Message::Binary(frame) => {
-                    return protocol::decode_message_out(&frame).expect("a server message decodes");
-                }
+                Message::Binary(frame) => return frame.to_vec(),
                 Message::Ping(_) | Message::Pong(_) => continue,
-                other_message => panic!("expected a server message, received {other_message:?}"),
+                other_message => panic!("expected a binary frame, received {other_message:?}"),
             }
         }
     }

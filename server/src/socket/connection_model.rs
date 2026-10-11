@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
 use tokio::sync::{mpsc, watch};
@@ -9,6 +9,7 @@ use shared::protocol;
 use shared::protocol::{CloseReasonKind, MessageSerialOut};
 
 use crate::game::ConnectionEndpoint;
+use crate::registries::ServerRegistries;
 
 pub const FIRST_CONNECTION_ID: u64 = 1;
 pub const MEMBERSHIP_CHANNEL_CAPACITY: usize = 256;
@@ -89,6 +90,10 @@ pub fn encode_frame(message_serial_out: &MessageSerialOut) -> Bytes {
     Bytes::from(protocol::encode_message_out(message_serial_out))
 }
 
+pub fn allocate_connection_id(registries: ServerRegistries) -> ConnectionId {
+    ConnectionId(registries.next_connection_id.fetch_add(1, Ordering::SeqCst))
+}
+
 pub fn create_membership(connection_id: ConnectionId) -> (ConnectionEndpoint, Membership) {
     let (outbound_sender, outbound_receiver): (mpsc::Sender<Bytes>, mpsc::Receiver<Bytes>) =
         mpsc::channel(MEMBERSHIP_CHANNEL_CAPACITY);
@@ -161,6 +166,17 @@ mod tests {
         assert_eq!(
             protocol::decode_message_out(&frame).unwrap(),
             MessageSerialOut::LeftGame
+        );
+    }
+
+    #[test]
+    fn allocate_connection_id_counts_up_from_the_first_connection_id() {
+        let registries: ServerRegistries = ServerRegistries::leaked();
+
+        assert_eq!(allocate_connection_id(registries), ConnectionId(FIRST_CONNECTION_ID));
+        assert_eq!(
+            allocate_connection_id(registries),
+            ConnectionId(FIRST_CONNECTION_ID + 1)
         );
     }
 }

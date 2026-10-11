@@ -7414,3 +7414,26 @@ architecture docs for the client session
 **Problem:** bacter-rs had a simulation, a protocol and a server, but no client logic to follow a server game, steer a crosshair or run the title scene and the tutorial.
 
 **Solution:** `shared/src/play/`: a sans-IO `ClientSession` which applies snapshots and bundles, checks checksums, resyncs, samples keyboard edges and the crosshair into inputs and rebases the crosshair on server corrections; the frame pacer, own member state, message texts and projectile interpolation; `LocalGame`, on which the title scene of `shared/src/title/` and the tutorial of `shared/src/tutorial/` run; the settings store contract in `shared/src/settings/`; `ActiveScene` to advance whichever scene is active. A headless test plays one game with two sessions against the in-process server to identical checksums. Repository: `bacter-rs` only.
+
+## Deviations from the plan
+
+- Files modified beyond the file structure (Task 8 review): `server/src/game/membership.rs`, `shared/src/game/game_state.rs`, `shared/src/game/game_summary.rs`, `shared/src/game/test_fixture.rs`, `shared/src/organism/spawn.rs`, `shared/src/protocol/game_state_serial.rs`, `shared/src/round/round.rs`.
+- New shared functions not in the plan:
+  - `round::is_round_in_progress`, replacing the private copies in `membership.rs`, `spawn.rs` and the plan's `is_spawn_allowed_by_round` in `own_member_state.rs`;
+  - `GameState::is_at_player_cap`, used by `spawn.rs` and `get_respawn_key_outcome`;
+  - `test_fixture::create_spectator`, replacing the ad hoc spectators of five test modules (the spectator in the `round.rs` test now has no loadout);
+  - `Organism::reset_to_one_cell_at`, which `Organism::new` and `LocalGame::resize` use in place of the plan's private `reset_to_one_cell` in `local_game.rs`; the `GameState::settings` doc reads "Immutable during stepping", since `LocalGame::resize` edits the settings;
+  - `local_game::draw_cell_coordinate_or_centre` and `local_game::get_world_centre`, shared by the title scene, the tutorial bot and the tutorial in place of three local centre fallbacks;
+  - `COLOR_WHEN_EVERY_COLOR_IS_EXCLUDED` in `local_game.rs`.
+- Changed signatures:
+  - `local_game::draw_cell_coordinate` returns `Option<i32>` (`None` for a range with no clear pixel) instead of falling back inside;
+  - `LocalGame::resize` keeps the world shape from the settings instead of always `Rectangle`;
+  - the tutorial's `check_held_key_tasks`, `advance_task`, `start_task` and `add_bot` take the player's cursor (the rounded crosshair), so the bot is placed away from the crosshair rather than from the player's organism;
+  - `ClientSession`'s snapshot re-send and unreported-tick logic moved into `GameSession::take_overdue_snapshot_request` and `GameSession::take_unreported_tick` (the plan text was updated in Task 11).
+- Behaviour: `Tutorial::advance_frame` stops a multi-tick frame at the tick which pauses for secretion, so a long frame cannot step past the halfway point of a spore flight.
+- Tests added beyond the plan: `key_changed_releases_a_held_key`, `receive_does_not_restart_a_resync_already_in_progress`, `receive_ignores_a_checksum_for_a_tick_other_than_the_applied_tick`, `draw_color_excluding_falls_back_when_every_color_is_excluded`, `draw_cell_coordinate_or_centre_falls_back_to_the_centre_of_a_range_too_short_for_a_cell`, `advance_frame_stops_a_multi_tick_frame_at_the_halfway_tick_of_a_spore_flight`; the tutorial's ability kind test is split into one test per slot. The `shared` library runs 462 tests, against the 454 Task 20 expects.
+- Test helpers: the tutorial harness has `bot_organism`, `player_organism_mut` and `run_frame_spanning_ticks`; the headless test's effect match lists every `ClientEffect` and panics on `RequestRejected`, `ConnectionLost`, `LeftGame` and `GameEnded`.
+- Named constants replace literals in tests and in `title_scene.rs` (`QUADRANT_COUNT`, a compile-time check that the quadrant limit fits the dummy count, `TITLE_PLAYER_CAP` from `TITLE_DUMMY_COUNT`).
+- The code as transcribed was not entirely `rustfmt`-clean; a "phase 6 formatting" commit fixed it.
+- Final review: the member cursor collections of `local_game.rs` are named `member_cursors`, and `Tutorial::write_player_loadout` binds the player's loadout before matching on it.
+- Unnecessary steps: none.

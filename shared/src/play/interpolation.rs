@@ -93,4 +93,17 @@ mod tests {
             InterpolatedPoint { x: 1.5, y: -0.25 },
         );
     }
+
+    #[test]
+    fn from_world_point_keeps_the_pixel_coordinates() {
+        assert_eq!(
+            InterpolatedPoint::from_world_point(WorldPoint { x: 106, y: -3 }),
+            InterpolatedPoint { x: 106.0, y: -3.0 },
+        );
+    }
+
+    #[test]
+    fn get_pixels_keeps_partial_pixels() {
+        assert_eq!(get_pixels(Subpixels(geometry::SUBPIXELS_PER_PIXEL * 3 / 4)), 0.75);
+    }
 }

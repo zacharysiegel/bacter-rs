@@ -81,7 +81,7 @@
 - `play/frame_pacing.rs`: dt clamp, accumulator tick count and per-frame limit, alpha clamp.
 - `play/message_text.rs`: every message per mode, phase and own state, singular and plural waiting texts.
 - `render/scene.rs`: shadow and world per shape, fields, secretions and cells in draw order, shrunk bounds, interpolated flying projectiles, no projectile while secreting, crosshair only when given, `refresh_frame` keeps the tick layer; secretion and field radii against the simulation's.
-- `render/camera.rs`: centring, local-game margin, world to clip corners, uniform layout; `render/cell_pipeline.rs`: `params` packing and skin mapping.
+- `render/camera.rs`: centring, local-game margin, world to clip corners, uniform layout; `render/cell_pipeline.rs`: `params` packing and skin mapping; `render/cell_pipeline.rs`, `render/shape_pipeline.rs` and `render/scene_pipelines.rs`: the constants shared with the WGSL against its declarations.
 - `tutorial/tutorial.rs`: task progression, ability mask per task, bot minimum distance, per-organism replacement on death.
 - `socket/rate_limit.rs`: refill, burst, abuse detection.
 - `game/cursor_clamp.rs`: within budget, beyond budget along the same direction, budget cap, reset on spawn, i64 extremes.

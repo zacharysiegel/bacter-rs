@@ -172,6 +172,8 @@ mod tests {
 
     use super::*;
 
+    const SCENE_COMMON_SHADER_SOURCE: &str = include_str!("scene_common.wgsl");
+
     /// wgpu's futures on these targets are ready when first polled.
     fn block_on<F: Future>(future: F) -> F::Output {
         let mut pinned_future: Pin<&mut F> = pin!(future);
@@ -201,6 +203,15 @@ mod tests {
             block_on(adapter.request_device(&get_device_descriptor(&adapter))).unwrap();
 
         device
+    }
+
+    #[test]
+    fn scene_common_shader_source_declares_the_camera_at_its_bind_group_and_binding() {
+        let camera_declaration: String = format!(
+            "@group({CAMERA_BIND_GROUP_INDEX}) @binding({CAMERA_UNIFORM_BINDING}) var<uniform> camera: CameraUniform;"
+        );
+
+        assert!(SCENE_COMMON_SHADER_SOURCE.contains(&camera_declaration));
     }
 
     #[test]

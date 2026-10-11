@@ -66,13 +66,6 @@ impl ConfiguredSurface {
         self.configuration.format
     }
 
-    pub fn size(&self) -> PhysicalSize {
-        PhysicalSize {
-            width_pixels: self.configuration.width,
-            height_pixels: self.configuration.height,
-        }
-    }
-
     pub fn resize(&mut self, device: &Device, size: PhysicalSize) {
         let configured_size: PhysicalSize = size.at_least_one_pixel();
         self.configuration.width = configured_size.width_pixels;

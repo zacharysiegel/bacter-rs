@@ -185,11 +185,8 @@ mod tests {
         let expected_sub_error: AppError = protocol::decode_replay_bundle(&CORRUPTED_RECORD).unwrap_err();
 
         let error: AppError = dump_replay(&replay_bytes, ReplayOutputKind::Bundles).unwrap_err();
-        let sub_error: &AppError = error
-            .sub_error
-            .as_ref()
-            .and_then(|sub_error| sub_error.downcast_ref::<AppError>())
-            .unwrap();
+        let sub_error: &AppError =
+            error.sub_error.as_ref().and_then(|sub_error| sub_error.downcast_ref::<AppError>()).unwrap();
 
         assert_eq!(error.message, "Error: replay record 1 is invalid");
         assert_eq!(sub_error.message, expected_sub_error.message);

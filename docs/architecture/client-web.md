@@ -73,7 +73,7 @@ Platform-independent part (`shared/src/play/`):
   - Interpolation alpha = time since the last applied bundle / 70 ms, clamped to [0, 1]; projectiles drawn between their previous and current tick positions.
   - `FrameOutput { interpolation_alpha: f32, tick_applied: Option<Tick>, effects: Vec<ClientEffect> }`.
 - `CrosshairController` with `SentCursorHistory` (ring buffer of the last 64 sent cursors keyed by `client_tick`):
-  - `CursorCorrected { client_tick: t, cursor }`: `shift = cursor - sent[t]`; the crosshair moves by `shift`, and every entry `sent[t']` with `t' > t` moves by the same `shift`, so the corrections the server sends for the same overshoot in later ticks come out as zero.
+  - `CursorCorrected { client_tick: t, cursor }`: `shift = cursor - sent[t]`; the crosshair moves by `shift`, and every entry `sent[t']` with `t' >= t` moves by the same `shift`, so the corrections the server sends for the same overshoot in later ticks come out as zero.
   - A correction for a tick no longer in the history snaps the crosshair to `cursor`.
 - Own spawn (`OrganismSpawned` for the own member): crosshair snaps to the spawn cursor.
 - `OwnMemberStateKind` (`play/own_member_state.rs`):

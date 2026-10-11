@@ -52,8 +52,7 @@ async fn open_socket(
     let protocol_version: Option<u16> = get_protocol_version(request.query_string());
 
     if protocol_version != Some(protocol::PROTOCOL_VERSION) {
-        let cause: CloseCauseKind = CloseCauseKind::Reason(CloseReasonKind::ProtocolVersionMismatch);
-        rt::spawn(socket_writer::close_session(session, cause));
+        close_after_upgrade(session, CloseReasonKind::ProtocolVersionMismatch);
 
         return Ok(response);
     }
@@ -62,10 +61,7 @@ async fn open_socket(
         connection_limit::reserve_connection(context.registries, peer_ip);
 
     if reservation.is_err() {
-        rt::spawn(socket_writer::close_session(
-            session,
-            CloseCauseKind::Reason(CloseReasonKind::ServerFull),
-        ));
+        close_after_upgrade(session, CloseReasonKind::ServerFull);
 
         return Ok(response);
     }
@@ -73,6 +69,12 @@ async fn open_socket(
     start_connection(&context, session, stream, peer_ip);
 
     Ok(response)
+}
+
+fn close_after_upgrade(session: Session, reason: CloseReasonKind) {
+    let cause: CloseCauseKind = CloseCauseKind::Reason(reason);
+
+    rt::spawn(socket_writer::close_session(session, cause));
 }
 
 fn get_protocol_version(query_string: &str) -> Option<u16> {
@@ -105,6 +107,7 @@ fn start_connection(context: &SocketContext, session: Session, stream: MessageSt
         writer_receiver,
         lobby_receiver,
     ));
+
     rt::spawn(connection::run_connection(
         connection,
         stream,

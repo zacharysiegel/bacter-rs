@@ -244,10 +244,12 @@ pub fn start_test_server(customize_config: impl FnOnce(&mut ServerConfig)) -> Te
         empty_game_grace_period: Duration::from_secs(10),
         tick_period: Duration::from_millis(70),
     };
+
     customize_config(&mut config);
 
     let registries: ServerRegistries = ServerRegistries::leaked();
     let created_server: CreatedServer = server::create_server(config, registries).expect("the test server binds");
+
     actix_web::rt::spawn(created_server.server);
 
     TestServer {

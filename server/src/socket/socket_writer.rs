@@ -120,25 +120,18 @@ async fn handle_command(
                 None => WriterFlow::Continue,
             }
         }
-        WriterCommand::Ping => {
-            let ping_result: Result<Result<(), Closed>, Elapsed> =
-                tokio::time::timeout(SOCKET_WRITE_TIMEOUT, session.ping(b"")).await;
-
-            get_write_flow(ping_result)
-        }
-        WriterCommand::Pong(payload) => {
-            let pong_result: Result<Result<(), Closed>, Elapsed> =
-                tokio::time::timeout(SOCKET_WRITE_TIMEOUT, session.pong(&payload)).await;
-
-            get_write_flow(pong_result)
-        }
+        WriterCommand::Ping => write_within_timeout(session.ping(b"")).await,
+        WriterCommand::Pong(payload) => write_within_timeout(session.pong(&payload)).await,
         WriterCommand::Close(cause) => WriterFlow::Close(cause),
     }
 }
 
 async fn write_frame(session: &mut Session, frame: Bytes) -> WriterFlow {
-    let write_result: Result<Result<(), Closed>, Elapsed> =
-        tokio::time::timeout(SOCKET_WRITE_TIMEOUT, session.binary(frame)).await;
+    write_within_timeout(session.binary(frame)).await
+}
+
+async fn write_within_timeout(write: impl Future<Output = Result<(), Closed>>) -> WriterFlow {
+    let write_result: Result<Result<(), Closed>, Elapsed> = tokio::time::timeout(SOCKET_WRITE_TIMEOUT, write).await;
 
     get_write_flow(write_result)
 }

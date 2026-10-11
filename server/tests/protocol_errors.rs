@@ -5,6 +5,7 @@ use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 use helpers::test_server;
 use helpers::test_server::{TestClient, TestServer};
 use server::shutdown::ServerRunState;
+use server::socket;
 use shared::protocol;
 use shared::protocol::protocol_limits;
 use shared::protocol::{MessageSerialIn, MessageSerialOut, RejectionKindSerialOut, RequestKindSerialOut};
@@ -25,7 +26,7 @@ async fn open_socket_closes_a_connection_with_a_wrong_or_missing_protocol_versio
 
         assert_eq!(
             client.receive_close().await,
-            (4001, String::from("server protocol version 1"))
+            (4001, format!("server protocol version {}", protocol::PROTOCOL_VERSION))
         );
     }
 }
@@ -84,14 +85,16 @@ async fn run_connection_closes_only_the_connection_which_sent_garbage() {
 async fn dispatch_answers_requests_beyond_the_rate_limit_with_rate_limited() {
     let test_server: TestServer = test_server::start_test_server(|_| {});
     let mut client: TestClient = TestClient::connect(&test_server).await;
+    let request_burst: usize = socket::REQUEST_BURST as usize;
+    let request_count: usize = request_burst + 1;
 
-    for _ in 0..9 {
+    for _ in 0..request_count {
         client.send(&MessageSerialIn::SubscribeGameList).await;
     }
 
     let mut message_serial_outs: Vec<MessageSerialOut> = Vec::new();
 
-    for _ in 0..9 {
+    for _ in 0..request_count {
         message_serial_outs.push(client.receive().await);
     }
 
@@ -100,7 +103,7 @@ async fn dispatch_answers_requests_beyond_the_rate_limit_with_rate_limited() {
         .filter(|message_serial_out| matches!(message_serial_out, MessageSerialOut::GameList { .. }))
         .count();
 
-    assert_eq!(game_list_count, 8);
+    assert_eq!(game_list_count, request_burst);
     assert!(message_serial_outs.contains(&rejection(
         RequestKindSerialOut::SubscribeGameList,
         RejectionKindSerialOut::RateLimited,
@@ -115,6 +118,7 @@ async fn open_socket_closes_connections_beyond_the_per_ip_limit_with_server_full
     for _ in 0..protocol_limits::CONNECTION_LIMIT_PER_IP {
         let mut client: TestClient = TestClient::connect(&test_server).await;
         client.send(&MessageSerialIn::SubscribeGameList).await;
+
         client.receive().await;
         clients.push(client);
     }
@@ -130,6 +134,7 @@ async fn run_connection_closes_every_connection_when_the_server_shuts_down() {
     let mut idle_client: TestClient = TestClient::connect(&test_server).await;
     let mut lobby_client: TestClient = TestClient::connect(&test_server).await;
     lobby_client.send(&MessageSerialIn::SubscribeGameList).await;
+
     lobby_client.receive().await;
 
     test_server.run_state.send(ServerRunState::ShuttingDown).unwrap();

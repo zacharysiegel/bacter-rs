@@ -15,6 +15,7 @@ use shared::member::MemberId;
 use shared::protocol;
 use shared::protocol::{CloseReasonKind, MessageSerialIn, MessageSerialOut};
 
+use crate::game::game_handle;
 use crate::game::{GameHandle, GameRequest, GameTaskConfig};
 use crate::lobby::lobby_broadcast;
 use crate::registries::ServerRegistries;
@@ -252,6 +253,7 @@ async fn handle_control_change(
         Ok(ConnectionControl::Open) => ConnectionFlow::Continue,
         Err(_) => {
             connection.return_to_lobby();
+
             let game_ended_frame: Bytes = connection_model::encode_frame(&MessageSerialOut::GameEnded);
 
             connection
@@ -278,7 +280,7 @@ async fn finish_connection(connection: &Connection) {
         let connection_closed: GameRequest = GameRequest::ConnectionClosed {
             connection_id: connection.connection_id,
         };
-        let _ = joined_game.handle.requests.send(connection_closed).await;
+        let _ = joined_game.handle.requests.send_timeout(connection_closed, game_handle::REQUEST_SEND_TIMEOUT).await;
     }
 
     lobby_broadcast::unsubscribe(connection.registries, connection.connection_id);

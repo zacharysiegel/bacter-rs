@@ -2,12 +2,14 @@ mod helpers;
 
 use std::collections::BTreeSet;
 
-use shared::ability::{AbilityPhase, OrganismAbilities, ShotPhase, SporePhase};
+use shared::ability::{AbilityPhase, AbilityPressSet, AimVector, Loadout, OrganismAbilities, ShotPhase, SporePhase};
 use shared::error::AppError;
 use shared::game;
-use shared::game::{GameSettings, GameState, GameSummary, InputBundle, PlayerInput, Tick};
-use shared::geometry::SubpixelPoint;
-use shared::member::Joiner;
+use shared::game::{
+    GameModeKind, GameSettings, GameState, GameSummary, InputBundle, MemberEvent, PlayerInput, PlayerTickInput, Tick,
+};
+use shared::geometry::{SubpixelPoint, WorldPoint};
+use shared::member::{Joiner, MemberId, MemberRoleKind};
 use shared::organism::Organism;
 use shared::protocol;
 use shared::protocol::protocol_limits;
@@ -22,6 +24,7 @@ use shared::random::Pcg32;
 use shared::replay;
 use shared::replay::{ReplayLog, ReplayReadError};
 use shared::round::RoundPhase;
+use shared::world::WorldShapeKind;
 
 use crate::helpers::replay_fixture;
 
@@ -60,6 +63,9 @@ const LOADOUT_SERIAL: LoadoutSerial = LoadoutSerial {
     second: SecondAbilityKindSerial::Freeze,
     third: ThirdAbilityKindSerial::Toxin,
 };
+const SIZE_BUDGET_TICK: Tick = Tick(1_000_000);
+const GROWTH_TICK_COUNT: u32 = 300;
+const SNAPSHOT_SIZE_BUDGET_BYTES: usize = 32 * 1024;
 
 #[derive(Debug)]
 struct MalformedInputOutcomeCounts {
@@ -428,4 +434,152 @@ fn read_replay_never_panics_on_a_malformed_replay() {
     }
 
     assert!(rejected_count > 0);
+}
+
+fn create_pressing_bundle(player_count: u32) -> InputBundle {
+    let every_press: AbilityPressSet = AbilityPressSet::FIRST
+        .with(AbilityPressSet::SECOND)
+        .with(AbilityPressSet::THIRD)
+        .with(AbilityPressSet::FOURTH);
+    let player_inputs: Vec<PlayerTickInput> = (0..player_count)
+        .map(|player_index| {
+            let offset: i32 = i32::try_from(player_index).unwrap();
+
+            PlayerTickInput {
+                member_id: MemberId(player_index),
+                cursor: WorldPoint {
+                    x: 99_000 - 3 * offset,
+                    y: 98_000 + 3 * offset,
+                },
+                ability_presses: every_press,
+                aim: Some(AimVector {
+                    x: -1000 + i16::try_from(offset).unwrap(),
+                    y: 1000,
+                }),
+            }
+        })
+        .collect();
+
+    InputBundle {
+        tick: SIZE_BUDGET_TICK,
+        member_events: Vec::new(),
+        player_inputs,
+    }
+}
+
+fn get_bundle_frame_length(bundle: &InputBundle) -> usize {
+    protocol::encode_message_out(&MessageSerialOut::InputBundle(InputBundleSerialOut::from(bundle))).len()
+}
+
+fn create_empty_bundle(tick: Tick) -> InputBundle {
+    InputBundle {
+        tick,
+        member_events: Vec::new(),
+        player_inputs: Vec::new(),
+    }
+}
+
+fn create_full_game_settings() -> GameSettings {
+    GameSettings {
+        title: String::from("Full game"),
+        mode: GameModeKind::FreeForAll,
+        world_shape: WorldShapeKind::Rectangle,
+        world_width_pixels: 3000,
+        world_height_pixels: 3000,
+        player_minimum: None,
+        player_cap: protocol_limits::PLAYER_CAP_HIGHEST,
+        team_count: None,
+        leaderboard_length: 10,
+    }
+}
+
+fn create_joined_players_bundle(player_count: u32) -> InputBundle {
+    let loadout: Loadout = Loadout::from(LOADOUT_SERIAL);
+    let member_events: Vec<MemberEvent> = (0..player_count)
+        .flat_map(|player_index| {
+            [
+                MemberEvent::Joined {
+                    member_id: MemberId(player_index),
+                    screen_name: format!("player {player_index}"),
+                    role: MemberRoleKind::Participant,
+                    loadout: Some(loadout),
+                    team: None,
+                },
+                MemberEvent::SpawnRequested {
+                    member_id: MemberId(player_index),
+                    loadout,
+                    team: None,
+                },
+            ]
+        })
+        .collect();
+
+    InputBundle {
+        tick: Tick(1),
+        member_events,
+        player_inputs: Vec::new(),
+    }
+}
+
+fn create_spore_press_bundle(state: &GameState) -> InputBundle {
+    let player_inputs: Vec<PlayerTickInput> = state
+        .members
+        .values()
+        .filter_map(|member| member.organism.as_ref().map(|organism| (member.member_id, organism.cursor)))
+        .map(|(member_id, cursor)| PlayerTickInput {
+            member_id,
+            cursor,
+            ability_presses: AbilityPressSet::FOURTH,
+            aim: None,
+        })
+        .collect();
+
+    InputBundle {
+        tick: state.tick.next(),
+        member_events: Vec::new(),
+        player_inputs,
+    }
+}
+
+fn create_full_game_with_spores_in_flight() -> GameState {
+    let mut state: GameState = GameState::new(create_full_game_settings(), 7);
+    let player_cap: u32 = u32::from(protocol_limits::PLAYER_CAP_HIGHEST);
+
+    game::step(&mut state, &create_joined_players_bundle(player_cap)).unwrap();
+
+    for tick in 2..=GROWTH_TICK_COUNT {
+        game::step(&mut state, &create_empty_bundle(Tick(tick))).unwrap();
+    }
+
+    let spore_press_bundle: InputBundle = create_spore_press_bundle(&state);
+    game::step(&mut state, &spore_press_bundle).unwrap();
+
+    state
+}
+
+fn is_launching_spores(state: &GameState) -> bool {
+    state.members.values().all(|member| {
+        member.organism.as_ref().is_some_and(
+            |organism| matches!(&organism.abilities.spore, SporePhase::Flying { spores, .. } if !spores.is_empty()),
+        )
+    })
+}
+
+#[test]
+fn input_bundle_frame_fits_the_size_budgets() {
+    assert!(get_bundle_frame_length(&create_pressing_bundle(8)) <= 128);
+    assert!(get_bundle_frame_length(&create_pressing_bundle(16)) <= 256);
+}
+
+#[test]
+fn snapshot_frame_at_the_player_cap_with_spores_in_flight_fits_the_size_budget() {
+    let state: GameState = create_full_game_with_spores_in_flight();
+    let snapshot_frame: Vec<u8> = protocol::encode_message_out(&MessageSerialOut::Snapshot(GameSnapshotSerialOut {
+        game_id: 1,
+        state: GameStateSerialOut::from(&state),
+    }));
+
+    assert_eq!(state.alive_organism_count(), 32);
+    assert!(is_launching_spores(&state));
+    assert!(snapshot_frame.len() <= SNAPSHOT_SIZE_BUDGET_BYTES);
 }

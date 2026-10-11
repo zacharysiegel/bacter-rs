@@ -147,12 +147,15 @@ mod tests {
         assert_eq!(lobby_revision.take_due_list(start), Some(&create_game_list(0, 1)));
         assert_eq!(
             lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL),
-            None
+            None,
         );
 
         lobby_revision.observe(create_game_list(1, 1));
 
-        assert_eq!(lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL - Duration::from_millis(1)), None);
+        assert_eq!(
+            lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL - Duration::from_millis(1)),
+            None,
+        );
         assert_eq!(
             lobby_revision.take_due_list(start + LOBBY_BROADCAST_MINIMUM_INTERVAL),
             Some(&create_game_list(1, 1)),

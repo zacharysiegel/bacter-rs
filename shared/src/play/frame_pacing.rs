@@ -1,8 +1,18 @@
+use crate::game::Tick;
 use crate::game::tick;
+use crate::play::ClientEffect;
 
 pub const FRAME_DURATION_LIMIT_MILLISECONDS: f64 = 250.0;
 pub const LOCAL_TICKS_PER_FRAME_LIMIT: u32 = 4;
 pub const TICK_PERIOD_MILLISECONDS: f64 = tick::TICK_PERIOD_MILLISECONDS as f64;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrameOutput {
+    pub interpolation_alpha: f32,
+    /// The newest tick applied since the previous frame.
+    pub tick_applied: Option<Tick>,
+    pub effects: Vec<ClientEffect>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FramePacer {

@@ -1,3 +1,4 @@
+pub mod active_scene;
 pub mod client_session;
 pub mod crosshair;
 pub mod frame_pacing;
@@ -7,6 +8,7 @@ pub mod message_text;
 pub mod own_member_state;
 pub mod player_controls;
 
+pub use active_scene::*;
 pub use client_session::*;
 pub use crosshair::*;
 pub use frame_pacing::*;

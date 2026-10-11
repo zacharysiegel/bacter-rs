@@ -18,6 +18,8 @@ use shared::protocol::{
 use shared::replay;
 use shared::replay::{ReplayLog, TickChecksum};
 
+const EMPTY_GAME_GRACE_PERIOD: Duration = Duration::from_millis(200);
+
 fn has_member_event(bundle: &InputBundle, is_wanted: impl Fn(&MemberEvent) -> bool) -> bool {
     bundle.member_events.iter().any(is_wanted)
 }
@@ -279,7 +281,7 @@ async fn join_game_admits_only_one_of_two_joins_for_the_last_slot() {
 #[actix_web::test]
 async fn run_game_task_removes_an_empty_game_after_the_grace_period() {
     let test_server: TestServer =
-        test_server::start_test_server(|config| config.empty_game_grace_period = Duration::from_millis(200));
+        test_server::start_test_server(|config| config.empty_game_grace_period = EMPTY_GAME_GRACE_PERIOD);
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
     creator.client.send(&MessageSerialIn::LeaveGame).await;
     creator
@@ -287,7 +289,7 @@ async fn run_game_task_removes_an_empty_game_after_the_grace_period() {
         .receive_until(|message_serial_out| *message_serial_out == MessageSerialOut::LeftGame)
         .await;
 
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    tokio::time::sleep(EMPTY_GAME_GRACE_PERIOD * 3).await;
     creator.client.send(&test_server::join_game_message(creator.game_id, None, "Late")).await;
 
     assert_eq!(
@@ -309,7 +311,7 @@ async fn run_game_task_removes_an_empty_game_after_the_grace_period() {
 #[actix_web::test]
 async fn join_game_during_the_grace_period_keeps_the_game() {
     let test_server: TestServer =
-        test_server::start_test_server(|config| config.empty_game_grace_period = Duration::from_millis(200));
+        test_server::start_test_server(|config| config.empty_game_grace_period = EMPTY_GAME_GRACE_PERIOD);
     let mut creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Creator").await;
     creator.client.send(&MessageSerialIn::LeaveGame).await;
     creator
@@ -318,7 +320,7 @@ async fn join_game_during_the_grace_period_keeps_the_game() {
         .await;
 
     let mut rejoiner: TestPlayer = test_server::join_game(&test_server, creator.game_id, "Rejoiner").await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    tokio::time::sleep(EMPTY_GAME_GRACE_PERIOD * 3).await;
 
     rejoiner.play_until(|player| player.verified_checksum_count >= 1).await;
 }

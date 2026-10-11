@@ -34,6 +34,15 @@ enum RequestGate {
     Shut(ConnectionFlow),
 }
 
+/// Whether an in-game request may proceed; a shut gate has already answered it.
+enum GameRequestGate {
+    Open {
+        member_id: MemberId,
+        game_handle: GameHandle,
+    },
+    Shut(ConnectionFlow),
+}
+
 enum JoinKind {
     Participant(Joiner),
     Spectator(String),
@@ -286,12 +295,14 @@ async fn check_game_password(
 
     match verification {
         Ok(PasswordMatchKind::Matches) => RequestGate::Open,
-        Ok(PasswordMatchKind::DoesNotMatch) => record_password_failure(connection, request_kind).await,
+        Ok(PasswordMatchKind::DoesNotMatch) => {
+            RequestGate::Shut(record_password_failure(connection, request_kind).await)
+        }
         Err(rejection) => RequestGate::Shut(reject(connection, request_kind, rejection).await),
     }
 }
 
-async fn record_password_failure(connection: &mut Connection, request_kind: RequestKind) -> RequestGate {
+async fn record_password_failure(connection: &mut Connection, request_kind: RequestKind) -> ConnectionFlow {
     password_failure_limit::record_failure(
         connection.registries.password_failures_per_ip,
         connection.peer_ip,
@@ -302,10 +313,10 @@ async fn record_password_failure(connection: &mut Connection, request_kind: Requ
     if connection.password_failure_count >= password::PASSWORD_FAILURE_LIMIT {
         let cause: CloseCauseKind = CloseCauseKind::Reason(CloseReasonKind::PasswordFailureLimit);
 
-        return RequestGate::Shut(ConnectionFlow::Close(cause));
+        return ConnectionFlow::Close(cause);
     }
 
-    RequestGate::Shut(reject(connection, request_kind, RejectionKind::PasswordIncorrect).await)
+    reject(connection, request_kind, RejectionKind::PasswordIncorrect).await
 }
 
 async fn request_membership(
@@ -377,14 +388,10 @@ async fn respawn(
     loadout_serial: LoadoutSerial,
     team_serial_in: TeamChoiceKindSerialIn,
 ) -> ConnectionFlow {
-    let gate: RequestGate = open_game_request(connection, RequestKind::Respawn).await;
-
-    if let RequestGate::Shut(flow) = gate {
-        return flow;
-    }
-
-    let Some(joined_game) = &connection.joined_game else {
-        return reject(connection, RequestKind::Respawn, RejectionKind::NotInGame).await;
+    let gate: GameRequestGate = open_game_request(connection, RequestKind::Respawn).await;
+    let (member_id, game_handle): (MemberId, GameHandle) = match gate {
+        GameRequestGate::Open { member_id, game_handle } => (member_id, game_handle),
+        GameRequestGate::Shut(flow) => return flow,
     };
 
     let (reply_sender, reply_receiver): (
@@ -392,14 +399,13 @@ async fn respawn(
         oneshot::Receiver<Result<(), RejectionKind>>,
     ) = oneshot::channel();
     let request: GameRequest = GameRequest::Respawn {
-        member_id: joined_game.member_id,
+        member_id,
         loadout: Loadout::from(loadout_serial),
         team: TeamChoiceKind::from(team_serial_in),
         reply: reply_sender,
     };
 
-    let respawn_result: Result<(), RejectionKind> =
-        send_answered_request(&joined_game.handle, request, reply_receiver).await;
+    let respawn_result: Result<(), RejectionKind> = send_answered_request(&game_handle, request, reply_receiver).await;
 
     match respawn_result {
         Ok(()) => ConnectionFlow::Continue,
@@ -408,21 +414,17 @@ async fn respawn(
 }
 
 async fn update_appearance(connection: &mut Connection, appearance_serial: AppearanceSerial) -> ConnectionFlow {
-    let gate: RequestGate = open_game_request(connection, RequestKind::UpdateAppearance).await;
-
-    if let RequestGate::Shut(flow) = gate {
-        return flow;
-    }
-
-    let Some(joined_game) = &connection.joined_game else {
-        return reject(connection, RequestKind::UpdateAppearance, RejectionKind::NotInGame).await;
+    let gate: GameRequestGate = open_game_request(connection, RequestKind::UpdateAppearance).await;
+    let (member_id, game_handle): (MemberId, GameHandle) = match gate {
+        GameRequestGate::Open { member_id, game_handle } => (member_id, game_handle),
+        GameRequestGate::Shut(flow) => return flow,
     };
 
     let request: GameRequest = GameRequest::UpdateAppearance {
-        member_id: joined_game.member_id,
+        member_id,
         appearance: Appearance::from(appearance_serial),
     };
-    let send_result: Result<(), RejectionKind> = send_request(&joined_game.handle, request).await;
+    let send_result: Result<(), RejectionKind> = send_request(&game_handle, request).await;
 
     match send_result {
         Ok(()) => ConnectionFlow::Continue,
@@ -464,7 +466,7 @@ fn send_input(connection: &mut Connection, player_input_serial_in: PlayerInputSe
 }
 
 /// Never rejected.
-async fn request_snapshot(connection: &mut Connection) -> ConnectionFlow {
+async fn request_snapshot(connection: &Connection) -> ConnectionFlow {
     let Some(joined_game) = &connection.joined_game else {
         return ConnectionFlow::Continue;
     };
@@ -478,22 +480,18 @@ async fn request_snapshot(connection: &mut Connection) -> ConnectionFlow {
 }
 
 async fn leave_game(connection: &mut Connection) -> ConnectionFlow {
-    let gate: RequestGate = open_game_request(connection, RequestKind::LeaveGame).await;
-
-    if let RequestGate::Shut(flow) = gate {
-        return flow;
-    }
-
-    let Some(joined_game) = &connection.joined_game else {
-        return reject(connection, RequestKind::LeaveGame, RejectionKind::NotInGame).await;
+    let gate: GameRequestGate = open_game_request(connection, RequestKind::LeaveGame).await;
+    let (member_id, game_handle): (MemberId, GameHandle) = match gate {
+        GameRequestGate::Open { member_id, game_handle } => (member_id, game_handle),
+        GameRequestGate::Shut(flow) => return flow,
     };
 
     let (reply_sender, reply_receiver): (oneshot::Sender<()>, oneshot::Receiver<()>) = oneshot::channel();
     let request: GameRequest = GameRequest::Leave {
-        member_id: joined_game.member_id,
+        member_id,
         reply: reply_sender,
     };
-    let send_result: Result<(), SendError<GameRequest>> = joined_game.handle.requests.send(request).await;
+    let send_result: Result<(), SendError<GameRequest>> = game_handle.requests.send(request).await;
 
     if send_result.is_ok() {
         let _ = reply_receiver.await;
@@ -520,12 +518,20 @@ async fn open_lobby_request(connection: &mut Connection, request_kind: RequestKi
 }
 
 /// In a game only, within the request rate.
-async fn open_game_request(connection: &mut Connection, request_kind: RequestKind) -> RequestGate {
-    if connection.joined_game.is_none() {
-        return RequestGate::Shut(reject(connection, request_kind, RejectionKind::NotInGame).await);
-    }
+async fn open_game_request(connection: &mut Connection, request_kind: RequestKind) -> GameRequestGate {
+    let Some(joined_game) = &connection.joined_game else {
+        return GameRequestGate::Shut(reject(connection, request_kind, RejectionKind::NotInGame).await);
+    };
 
-    take_request_token(connection, request_kind).await
+    let member_id: MemberId = joined_game.member_id;
+    let game_handle: GameHandle = joined_game.handle.clone();
+
+    let token_gate: RequestGate = take_request_token(connection, request_kind).await;
+
+    match token_gate {
+        RequestGate::Open => GameRequestGate::Open { member_id, game_handle },
+        RequestGate::Shut(flow) => GameRequestGate::Shut(flow),
+    }
 }
 
 /// Sustained abuse closes the connection.

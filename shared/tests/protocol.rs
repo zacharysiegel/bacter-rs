@@ -68,7 +68,7 @@ fn get_round_phase_name(round_phase: &RoundPhase) -> &'static str {
     }
 }
 
-fn get_ability_names(abilities: &OrganismAbilities) -> Vec<&'static str> {
+fn get_organism_phase_names(abilities: &OrganismAbilities) -> Vec<&'static str> {
     let mut phase_names: Vec<&'static str> = vec![
         get_ability_phase_name(&abilities.first),
         get_ability_phase_name(&abilities.second),
@@ -102,7 +102,7 @@ fn get_phase_names(state: &GameState) -> Vec<&'static str> {
             continue;
         };
 
-        phase_names.extend(get_ability_names(&organism.abilities));
+        phase_names.extend(get_organism_phase_names(&organism.abilities));
     }
 
     phase_names

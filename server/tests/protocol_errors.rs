@@ -3,12 +3,17 @@ mod helpers;
 use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 
 use helpers::test_server;
-use helpers::test_server::{TestClient, TestServer};
+use helpers::test_server::{TestClient, TestPlayer, TestServer};
 use server::shutdown::ServerRunState;
 use server::socket;
+use shared::game::GameModeKind;
+use shared::member::MemberId;
 use shared::protocol;
 use shared::protocol::protocol_limits;
-use shared::protocol::{MessageSerialIn, MessageSerialOut, RejectionKindSerialOut, RequestKindSerialOut};
+use shared::protocol::{
+    MessageSerialIn, MessageSerialOut, RejectionKindSerialOut, RequestKindSerialOut, TeamChoiceKindSerialIn,
+    TeamKindSerial,
+};
 
 fn rejection(request: RequestKindSerialOut, reason: RejectionKindSerialOut) -> MessageSerialOut {
     MessageSerialOut::RequestRejected { request, reason }
@@ -146,5 +151,180 @@ async fn run_connection_closes_every_connection_when_the_server_shuts_down() {
     assert_eq!(
         lobby_client.receive_close().await,
         (1001, String::from("server shutting down"))
+    );
+}
+
+#[actix_web::test]
+async fn join_game_checks_the_password() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let mut creator: TestClient = TestClient::connect(&test_server).await;
+    creator.send(&test_server::create_game_message("Private", Some("secret"), "Owner")).await;
+    let creator_player: TestPlayer = TestPlayer::enter(creator).await;
+    let mut joiner: TestClient = TestClient::connect(&test_server).await;
+
+    joiner.send(&test_server::join_game_message(creator_player.game_id, None, "Guest")).await;
+
+    assert_eq!(
+        joiner.receive().await,
+        rejection(RequestKindSerialOut::JoinGame, RejectionKindSerialOut::PasswordRequired),
+    );
+
+    joiner
+        .send(&test_server::join_game_message(
+            creator_player.game_id,
+            Some("wrong"),
+            "Guest",
+        ))
+        .await;
+
+    assert_eq!(
+        joiner.receive().await,
+        rejection(
+            RequestKindSerialOut::JoinGame,
+            RejectionKindSerialOut::PasswordIncorrect
+        ),
+    );
+
+    joiner
+        .send(&test_server::join_game_message(
+            creator_player.game_id,
+            Some("secret"),
+            "Guest",
+        ))
+        .await;
+
+    assert_eq!(TestPlayer::enter(joiner).await.member_id, MemberId(1));
+}
+
+#[actix_web::test]
+async fn join_game_closes_a_connection_after_five_wrong_passwords() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let mut creator: TestClient = TestClient::connect(&test_server).await;
+    creator.send(&test_server::create_game_message("Private", Some("secret"), "Owner")).await;
+    let creator_player: TestPlayer = TestPlayer::enter(creator).await;
+    let mut joiner: TestClient = TestClient::connect(&test_server).await;
+
+    for _ in 0..4 {
+        joiner
+            .send(&test_server::join_game_message(
+                creator_player.game_id,
+                Some("wrong"),
+                "Guest",
+            ))
+            .await;
+
+        assert_eq!(
+            joiner.receive().await,
+            rejection(
+                RequestKindSerialOut::JoinGame,
+                RejectionKindSerialOut::PasswordIncorrect
+            ),
+        );
+    }
+
+    joiner
+        .send(&test_server::join_game_message(
+            creator_player.game_id,
+            Some("wrong"),
+            "Guest",
+        ))
+        .await;
+
+    assert_eq!(
+        joiner.receive_close().await,
+        (4003, String::from("password failure limit"))
+    );
+}
+
+#[actix_web::test]
+async fn join_game_rejects_a_taken_screen_name() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let creator: TestPlayer = test_server::create_game(&test_server, "Arena", "Blob").await;
+    let mut joiner: TestClient = TestClient::connect(&test_server).await;
+
+    joiner.send(&test_server::join_game_message(creator.game_id, None, " Blob ")).await;
+
+    assert_eq!(
+        joiner.receive().await,
+        rejection(RequestKindSerialOut::JoinGame, RejectionKindSerialOut::ScreenNameTaken),
+    );
+}
+
+#[actix_web::test]
+async fn join_game_rejects_a_full_game() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let mut creator: TestClient = TestClient::connect(&test_server).await;
+    creator
+        .send(&MessageSerialIn::CreateGame {
+            settings: test_server::create_settings_serial_in("Duel", GameModeKind::FreeForAll, 800, 2),
+            password: None,
+            joiner: test_server::create_joiner_serial_in("First", TeamChoiceKindSerialIn::Auto),
+        })
+        .await;
+    let creator_player: TestPlayer = TestPlayer::enter(creator).await;
+    let _second_player: TestPlayer = test_server::join_game(&test_server, creator_player.game_id, "Second").await;
+    let mut third_client: TestClient = TestClient::connect(&test_server).await;
+
+    third_client.send(&test_server::join_game_message(creator_player.game_id, None, "Third")).await;
+
+    assert_eq!(
+        third_client.receive().await,
+        rejection(RequestKindSerialOut::JoinGame, RejectionKindSerialOut::GameFull),
+    );
+}
+
+#[actix_web::test]
+async fn join_game_rejects_an_unbalancing_team() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let mut creator: TestClient = TestClient::connect(&test_server).await;
+    creator
+        .send(&MessageSerialIn::CreateGame {
+            settings: test_server::create_settings_serial_in("Teams", GameModeKind::Skirmish, 800, 8),
+            password: None,
+            joiner: test_server::create_joiner_serial_in("Red", TeamChoiceKindSerialIn::Team(TeamKindSerial::Red)),
+        })
+        .await;
+    let creator_player: TestPlayer = TestPlayer::enter(creator).await;
+    let mut joiner: TestClient = TestClient::connect(&test_server).await;
+
+    joiner
+        .send(&MessageSerialIn::JoinGame {
+            game_id: creator_player.game_id,
+            password: None,
+            joiner: test_server::create_joiner_serial_in("Also red", TeamChoiceKindSerialIn::Team(TeamKindSerial::Red)),
+        })
+        .await;
+
+    assert_eq!(
+        joiner.receive().await,
+        rejection(
+            RequestKindSerialOut::JoinGame,
+            RejectionKindSerialOut::TeamUnbalanced {
+                requested: TeamKindSerial::Red,
+                smaller: TeamKindSerial::Blue,
+            },
+        ),
+    );
+}
+
+#[actix_web::test]
+async fn dispatch_rejects_requests_outside_their_phase() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let mut player: TestPlayer = test_server::create_game(&test_server, "Arena", "Blob").await;
+    let mut lobby_client: TestClient = TestClient::connect(&test_server).await;
+
+    lobby_client.send(&MessageSerialIn::LeaveGame).await;
+    player.client.send(&test_server::create_game_message("Second", None, "Blob")).await;
+
+    assert_eq!(
+        lobby_client.receive().await,
+        rejection(RequestKindSerialOut::LeaveGame, RejectionKindSerialOut::NotInGame),
+    );
+    assert_eq!(
+        player
+            .client
+            .receive_until(|message_serial_out| matches!(message_serial_out, MessageSerialOut::RequestRejected { .. }))
+            .await,
+        rejection(RequestKindSerialOut::CreateGame, RejectionKindSerialOut::AlreadyInGame),
     );
 }

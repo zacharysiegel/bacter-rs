@@ -97,28 +97,11 @@ impl BundleBuilder {
                 continue;
             };
 
-            let clamp_kind: CursorClampKind = member_input.clamp.apply(pending_input.target);
-            let applied_cursor: SubpixelPoint = member_input.clamp.applied_cursor();
+            let applied_input: AppliedPendingInput =
+                member_input.apply_pending_input(*member_id, pending_input, organism.cursor);
 
-            if clamp_kind == CursorClampKind::Clamped {
-                cursor_corrections.push(CursorCorrection {
-                    member_id: *member_id,
-                    client_tick: pending_input.client_tick,
-                    cursor: applied_cursor,
-                });
-            }
-
-            let cursor: WorldPoint = get_rounded_world_point(applied_cursor);
-            let has_change: bool = cursor != organism.cursor || pending_input.ability_presses != AbilityPressSet::NONE;
-
-            if has_change {
-                player_inputs.push(PlayerTickInput {
-                    member_id: *member_id,
-                    cursor,
-                    ability_presses: pending_input.ability_presses,
-                    aim: pending_input.aim,
-                });
-            }
+            cursor_corrections.extend(applied_input.cursor_correction);
+            player_inputs.extend(applied_input.player_input);
         }
 
         BuiltBundle {
@@ -163,6 +146,48 @@ struct MemberInputState {
     clamp: CursorClamp,
     spawn_tick: Tick,
     last_client_tick: Option<Tick>,
+}
+
+impl MemberInputState {
+    fn apply_pending_input(
+        &mut self,
+        member_id: MemberId,
+        pending_input: PendingInput,
+        organism_cursor: WorldPoint,
+    ) -> AppliedPendingInput {
+        let clamp_kind: CursorClampKind = self.clamp.apply(pending_input.target);
+        let applied_cursor: SubpixelPoint = self.clamp.applied_cursor();
+
+        let cursor_correction: Option<CursorCorrection> = match clamp_kind {
+            CursorClampKind::Clamped => Some(CursorCorrection {
+                member_id,
+                client_tick: pending_input.client_tick,
+                cursor: applied_cursor,
+            }),
+            CursorClampKind::WithinBudget => None,
+        };
+
+        let cursor: WorldPoint = get_rounded_world_point(applied_cursor);
+        let has_change: bool = cursor != organism_cursor || pending_input.ability_presses != AbilityPressSet::NONE;
+
+        let player_input: Option<PlayerTickInput> = has_change.then_some(PlayerTickInput {
+            member_id,
+            cursor,
+            ability_presses: pending_input.ability_presses,
+            aim: pending_input.aim,
+        });
+
+        AppliedPendingInput {
+            cursor_correction,
+            player_input,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AppliedPendingInput {
+    cursor_correction: Option<CursorCorrection>,
+    player_input: Option<PlayerTickInput>,
 }
 
 /// The inputs a member sent since the last bundle.
@@ -310,6 +335,7 @@ mod tests {
             create_input(5, WorldPoint { x: 1100, y: 200 }, AbilityPressSet::NONE),
         );
         let built_bundle: BuiltBundle = bundle_builder.build(&state);
+        let spawn_subpixel_cursor: SubpixelPoint = SPAWN_CURSOR.to_subpixel_point();
 
         assert_eq!(
             built_bundle.cursor_corrections,
@@ -317,8 +343,8 @@ mod tests {
                 member_id: MEMBER_ID,
                 client_tick: Tick(5),
                 cursor: SubpixelPoint {
-                    x: 100 * 1024 + 3174,
-                    y: 200 * 1024,
+                    x: spawn_subpixel_cursor.x + 3174,
+                    y: spawn_subpixel_cursor.y,
                 },
             }],
         );
@@ -462,12 +488,23 @@ mod tests {
             create_input(5, WorldPoint { x: 104, y: 200 }, AbilityPressSet::NONE),
         );
         let built_bundle: BuiltBundle = bundle_builder.build(&state);
+        let spawn_subpixel_cursor: SubpixelPoint = SPAWN_CURSOR.to_subpixel_point();
 
         assert_eq!(
             built_bundle.bundle.player_inputs[0].cursor,
             WorldPoint { x: 103, y: 200 }
         );
-        assert_eq!(built_bundle.cursor_corrections.len(), 1);
+        assert_eq!(
+            built_bundle.cursor_corrections,
+            vec![CursorCorrection {
+                member_id: MEMBER_ID,
+                client_tick: Tick(5),
+                cursor: SubpixelPoint {
+                    x: spawn_subpixel_cursor.x + 3174,
+                    y: spawn_subpixel_cursor.y,
+                },
+            }],
+        );
     }
 
     #[test]

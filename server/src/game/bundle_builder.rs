@@ -237,12 +237,15 @@ fn get_rounded_pixels(subpixels: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::cursor_clamp;
     use crate::game::test_fixture;
     use shared::game::GameModeKind;
     use shared::member::{Member, MemberRoleKind, Score};
 
     const MEMBER_ID: MemberId = MemberId(0);
     const SPAWN_CURSOR: WorldPoint = WorldPoint { x: 100, y: 200 };
+    const ONE_TICK_BUDGET_SUBPIXELS: i32 =
+        (cursor_clamp::MOVE_SUBPIXELS_PER_TICK + cursor_clamp::MOVE_TOLERANCE_SUBPIXELS_PER_TICK) as i32;
 
     fn create_state_with_organism(tick: Tick) -> GameState {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 8);
@@ -343,7 +346,7 @@ mod tests {
                 member_id: MEMBER_ID,
                 client_tick: Tick(5),
                 cursor: SubpixelPoint {
-                    x: spawn_subpixel_cursor.x + 3174,
+                    x: spawn_subpixel_cursor.x + ONE_TICK_BUDGET_SUBPIXELS,
                     y: spawn_subpixel_cursor.y,
                 },
             }],
@@ -500,7 +503,7 @@ mod tests {
                 member_id: MEMBER_ID,
                 client_tick: Tick(5),
                 cursor: SubpixelPoint {
-                    x: spawn_subpixel_cursor.x + 3174,
+                    x: spawn_subpixel_cursor.x + ONE_TICK_BUDGET_SUBPIXELS,
                     y: spawn_subpixel_cursor.y,
                 },
             }],

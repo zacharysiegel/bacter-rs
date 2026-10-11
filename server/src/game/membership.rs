@@ -9,6 +9,7 @@ use shared::random::Pcg32;
 use shared::round::RoundPhase;
 
 use crate::game::PendingAdmissions;
+use crate::game::pending_admissions;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JoinAdmission {
@@ -24,7 +25,8 @@ pub fn admit_join(
     team_assignment_rng: &mut Pcg32,
     joiner: &Joiner,
 ) -> Result<JoinAdmission, RejectionKind> {
-    check_new_member(state, pending_admissions, &joiner.screen_name)?;
+    check_screen_name(state, pending_admissions, &joiner.screen_name)?;
+    check_member_limit(state, pending_admissions)?;
 
     let member_id: MemberId = pending_admissions.get_next_member_id(state);
     let spawns: bool = !is_round_in_progress(state);
@@ -33,7 +35,7 @@ pub fn admit_join(
         check_spawn_slot(state, pending_admissions)?;
     }
 
-    let team: Option<TeamKind> = resolve_team(state, pending_admissions, team_assignment_rng, joiner.team, None, None)?;
+    let team: Option<TeamKind> = resolve_team(state, pending_admissions, team_assignment_rng, joiner.team, None)?;
     let mut member_events: Vec<MemberEvent> = vec![MemberEvent::Joined {
         member_id,
         screen_name: joiner.screen_name.clone(),
@@ -64,9 +66,7 @@ pub fn admit_spectate(
     pending_admissions: &mut PendingAdmissions,
     screen_name: &str,
 ) -> Result<JoinAdmission, RejectionKind> {
-    if pending_admissions.is_screen_name_taken(state, screen_name) {
-        return Err(RejectionKind::ScreenNameTaken);
-    }
+    check_screen_name(state, pending_admissions, screen_name)?;
 
     if pending_admissions.get_spectator_count(state) >= protocol_limits::SPECTATOR_LIMIT_PER_GAME {
         return Err(RejectionKind::SpectatorLimitReached);
@@ -112,8 +112,7 @@ pub fn admit_respawn(
         pending_admissions,
         team_assignment_rng,
         team_choice,
-        member.team,
-        Some(member_id),
+        Some(member),
     )?;
 
     pending_admissions.record_spawn(member_id, team);
@@ -125,7 +124,7 @@ pub fn admit_respawn(
     })
 }
 
-fn check_new_member(
+fn check_screen_name(
     state: &GameState,
     pending_admissions: &PendingAdmissions,
     screen_name: &str,
@@ -134,7 +133,7 @@ fn check_new_member(
         return Err(RejectionKind::ScreenNameTaken);
     }
 
-    check_member_limit(state, pending_admissions)
+    Ok(())
 }
 
 fn check_member_limit(state: &GameState, pending_admissions: &PendingAdmissions) -> Result<(), RejectionKind> {
@@ -189,13 +188,14 @@ fn resolve_team(
     pending_admissions: &PendingAdmissions,
     team_assignment_rng: &mut Pcg32,
     team_choice: TeamChoiceKind,
-    current_team: Option<TeamKind>,
-    excluded_member_id: Option<MemberId>,
+    respawning_member: Option<&Member>,
 ) -> Result<Option<TeamKind>, RejectionKind> {
     let Some(team_count): Option<u8> = state.settings.team_count else {
         return Ok(None);
     };
 
+    let current_team: Option<TeamKind> = respawning_member.and_then(|member| member.team);
+    let excluded_member_id: Option<MemberId> = respawning_member.map(|member| member.member_id);
     let team_sizes: TeamSizes = pending_admissions.get_team_sizes(state, team_count, excluded_member_id);
 
     let TeamChoiceKind::Team(requested_team) = team_choice else {
@@ -220,10 +220,11 @@ fn resolve_team(
 
 fn choose_auto_team(team_sizes: &TeamSizes, team_assignment_rng: &mut Pcg32) -> Option<TeamKind> {
     let smallest_teams: Vec<TeamKind> = team_sizes.get_smallest_teams();
-    let smallest_team_count: u32 = u32::try_from(smallest_teams.len()).unwrap_or(u32::MAX);
+    let smallest_team_count: u32 = pending_admissions::saturating_count(smallest_teams.len());
     let chosen_index: u32 = team_assignment_rng.below(smallest_team_count);
+    let chosen_team_index: usize = usize::try_from(chosen_index).ok()?;
 
-    smallest_teams.get(chosen_index as usize).copied()
+    smallest_teams.get(chosen_team_index).copied()
 }
 
 #[cfg(test)]
@@ -312,7 +313,7 @@ mod tests {
 
     #[test]
     fn admit_join_counts_pending_joins_for_names_slots_and_member_ids() {
-        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 2);
+        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, 3);
         add_participant(&mut state, "First", None, true);
         let mut pending_admissions: PendingAdmissions = PendingAdmissions::new();
 
@@ -334,6 +335,16 @@ mod tests {
             ),
             Err(RejectionKind::ScreenNameTaken),
         );
+
+        let second_admission: JoinAdmission = admit_join(
+            &state,
+            &mut pending_admissions,
+            &mut create_team_assignment_rng(),
+            &test_fixture::create_joiner("Second", TeamChoiceKind::Auto),
+        )
+        .unwrap();
+
+        assert_eq!(second_admission.member_id, MemberId(2));
         assert_eq!(
             admit_join(
                 &state,
@@ -456,7 +467,6 @@ mod tests {
                     &pending_admissions,
                     &mut team_assignment_rng,
                     TeamChoiceKind::Auto,
-                    None,
                     None,
                 )
                 .unwrap()

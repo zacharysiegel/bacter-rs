@@ -82,7 +82,7 @@ impl PendingAdmissions {
     }
 }
 
-fn saturating_count(length: usize) -> u32 {
+pub fn saturating_count(length: usize) -> u32 {
     u32::try_from(length).unwrap_or(u32::MAX)
 }
 

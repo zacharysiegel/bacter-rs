@@ -22,9 +22,8 @@ pub struct GameSummary {
 
 impl GameSummary {
     pub fn from_game_state(game_id: GameId, state: &GameState, secured: bool) -> GameSummary {
-        let member_count: usize = state.members.len();
         let alive_organism_count: u32 = state.alive_organism_count();
-        let spectator_count: usize = member_count.saturating_sub(usize::try_from(alive_organism_count).unwrap_or(0));
+        let spectator_count: usize = state.members.values().filter(|member| member.organism.is_none()).count();
 
         GameSummary {
             game_id,
@@ -67,6 +66,7 @@ mod tests {
         let mut state: GameState =
             test_fixture::create_state_with_organisms(GameModeKind::FreeForAll, 800, &[WorldPoint { x: 100, y: 100 }]);
         state.members.insert(MemberId(1), test_fixture::create_participant(MemberId(1)));
+
         let mut spectator: Member = test_fixture::create_participant(MemberId(2));
         spectator.role = MemberRoleKind::Spectator;
         spectator.loadout = None;

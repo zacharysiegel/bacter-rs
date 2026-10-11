@@ -48,6 +48,8 @@
 - Native surface: `WindowHandle::UiKit { ui_view_address }` only, for the later iOS app; `WgpuSurface::from_window_handle` and `GameRenderer::from_window_handle` are `unsafe fn`s, since the caller vouches for the view's lifetime.
 - The pipeline-compile test validates WGSL on the host's backend (Metal) under the WebGL2 limits; the GLSL translation for WebGL2 is checked by the manual `?renderer=webgl2` runs of phase 8 and 9. The test polls wgpu's futures with `Waker::noop()`, since they are ready on first poll on these targets and `shared` has no async runtime.
 - `scripts/test/test-shaders.sh` runs every ignored test under `render::`.
+- Device limits: `Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits())`. WebGL2's 2048 px texture limit is smaller than a full-window surface at device pixel ratio 2, which would fail to configure; every other limit stays WebGL2's, as designed.
+- A suboptimal surface texture is dropped, the surface reconfigured and the frame skipped, as for an outdated one: wgpu refuses to configure a surface while one of its textures is acquired.
 
 ## File structure
 
@@ -827,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn fill_and_stroke_leave_the_other_paint_transparent() {
+    fn fill_leaves_the_stroke_transparent() {
         assert_eq!(
             ShapePaint::fill(RenderColor::opaque(9, 9, 9)),
             ShapePaint {
@@ -836,6 +838,10 @@ mod tests {
                 stroke_width_pixels: 0.0,
             },
         );
+    }
+
+    #[test]
+    fn stroke_leaves_the_fill_transparent() {
         assert_eq!(
             ShapePaint::stroke(RenderColor::opaque(9, 9, 9), 2.0),
             ShapePaint {
@@ -960,7 +966,7 @@ impl ShapeInstance {
 
 Run: `cargo test -p shared --features render --lib render::shape_pipeline`
 
-Expected: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 475 filtered out`.
+Expected: `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 475 filtered out`.
 
 - [ ] **Step 5: Commit**
 
@@ -1466,7 +1472,7 @@ fn get_pixels(subpixels: Subpixels) -> f32 {
 
 Run: `cargo test -p shared --features render --lib render::scene`
 
-Expected: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 478 filtered out`.
+Expected: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out`.
 
 - [ ] **Step 5: Commit**
 
@@ -1874,7 +1880,7 @@ fn get_field_shape(
 
 Run: `cargo test -p shared --features render --lib render::scene`
 
-Expected: `test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 478 filtered out`.
+Expected: `test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out`.
 
 - [ ] **Step 5: Commit**
 
@@ -1897,7 +1903,7 @@ git commit -m "scene frame layer"
 - Modify: `shared/src/render/mod.rs`
 - Test: inline `mod tests` in `shared/src/render/scene_pipelines.rs` (`#[ignore]`, needs a GPU adapter)
 
-Both pipelines draw one triangle strip of four vertices per instance, corners from `vertex_index`, with premultiplied alpha blending and no depth. `scene_common.wgsl` is prepended to `cell.wgsl` and `shape.wgsl`: the camera uniform, quad corners, signed distances to rectangles and ellipses, coverage per physical pixel (antialiasing as the original's canvas did) and stroke-over-fill compositing. Each shader names the channels of its packed data only in accessor functions (`instance_skin_kind`, `instance_scale`, `instance_color`, `get_alpha`, `get_rgb`). WGSL is validated only when a pipeline is built, so the test builds both on a headless device with `Limits::downlevel_webgl2_defaults()` for two surface formats; it is `#[ignore]` and runs through `scripts/test/test-shaders.sh`. The test polls wgpu's futures with a no-op waker, since they are ready on first poll on these targets and `shared` has no async runtime.
+Both pipelines draw one triangle strip of four vertices per instance, corners from `vertex_index`, with premultiplied alpha blending and no depth. `scene_common.wgsl` is prepended to `cell.wgsl` and `shape.wgsl`: the camera uniform, quad corners, signed distances to rectangles and ellipses, coverage per physical pixel (antialiasing as the original's canvas did) and stroke-over-fill compositing. Each shader names the channels of its packed data only in accessor functions (`instance_skin_kind`, `instance_scale`, `instance_color`, `get_alpha`, `get_rgb`). WGSL is validated only when a pipeline is built, so the test builds both on a headless device with `get_device_descriptor` (WebGL2's limits, the adapter's texture dimensions) for two surface formats; it is `#[ignore]` and runs through `scripts/test/test-shaders.sh`. The test polls wgpu's futures with a no-op waker, since they are ready on first poll on these targets and `shared` has no async runtime.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1956,7 +1962,8 @@ mod tests {
             apply_limit_buckets: false,
         }))
         .unwrap();
-        let (device, _queue): (Device, Queue) = block_on(adapter.request_device(&get_device_descriptor())).unwrap();
+        let (device, _queue): (Device, Queue) =
+            block_on(adapter.request_device(&get_device_descriptor(&adapter))).unwrap();
 
         device
     }
@@ -2244,9 +2251,9 @@ In `shared/src/render/scene_pipelines.rs`, replace everything above `#[cfg(test)
 
 ```rust
 use wgpu::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState, BufferBindingType,
-    BufferSize, ColorTargetState, ColorWrites, Device, DeviceDescriptor, ErrorFilter, ErrorScopeGuard,
-    ExperimentalFeatures, Features, FragmentState, FrontFace, Limits, MemoryHints, MultisampleState,
+    Adapter, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState,
+    BufferBindingType, BufferSize, ColorTargetState, ColorWrites, Device, DeviceDescriptor, ErrorFilter,
+    ErrorScopeGuard, ExperimentalFeatures, Features, FragmentState, FrontFace, Limits, MemoryHints, MultisampleState,
     PipelineCompilationOptions, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
     PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource,
     ShaderStages, TextureFormat, Trace, VertexBufferLayout, VertexState,
@@ -2306,12 +2313,13 @@ pub struct InstancedQuadPipelineSource<'source> {
     pub instance_layout: VertexBufferLayout<'source>,
 }
 
-/// WebGL2's limits on every backend, so that what runs here runs on WebGL2.
-pub fn get_device_descriptor() -> DeviceDescriptor<'static> {
+/// WebGL2's limits on every backend, so that what runs here runs on WebGL2, except the adapter's texture dimensions,
+/// which a full-window surface at a high device pixel ratio needs.
+pub fn get_device_descriptor(adapter: &Adapter) -> DeviceDescriptor<'static> {
     DeviceDescriptor {
         label: Some("bacter-renderer-device"),
         required_features: Features::empty(),
-        required_limits: Limits::downlevel_webgl2_defaults(),
+        required_limits: Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
         experimental_features: ExperimentalFeatures::default(),
         memory_hints: MemoryHints::Performance,
         trace: Trace::Off,
@@ -2537,7 +2545,7 @@ mod tests {
 
 Run: `./scripts/test/test-shaders.sh`
 
-Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 491 filtered out`.
+Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 492 filtered out`.
 
 On a machine without a GPU adapter the test panics in `create_headless_device`; run it where one is available (any Mac).
 
@@ -2545,7 +2553,7 @@ On a machine without a GPU adapter the test panics in `create_headless_device`; 
 
 Run: `cargo test -p shared --features render --lib render::`
 
-Expected: `test result: ok. 29 passed; 0 failed; 1 ignored; 0 measured; 462 filtered out`.
+Expected: `test result: ok. 30 passed; 0 failed; 1 ignored; 0 measured; 462 filtered out`.
 
 - [ ] **Step 8: Commit**
 
@@ -2622,7 +2630,6 @@ use std::marker::PhantomData;
 
 use wgpu::{Buffer, BufferAddress, BufferDescriptor, BufferSlice, BufferUsages, Device, Queue};
 
-/// Instances a buffer holds when first created.
 pub const INITIAL_INSTANCE_CAPACITY: usize = 256;
 
 /// A vertex buffer of per-instance data which grows to hold whatever is written to it.
@@ -2701,7 +2708,7 @@ fn get_instance_size<T>() -> BufferAddress {
 
 Run: `cargo test -p shared --features render --lib render::instance_buffer`
 
-Expected: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 492 filtered out`.
+Expected: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out`.
 
 - [ ] **Step 5: Commit**
 
@@ -2961,7 +2968,7 @@ mod native {
 
 Run: `cargo test -p shared --features render --lib render::surface`
 
-Expected: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 494 filtered out`.
+Expected: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 495 filtered out`.
 
 - [ ] **Step 5: Check the wasm32 build**
 
@@ -2984,7 +2991,7 @@ git commit -m "surface"
 - Modify: `shared/src/render/mod.rs`
 - Test: inline `mod tests` in `shared/src/render/game_renderer.rs`
 
-`GameRenderer` creates the instance (`Instance::default()`, or GL only for `RendererBackendKind::ForceGl`, the web's `?renderer=webgl2`), the surface, a compatible adapter and a device with the WebGL2 limits, configures the surface and builds the pipelines. `upload_tick_layer` writes the tick layer's instances, which stay on the GPU until the next upload; `draw_frame` writes the frame layer and the camera uniform, clears to the backdrop colour and draws tick shapes, tick cells, projectiles and crosshair in that order. A lost surface is an error (the platform creates the renderer again); an outdated one is reconfigured and the frame skipped. Only the clear colour conversion is testable without a GPU; `./scripts/test/check-wasm.sh` checks the wasm32 build.
+`GameRenderer` creates the instance (`Instance::default()`, or GL only for `RendererBackendKind::ForceGl`, the web's `?renderer=webgl2`), the surface, a compatible adapter and a device with the WebGL2 limits (texture dimensions excepted), configures the surface and builds the pipelines. `upload_tick_layer` writes the tick layer's instances, which stay on the GPU until the next upload; `draw_frame` writes the frame layer and the camera uniform, clears to the backdrop colour and draws tick shapes, tick cells, projectiles and crosshair in that order. A lost surface is an error (the platform creates the renderer again); an outdated or suboptimal one is reconfigured and the frame skipped. Only the clear colour conversion is testable without a GPU; `./scripts/test/check-wasm.sh` checks the wasm32 build.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3137,7 +3144,7 @@ impl GameRenderer {
             requested_adapter.map_err(|error| AppError::new(&format!("requesting a GPU adapter failed: {error}")))?;
 
         let requested_device: Result<(Device, Queue), wgpu::RequestDeviceError> =
-            adapter.request_device(&scene_pipelines::get_device_descriptor()).await;
+            adapter.request_device(&scene_pipelines::get_device_descriptor(&adapter)).await;
         let (device, queue): (Device, Queue) =
             requested_device.map_err(|error| AppError::new(&format!("requesting a GPU device failed: {error}")))?;
 
@@ -3182,7 +3189,8 @@ impl GameRenderer {
 
     /// Draws the last uploaded tick layer under the scene's frame layer.
     pub fn draw_frame(&mut self, render_scene: &RenderScene) -> Result<(), AppError> {
-        let Some(surface_texture) = self.acquire_surface_texture()? else {
+        let acquired_surface_texture: Option<SurfaceTexture> = self.acquire_surface_texture()?;
+        let Some(surface_texture) = acquired_surface_texture else {
             return Ok(());
         };
 
@@ -3193,6 +3201,7 @@ impl GameRenderer {
         let mut encoder: CommandEncoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("bacter-scene-encoder"),
         });
+
         self.record_scene_pass(&mut encoder, &view);
 
         self.queue.submit([encoder.finish()]);
@@ -3208,9 +3217,11 @@ impl GameRenderer {
         match acquired {
             CurrentSurfaceTexture::Success(surface_texture) => Ok(Some(surface_texture)),
             CurrentSurfaceTexture::Suboptimal(surface_texture) => {
+                // Dropping discards the texture; a surface with an acquired texture cannot be configured.
+                drop(surface_texture);
                 self.surface.reconfigure(&self.device);
 
-                Ok(Some(surface_texture))
+                Ok(None)
             }
             CurrentSurfaceTexture::Outdated => {
                 self.surface.reconfigure(&self.device);
@@ -3353,7 +3364,7 @@ fn draw_instances<T: bytemuck::Pod>(
 
 Run: `cargo test -p shared --features render --lib render::game_renderer`
 
-Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 496 filtered out`.
+Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out`.
 
 - [ ] **Step 5: Check the wasm32 builds**
 
@@ -3409,7 +3420,7 @@ with:
 - Module: `shared/src/render`, feature `render`.
 - `GameRenderer` owns adapter, device, queue, surface, pipelines, the camera uniform and the instance buffers; `!Send`; built by `from_canvas` (wasm32) or `unsafe from_window_handle` (other targets) from a `RendererBackendKind` (`Default`, `ForceGl`) and a `PhysicalSize`. The `Instance` is not kept: the surface and the device hold what they need.
 - Surface first, then `request_adapter` with `compatible_surface: Some(&surface)` (required for WebGL2; eafora's order breaks its fallback).
-- `Instance::default()` (WebGPU, else WebGL2); `?renderer=webgl2` forces `Backends::GL` (`RendererBackendKind::ForceGl`); `Limits::downlevel_webgl2_defaults()`, no features, Fifo present mode.
+- `Instance::default()` (WebGPU, else WebGL2); `?renderer=webgl2` forces `Backends::GL` (`RendererBackendKind::ForceGl`); `Limits::downlevel_webgl2_defaults()` with the adapter's texture dimensions (`using_resolution`, so a full-window surface at device pixel ratio 2 fits), no features, Fifo present mode.
 - Surface format: the first without sRGB encoding, so colours and blending stay in sRGB values as the original's canvas kept them; the first format otherwise.
 - `surface.rs`: shared `WgpuSurface` (unconfigured) and `ConfiguredSurface` at file level; `#[cfg(target_arch = "wasm32")] mod wasm` (`from_canvas`); `#[cfg(not(target_arch = "wasm32"))] mod native` (`from_window_handle` with a UIKit view, for iOS later).
 - Pipelines (`scene_pipelines.rs`: `ScenePipelines`, one camera bind group, both built inside error scopes):
@@ -3512,7 +3523,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
 test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
-test result: ok. 496 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+test result: ok. 497 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
@@ -3531,7 +3542,7 @@ Every line reads `ok`, each followed in the real output by its `finished in` tim
 
 Run: `./scripts/test/test-shaders.sh`
 
-Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 496 filtered out`.
+Expected: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out`.
 
 - [ ] **Step 4: Check the wasm32 builds**
 
@@ -3553,6 +3564,7 @@ Expected, oldest first (review-fix commits, if any, sit after their task):
 
 ```text
 phase 7 plan
+phase 7 plan review
 render module and colours
 camera
 cell instances
@@ -3586,4 +3598,4 @@ architecture docs for the renderer
 
 **Problem:** bacter-rs could simulate and follow a game but had no way to draw one.
 
-**Solution:** `shared/src/render/` behind the `render` feature: `RenderScene::from_state` builds GPU-free instance lists from a `GameState`, a tick layer (world, fields, secretions, cells) and a frame layer (interpolated spores and shots, crosshair); `GameRenderer` creates the surface before a compatible adapter (WebGPU, WebGL2 fallback, WebGL2 limits everywhere), draws everything with two instanced pipelines whose WGSL antialiases cells, skins, rings and discs from signed distances, and re-uploads the tick layer only when a tick is applied. Unit tests cover the scene, camera and instance encodings; an ignored test builds both pipelines on a headless device (`scripts/test/test-shaders.sh`). Repository: `bacter-rs` only.
+**Solution:** `shared/src/render/` behind the `render` feature: `RenderScene::from_state` builds GPU-free instance lists from a `GameState`, a tick layer (world, fields, secretions, cells) and a frame layer (interpolated spores and shots, crosshair); `GameRenderer` creates the surface before a compatible adapter (WebGPU, WebGL2 fallback, WebGL2 limits everywhere but the texture dimensions), draws everything with two instanced pipelines whose WGSL antialiases cells, skins, rings and discs from signed distances, and re-uploads the tick layer only when a tick is applied. Unit tests cover the scene, camera and instance encodings; an ignored test builds both pipelines on a headless device (`scripts/test/test-shaders.sh`). Repository: `bacter-rs` only.

@@ -1,1 +1,259 @@
-fn main() {}
+use std::error::Error;
+use std::fs;
+use std::io;
+use std::io::{Read, Write};
+use std::process::ExitCode;
+
+use clap::{Arg, ArgAction, ArgMatches, Command};
+use shared::error::AppError;
+
+use crate::frame_dump::DirectionKind;
+use crate::frame_encoding::FrameEncodingKind;
+use crate::replay_dump::ReplayOutputKind;
+
+mod frame_dump;
+mod frame_encoding;
+mod replay_dump;
+
+// minimer prefixes every AppError message with this.
+const APP_ERROR_MESSAGE_PREFIX: &str = "Error: ";
+
+fn main() -> ExitCode {
+    env_logger::init();
+
+    let matches: ArgMatches = create_command().get_matches();
+    let dump_result: Result<String, AppError> = run_subcommand(&matches);
+    let output_result: Result<(), AppError> = dump_result.and_then(|dump| write_dump(&mut io::stdout().lock(), &dump));
+
+    match output_result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{}", get_error_text(&error));
+
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn create_command() -> Command {
+    Command::new("protocol_dump")
+        .about("Decodes captured frames and replay files")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("frame")
+                .about("Decodes one frame and prints its Debug form")
+                .arg(Arg::new("direction").long("direction").required(true).value_parser(frame_dump::DIRECTION_NAMES))
+                .arg(
+                    Arg::new("hex")
+                        .long("hex")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("base64")
+                        .help("The frame is written as hexadecimal digits"),
+                )
+                .arg(
+                    Arg::new("base64")
+                        .long("base64")
+                        .action(ArgAction::SetTrue)
+                        .help("The frame is written as base64, as copied from browser devtools"),
+                )
+                .arg(Arg::new("file").value_name("FILE").help("Read from standard input when absent")),
+        )
+        .subcommand(
+            Command::new("replay")
+                .about("Decodes a replay file and prints its bundles")
+                .arg(Arg::new("file").value_name("FILE").required(true))
+                .arg(
+                    Arg::new("checksums")
+                        .long("checksums")
+                        .action(ArgAction::SetTrue)
+                        .help("Re-runs the replay and prints only the checksum after each tick"),
+                ),
+        )
+}
+
+fn run_subcommand(matches: &ArgMatches) -> Result<String, AppError> {
+    match matches.subcommand() {
+        Some(("frame", frame_matches)) => run_frame(frame_matches),
+        Some(("replay", replay_matches)) => run_replay(replay_matches),
+        Some((other, _)) => Err(AppError::new(&format!("unknown subcommand {other}"))),
+        None => Err(AppError::new("missing subcommand")),
+    }
+}
+
+fn run_frame(frame_matches: &ArgMatches) -> Result<String, AppError> {
+    let direction_name: &String = frame_matches.get_one::<String>("direction").expect("direction is required via clap");
+    let direction: DirectionKind = DirectionKind::try_from(direction_name.as_str())?;
+    let encoding: FrameEncodingKind = get_frame_encoding(frame_matches);
+    let input_bytes: Vec<u8> = read_input(frame_matches.get_one::<String>("file"))?;
+    let frame_bytes: Vec<u8> = frame_encoding::decode_frame_input(&input_bytes, encoding)?;
+
+    frame_dump::dump_frame(&frame_bytes, direction)
+}
+
+fn run_replay(replay_matches: &ArgMatches) -> Result<String, AppError> {
+    let file_path: &String = replay_matches.get_one::<String>("file").expect("file is required via clap");
+    let output: ReplayOutputKind = get_replay_output(replay_matches);
+    let replay_bytes: Vec<u8> = read_file(file_path)?;
+
+    replay_dump::dump_replay(&replay_bytes, output)
+}
+
+fn get_frame_encoding(frame_matches: &ArgMatches) -> FrameEncodingKind {
+    if frame_matches.get_flag("hex") {
+        return FrameEncodingKind::Hex;
+    }
+
+    if frame_matches.get_flag("base64") {
+        return FrameEncodingKind::Base64;
+    }
+
+    FrameEncodingKind::Binary
+}
+
+fn get_replay_output(replay_matches: &ArgMatches) -> ReplayOutputKind {
+    if replay_matches.get_flag("checksums") {
+        return ReplayOutputKind::Checksums;
+    }
+
+    ReplayOutputKind::Bundles
+}
+
+fn read_input(file_path: Option<&String>) -> Result<Vec<u8>, AppError> {
+    let Some(file_path): Option<&String> = file_path else {
+        return read_standard_input();
+    };
+
+    read_file(file_path)
+}
+
+fn read_file(file_path: &str) -> Result<Vec<u8>, AppError> {
+    fs::read(file_path).map_err(|error| AppError::from_error(&format!("cannot read {file_path}"), Box::new(error)))
+}
+
+fn read_standard_input() -> Result<Vec<u8>, AppError> {
+    let mut input_bytes: Vec<u8> = Vec::new();
+
+    io::stdin()
+        .read_to_end(&mut input_bytes)
+        .map_err(|error| AppError::from_error("cannot read standard input", Box::new(error)))?;
+
+    Ok(input_bytes)
+}
+
+fn write_dump(writer: &mut impl Write, dump: &str) -> Result<(), AppError> {
+    let write_result: io::Result<()> = writer.write_all(dump.as_bytes()).and_then(|()| writer.flush());
+
+    match write_result {
+        Ok(()) => Ok(()),
+        // A reader which stops early, such as `head`, closes the pipe.
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(AppError::from_error("cannot write standard output", Box::new(error))),
+    }
+}
+
+/// The message and its chain of causes, without backtraces.
+fn get_error_text(error: &AppError) -> String {
+    let Some(sub_error): Option<&Box<dyn Error>> = error.sub_error.as_ref() else {
+        return error.message.clone();
+    };
+
+    let sub_error_text: String = match sub_error.downcast_ref::<AppError>() {
+        Some(sub_app_error) => get_error_text(sub_app_error),
+        None => sub_error.to_string(),
+    };
+
+    // A foreign error converted by `?` already carries the sub-error text as its message.
+    let message_without_prefix: &str = error.message.strip_prefix(APP_ERROR_MESSAGE_PREFIX).unwrap_or(&error.message);
+
+    if message_without_prefix == sub_error_text {
+        return error.message.clone();
+    }
+
+    format!("{}: {sub_error_text}", error.message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_error_text_without_sub_error_is_the_message() {
+        let error: AppError = AppError::new("missing subcommand");
+
+        assert_eq!(get_error_text(&error), "Error: missing subcommand");
+    }
+
+    #[test]
+    fn get_error_text_follows_an_app_error_sub_error() {
+        let inner_error: AppError = AppError::from_error("cannot decode", Box::new(io::Error::other("truncated")));
+        let error: AppError = AppError::from_error("cannot dump frame", Box::new(inner_error));
+
+        assert_eq!(
+            get_error_text(&error),
+            "Error: cannot dump frame: Error: cannot decode: truncated"
+        );
+    }
+
+    #[test]
+    fn get_error_text_appends_a_foreign_sub_error() {
+        let error: AppError = AppError::from_error(
+            "cannot read capture.bin",
+            Box::new(io::Error::other("permission denied")),
+        );
+
+        assert_eq!(
+            get_error_text(&error),
+            "Error: cannot read capture.bin: permission denied"
+        );
+    }
+
+    #[test]
+    fn get_error_text_omits_a_foreign_sub_error_the_message_already_carries() {
+        let error: AppError = AppError::from(io::Error::other("permission denied"));
+
+        assert_eq!(get_error_text(&error), "Error: permission denied");
+    }
+
+    struct FailingWriter {
+        error_kind: io::ErrorKind,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(self.error_kind))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_dump_writes_the_whole_dump() {
+        let mut output_bytes: Vec<u8> = Vec::new();
+
+        write_dump(&mut output_bytes, "1 00000000000000ff\n").unwrap();
+
+        assert_eq!(output_bytes, b"1 00000000000000ff\n");
+    }
+
+    #[test]
+    fn write_dump_ends_quietly_when_the_reader_closes_the_pipe() {
+        let mut writer: FailingWriter = FailingWriter {
+            error_kind: io::ErrorKind::BrokenPipe,
+        };
+
+        assert!(write_dump(&mut writer, "dump").is_ok());
+    }
+
+    #[test]
+    fn write_dump_reports_any_other_write_error() {
+        let mut writer: FailingWriter = FailingWriter {
+            error_kind: io::ErrorKind::PermissionDenied,
+        };
+
+        let error: AppError = write_dump(&mut writer, "dump").unwrap_err();
+
+        assert_eq!(error.message, "Error: cannot write standard output");
+    }
+}

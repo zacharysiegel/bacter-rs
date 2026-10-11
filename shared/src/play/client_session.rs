@@ -1471,8 +1471,12 @@ mod tests {
         receive_with_controls(&mut session, &mismatch_message, &mut controls);
         let during_resync_milliseconds: f64 = NOW_MILLISECONDS + 1000.0;
 
-        let mismatch_effects: Vec<ClientEffect> =
-            receive_at(&mut session, &mismatch_message, &mut controls, during_resync_milliseconds);
+        let mismatch_effects: Vec<ClientEffect> = receive_at(
+            &mut session,
+            &mismatch_message,
+            &mut controls,
+            during_resync_milliseconds,
+        );
         let undecodable_effects: Vec<ClientEffect> =
             session.receive(&[0xff, 0xff, 0xff], &mut controls, during_resync_milliseconds);
         let at_timeout_output: FrameOutput = session.advance_frame(

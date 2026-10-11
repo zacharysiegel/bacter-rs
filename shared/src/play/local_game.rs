@@ -7,8 +7,8 @@ use crate::geometry;
 use crate::geometry::WorldPoint;
 use crate::member;
 use crate::member::{Appearance, MemberId, MemberRoleKind, OrganismColorKind};
-use crate::organism::spawn;
 use crate::organism::PlacementError;
+use crate::organism::spawn;
 use crate::random::Pcg32;
 use crate::world::{World, WorldBounds, WorldShapeKind};
 

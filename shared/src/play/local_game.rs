@@ -56,12 +56,12 @@ impl LocalGame {
             .collect();
         local_game.step_local_tick(joined_events, Vec::new());
 
-        let cursors: Vec<(MemberId, WorldPoint)> = local_joiners
+        let member_cursors: Vec<(MemberId, WorldPoint)> = local_joiners
             .iter()
             .enumerate()
             .map(|(index, local_joiner)| (get_local_member_id(index), local_joiner.cursor))
             .collect();
-        local_game.place_missing_organisms(&cursors);
+        local_game.place_missing_organisms(&member_cursors);
 
         local_game
     }
@@ -106,8 +106,8 @@ impl LocalGame {
     }
 
     /// Only members without an organism are placed.
-    pub fn place_missing_organisms(&mut self, cursors: &[(MemberId, WorldPoint)]) {
-        for (member_id, cursor) in cursors {
+    pub fn place_missing_organisms(&mut self, member_cursors: &[(MemberId, WorldPoint)]) {
+        for (member_id, cursor) in member_cursors {
             let is_missing_organism: bool =
                 self.state.members.get(member_id).is_some_and(|member| member.organism.is_none());
 
@@ -280,8 +280,9 @@ mod tests {
         }
     }
 
-    fn create_local_game(cursors: &[WorldPoint]) -> LocalGame {
-        let local_joiners: Vec<LocalJoiner> = cursors.iter().map(|cursor| create_local_joiner(*cursor)).collect();
+    fn create_local_game(joiner_cursors: &[WorldPoint]) -> LocalGame {
+        let local_joiners: Vec<LocalJoiner> =
+            joiner_cursors.iter().map(|cursor| create_local_joiner(*cursor)).collect();
 
         LocalGame::new(WINDOW_SIZE, 10, SEED, &local_joiners)
     }

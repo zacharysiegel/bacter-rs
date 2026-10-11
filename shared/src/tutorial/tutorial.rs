@@ -294,6 +294,7 @@ impl Tutorial {
         let new_size: PixelSize = self.local_game.world_size();
         let crosshair_point: WorldPoint = controls.crosshair.position().to_rounded_world_point();
         let rescaled_crosshair_point: WorldPoint = local_game::rescale_point(crosshair_point, old_size, new_size);
+
         controls.crosshair.snap_to(rescaled_crosshair_point.to_subpixel_point());
 
         if let Some(bot) = self.bot.as_mut() {
@@ -438,11 +439,14 @@ impl Tutorial {
 
     fn write_player_loadout(&mut self) {
         let task: TutorialTaskKind = self.task;
-        let Some(player) = self.local_game.state_mut().members.get_mut(&TUTORIAL_PLAYER_ID) else {
-            return;
-        };
+        let player_loadout: Option<&mut Loadout> = self
+            .local_game
+            .state_mut()
+            .members
+            .get_mut(&TUTORIAL_PLAYER_ID)
+            .and_then(|player| player.loadout.as_mut());
 
-        let Some(loadout) = player.loadout.as_mut() else {
+        let Some(loadout) = player_loadout else {
             return;
         };
 

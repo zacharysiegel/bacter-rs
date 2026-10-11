@@ -8,5 +8,4 @@ publish = false
 shared = { workspace = true }
 clap = { workspace = true }
 minimer = { workspace = true }
-log = { workspace = true }
 env_logger = { workspace = true }

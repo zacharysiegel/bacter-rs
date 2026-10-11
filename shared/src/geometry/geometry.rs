@@ -49,6 +49,14 @@ impl SubpixelPoint {
     pub fn distance_squared(self, other: SubpixelPoint) -> i64 {
         widened_distance_squared(self.x, self.y, other.x, other.y)
     }
+
+    /// Halves round up.
+    pub fn to_rounded_world_point(self) -> WorldPoint {
+        WorldPoint {
+            x: get_rounded_pixels(self.x),
+            y: get_rounded_pixels(self.y),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,6 +126,10 @@ fn widened_axis_differences(first_x: i32, first_y: i32, second_x: i32, second_y:
     let dy: i64 = i64::from(first_y) - i64::from(second_y);
 
     (dx, dy)
+}
+
+fn get_rounded_pixels(subpixels: i32) -> i32 {
+    (subpixels + SUBPIXELS_PER_PIXEL / 2).div_euclid(SUBPIXELS_PER_PIXEL)
 }
 
 fn widened_distance_squared(first_x: i32, first_y: i32, second_x: i32, second_y: i32) -> i64 {
@@ -211,6 +223,18 @@ mod tests {
         assert_eq!(
             WorldPoint { x: 3, y: -2 }.to_subpixel_point(),
             SubpixelPoint { x: 3072, y: -2048 },
+        );
+    }
+
+    #[test]
+    fn to_rounded_world_point_rounds_halves_up_on_both_signs() {
+        assert_eq!(
+            SubpixelPoint { x: 1535, y: -1536 }.to_rounded_world_point(),
+            WorldPoint { x: 1, y: -1 },
+        );
+        assert_eq!(
+            SubpixelPoint { x: 1536, y: -1537 }.to_rounded_world_point(),
+            WorldPoint { x: 2, y: -2 },
         );
     }
 }

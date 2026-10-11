@@ -3,7 +3,6 @@ use std::collections::btree_map::Entry;
 
 use shared::ability::{AbilityPressSet, AimVector};
 use shared::game::{GameState, InputBundle, MemberEvent, PlayerInput, PlayerTickInput, Tick};
-use shared::geometry;
 use shared::geometry::{SubpixelPoint, WorldPoint};
 use shared::member::MemberId;
 use shared::organism::Organism;
@@ -167,7 +166,7 @@ impl MemberInputState {
             CursorClampKind::WithinBudget => None,
         };
 
-        let cursor: WorldPoint = get_rounded_world_point(applied_cursor);
+        let cursor: WorldPoint = applied_cursor.to_rounded_world_point();
         let has_change: bool = cursor != organism_cursor || pending_input.ability_presses != AbilityPressSet::NONE;
 
         let player_input: Option<PlayerTickInput> = has_change.then_some(PlayerTickInput {
@@ -220,18 +219,6 @@ impl PendingInput {
 
         self.ability_presses = self.ability_presses.with(input.ability_presses);
     }
-}
-
-/// Halves round up.
-fn get_rounded_world_point(subpixel_point: SubpixelPoint) -> WorldPoint {
-    WorldPoint {
-        x: get_rounded_pixels(subpixel_point.x),
-        y: get_rounded_pixels(subpixel_point.y),
-    }
-}
-
-fn get_rounded_pixels(subpixels: i32) -> i32 {
-    (subpixels + geometry::SUBPIXELS_PER_PIXEL / 2).div_euclid(geometry::SUBPIXELS_PER_PIXEL)
 }
 
 #[cfg(test)]
@@ -507,18 +494,6 @@ mod tests {
                     y: spawn_subpixel_cursor.y,
                 },
             }],
-        );
-    }
-
-    #[test]
-    fn get_rounded_world_point_rounds_halves_up_on_both_signs() {
-        assert_eq!(
-            get_rounded_world_point(SubpixelPoint { x: 1535, y: -1536 }),
-            WorldPoint { x: 1, y: -1 },
-        );
-        assert_eq!(
-            get_rounded_world_point(SubpixelPoint { x: 1536, y: -1537 }),
-            WorldPoint { x: 2, y: -2 },
         );
     }
 }

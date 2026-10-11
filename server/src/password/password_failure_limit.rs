@@ -15,17 +15,17 @@ const PASSWORD_FAILURE_WINDOW: Duration = Duration::from_secs(protocol_limits::P
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PasswordFailureWindow {
     /// Oldest first.
-    failed_at: VecDeque<Instant>,
+    failure_instants: VecDeque<Instant>,
 }
 
 impl PasswordFailureWindow {
     fn forget_expired(&mut self, now: Instant) {
-        while let Some(oldest_failed_at) = self.failed_at.front().copied() {
-            if now.saturating_duration_since(oldest_failed_at) < PASSWORD_FAILURE_WINDOW {
+        while let Some(oldest_failure_instant) = self.failure_instants.front().copied() {
+            if now.saturating_duration_since(oldest_failure_instant) < PASSWORD_FAILURE_WINDOW {
                 break;
             }
 
-            self.failed_at.pop_front();
+            self.failure_instants.pop_front();
         }
     }
 }
@@ -46,7 +46,7 @@ pub fn check_attempt(
     };
 
     occupied_entry.get_mut().forget_expired(now);
-    let failure_count: u32 = u32::try_from(occupied_entry.get().failed_at.len()).unwrap_or(u32::MAX);
+    let failure_count: u32 = u32::try_from(occupied_entry.get().failure_instants.len()).unwrap_or(u32::MAX);
 
     if failure_count == 0 {
         occupied_entry.remove();
@@ -62,7 +62,15 @@ pub fn check_attempt(
 pub fn record_failure(password_failures_per_ip: &DashMap<IpAddr, PasswordFailureWindow>, ip: IpAddr, now: Instant) {
     let mut window: RefMut<'_, IpAddr, PasswordFailureWindow> = password_failures_per_ip.entry(ip).or_default();
     window.forget_expired(now);
-    window.failed_at.push_back(now);
+    window.failure_instants.push_back(now);
+}
+
+pub fn forget_expired_failures(password_failures_per_ip: &DashMap<IpAddr, PasswordFailureWindow>, now: Instant) {
+    password_failures_per_ip.retain(|_, window| {
+        window.forget_expired(now);
+
+        !window.failure_instants.is_empty()
+    });
 }
 
 #[cfg(test)]
@@ -83,7 +91,7 @@ mod tests {
     fn check_attempt_allows_an_ip_below_the_failure_limit() {
         let failures: DashMap<IpAddr, PasswordFailureWindow> = DashMap::new();
         let now: Instant = Instant::now();
-        record_failures(&failures, 19, now);
+        record_failures(&failures, protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP - 1, now);
 
         assert_eq!(check_attempt(&failures, IP, now), PasswordAttemptKind::Allowed);
     }
@@ -92,7 +100,7 @@ mod tests {
     fn check_attempt_limits_an_ip_at_the_failure_limit_only() {
         let failures: DashMap<IpAddr, PasswordFailureWindow> = DashMap::new();
         let now: Instant = Instant::now();
-        record_failures(&failures, 20, now);
+        record_failures(&failures, protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP, now);
 
         assert_eq!(check_attempt(&failures, IP, now), PasswordAttemptKind::RateLimited);
         assert_eq!(check_attempt(&failures, OTHER_IP, now), PasswordAttemptKind::Allowed);
@@ -102,15 +110,17 @@ mod tests {
     fn check_attempt_forgets_failures_older_than_the_window() {
         let failures: DashMap<IpAddr, PasswordFailureWindow> = DashMap::new();
         let start: Instant = Instant::now();
-        record_failures(&failures, 10, start);
-        record_failures(&failures, 10, start + Duration::from_secs(300));
+        let half_limit: u32 = protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP / 2;
+        let later: Instant = start + PASSWORD_FAILURE_WINDOW / 2;
+        record_failures(&failures, half_limit, start);
+        record_failures(&failures, protocol_limits::PASSWORD_FAILURE_LIMIT_PER_IP - half_limit, later);
 
         assert_eq!(
-            check_attempt(&failures, IP, start + Duration::from_secs(599)),
+            check_attempt(&failures, IP, start + PASSWORD_FAILURE_WINDOW - Duration::from_secs(1)),
             PasswordAttemptKind::RateLimited
         );
         assert_eq!(
-            check_attempt(&failures, IP, start + Duration::from_secs(600)),
+            check_attempt(&failures, IP, start + PASSWORD_FAILURE_WINDOW),
             PasswordAttemptKind::Allowed
         );
     }
@@ -121,8 +131,23 @@ mod tests {
         let start: Instant = Instant::now();
         record_failures(&failures, 1, start);
 
-        check_attempt(&failures, IP, start + Duration::from_secs(600));
+        check_attempt(&failures, IP, start + PASSWORD_FAILURE_WINDOW);
 
         assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn forget_expired_failures_removes_only_ips_whose_failures_all_expired() {
+        let failures: DashMap<IpAddr, PasswordFailureWindow> = DashMap::new();
+        let start: Instant = Instant::now();
+        let later: Instant = start + Duration::from_secs(1);
+        record_failure(&failures, IP, start);
+        record_failure(&failures, OTHER_IP, start);
+        record_failure(&failures, OTHER_IP, later);
+
+        forget_expired_failures(&failures, start + PASSWORD_FAILURE_WINDOW);
+
+        assert!(!failures.contains_key(&IP));
+        assert_eq!(failures.get(&OTHER_IP).unwrap().failure_instants, VecDeque::from([later]));
     }
 }

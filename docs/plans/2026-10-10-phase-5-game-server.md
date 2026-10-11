@@ -1269,7 +1269,7 @@ git commit -m "game runtime"
 - Modify: `server/src/lib.rs`
 - Test: inline `mod tests` in `server/src/password/password_failure_limit.rs`
 
-20 failed password attempts per IP per 10 minutes (protocol.md, limits); further attempts get `RateLimited` without hashing. A sliding window of failure instants per IP, emptied entries removed. The functions take the map, so `ServerRegistries` (Task 11) can hand in a leaked one.
+20 failed password attempts per IP per 10 minutes (protocol.md, limits); further attempts get `RateLimited` without hashing. A sliding window of failure instants per IP, emptied entries removed; `forget_expired_failures` sweeps IPs which never attempt again, called by the lobby task (Task 22). The functions take the map, so `ServerRegistries` (Task 11) can hand in a leaked one.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -6553,6 +6553,7 @@ use tokio::time::{Interval, MissedTickBehavior};
 
 use crate::lobby::GameList;
 use crate::lobby::game_list;
+use crate::password::password_failure_limit;
 use crate::registries::ServerRegistries;
 use crate::socket::ConnectionId;
 
@@ -6624,9 +6625,12 @@ pub async fn run_lobby_task(registries: ServerRegistries) {
 
     loop {
         interval.tick().await;
+        let now: Instant = Instant::now();
+
+        password_failure_limit::forget_expired_failures(registries.password_failures_per_ip, now);
 
         lobby_revision.observe(game_list::get_game_list(registries));
-        let due_game_list: Option<&GameList> = lobby_revision.take_due_list(Instant::now());
+        let due_game_list: Option<&GameList> = lobby_revision.take_due_list(now);
 
         if let Some(game_list) = due_game_list {
             broadcast_game_list(registries, &game_list.encode_frame());

@@ -49,21 +49,29 @@ mod tests {
     use super::*;
     use crate::game::Tick;
     use crate::geometry::SubpixelPoint;
+    use crate::play::frame_pacing;
     use crate::play::{GameKeyKind, KeyRepeatKind, KeyTransitionKind, PixelSize};
     use crate::tutorial::DisplayModeKind;
 
+    const SEED: u64 = 3;
     const WINDOW_SIZE: PixelSize = PixelSize {
         width_pixels: 850,
         height_pixels: 650,
     };
+    /// The crosshair's travel in one tick at `CROSSHAIR_SPEED_PIXELS_PER_SECOND`.
+    const CROSSHAIR_TRAVEL_SUBPIXELS_PER_TICK: i32 = 3046;
 
     #[test]
     fn advance_frame_steps_the_title_scene() {
         let mut controls: PlayerControls = PlayerControls::new();
-        let mut active_scene: ActiveScene = ActiveScene::Title(TitleScene::new(WINDOW_SIZE, 3));
+        let mut active_scene: ActiveScene = ActiveScene::Title(TitleScene::new(WINDOW_SIZE, SEED));
 
         active_scene.advance_frame(0.0, &mut controls, InputFocusKind::Menu);
-        let frame_output: FrameOutput = active_scene.advance_frame(70.0, &mut controls, InputFocusKind::Menu);
+        let frame_output: FrameOutput = active_scene.advance_frame(
+            frame_pacing::TICK_PERIOD_MILLISECONDS,
+            &mut controls,
+            InputFocusKind::Menu,
+        );
 
         assert_eq!(frame_output.tick_applied, Some(Tick(2)));
         assert_eq!(active_scene.render_state().map(|state| state.tick), Some(Tick(2)));
@@ -72,9 +80,10 @@ mod tests {
     #[test]
     fn advance_frame_steers_the_tutorial_crosshair_with_the_game_focus() {
         let mut controls: PlayerControls = PlayerControls::new();
-        let tutorial: Tutorial = Tutorial::new(WINDOW_SIZE, 3, DisplayModeKind::Windowed, &mut controls);
+        let tutorial: Tutorial = Tutorial::new(WINDOW_SIZE, SEED, DisplayModeKind::Windowed, &mut controls);
         let start: SubpixelPoint = controls.crosshair.position();
         let mut active_scene: ActiveScene = ActiveScene::Tutorial(tutorial);
+
         controls.keyboard.key_changed(
             GameKeyKind::MoveRight,
             KeyTransitionKind::Pressed,
@@ -82,12 +91,16 @@ mod tests {
         );
 
         active_scene.advance_frame(0.0, &mut controls, InputFocusKind::Game);
-        active_scene.advance_frame(70.0, &mut controls, InputFocusKind::Game);
+        active_scene.advance_frame(
+            frame_pacing::TICK_PERIOD_MILLISECONDS,
+            &mut controls,
+            InputFocusKind::Game,
+        );
 
         assert_eq!(
             controls.crosshair.position(),
             SubpixelPoint {
-                x: start.x + 3046,
+                x: start.x + CROSSHAIR_TRAVEL_SUBPIXELS_PER_TICK,
                 y: start.y,
             },
         );

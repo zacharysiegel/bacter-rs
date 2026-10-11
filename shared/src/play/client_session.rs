@@ -44,7 +44,7 @@ pub enum ClientEffect {
     ConnectionLost(Option<CloseReasonKind>),
 }
 
-/// One per WebSocket connection; frames come in through `receive` and go out as `ClientEffect::SendFrame`.
+/// One per WebSocket connection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientSession {
     phase: SessionPhase,
@@ -381,7 +381,7 @@ impl GameSession {
     }
 }
 
-/// An unconvertible summary drops the whole list; lists are latest-state, so the next one replaces it.
+/// An unconvertible summary drops the whole list.
 fn receive_game_list(
     game_summary_serial_outs: Vec<GameSummarySerialOut>,
     online_client_count: u32,
@@ -702,7 +702,7 @@ mod tests {
         let mut session: ClientSession = create_joined_session();
 
         assert_eq!(
-            session.connection_closed(4002),
+            session.connection_closed(CloseReasonKind::SlowConsumer.close_code()),
             vec![ClientEffect::ConnectionLost(Some(CloseReasonKind::SlowConsumer))],
         );
         assert_eq!(session.own_member_id(), None);
@@ -769,7 +769,6 @@ mod tests {
 
         let effects: Vec<ClientEffect> = receive_message(&mut session, &create_snapshot_message(&state));
 
-        assert_eq!(get_sent_messages(&effects), Vec::<MessageSerialIn>::new());
         assert_eq!(
             effects,
             vec![ClientEffect::OwnMemberStateChanged(

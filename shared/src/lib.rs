@@ -13,4 +13,5 @@ pub mod replay;
 pub mod round;
 pub mod settings;
 pub mod title;
+pub mod tutorial;
 pub mod world;

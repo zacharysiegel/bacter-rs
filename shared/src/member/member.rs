@@ -3,6 +3,21 @@ use crate::member::Score;
 use crate::organism::Organism;
 
 pub const TEAM_ORDER: [TeamKind; 4] = [TeamKind::Red, TeamKind::Blue, TeamKind::Green, TeamKind::Pink];
+pub const ORGANISM_COLOR_ORDER: [OrganismColorKind; 12] = [
+    OrganismColorKind::Fire,
+    OrganismColorKind::Camel,
+    OrganismColorKind::Clay,
+    OrganismColorKind::Sun,
+    OrganismColorKind::Leaf,
+    OrganismColorKind::Lime,
+    OrganismColorKind::Sky,
+    OrganismColorKind::Lake,
+    OrganismColorKind::Ocean,
+    OrganismColorKind::Royal,
+    OrganismColorKind::Petal,
+    OrganismColorKind::Hot,
+];
+pub const SKIN_ORDER: [SkinKind; 4] = [SkinKind::Grid, SkinKind::Circles, SkinKind::Ghost, SkinKind::None];
 const RED_TEAM_NAME: &str = "red";
 const BLUE_TEAM_NAME: &str = "blue";
 const GREEN_TEAM_NAME: &str = "green";

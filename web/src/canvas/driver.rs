@@ -633,7 +633,7 @@ fn connect() {
     });
 }
 
-/// Does nothing while the driver is absent or already borrowed; a pending command waits for the next frame.
+/// Does nothing while the driver is absent or already borrowed.
 fn with_driver(action: impl FnOnce(&mut Driver)) {
     DRIVER.with(|driver_slot| {
         let Ok(mut driver_slot) = driver_slot.try_borrow_mut() else {

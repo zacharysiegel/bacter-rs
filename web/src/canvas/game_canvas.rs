@@ -5,7 +5,7 @@ use shared::protocol::MessageSerialIn;
 
 use crate::app::{AppSignals, ClientSettings};
 
-/// What the views ask of the driver, which owns the socket and the scenes.
+/// What the views ask of the driver.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DriverCommandKind {
     SendRequest(MessageSerialIn),
@@ -15,7 +15,6 @@ pub enum DriverCommandKind {
     StoreClientSettings(ClientSettings),
 }
 
-/// Behind every other layer.
 #[component]
 pub fn GameCanvas() -> impl IntoView {
     let signals: AppSignals = expect_context();

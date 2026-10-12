@@ -1,0 +1,43 @@
+.leaderboard {
+    position: absolute;
+    top: 13px;
+    right: 15px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    /* Not auto, so the fixed layout applies and the table is the sum of its columns. */
+    width: 0;
+    color: var(--color-black);
+    font-family: var(--font-overlay);
+    font-size: 11px;
+    box-shadow: 4px 3px 0 var(--color-shadow);
+
+    th,
+    td {
+        width: 46px;
+        height: 22px;
+        padding: 0 5px;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        border: 1px solid var(--color-black);
+    }
+
+    th:first-child,
+    td:first-child {
+        width: 170px;
+    }
+
+    th {
+        font-weight: bold;
+        background: var(--color-leaderboard-head);
+    }
+
+    td {
+        background: var(--color-leaderboard-cell);
+    }
+}
+
+.leaderboard-row-own td {
+    font-family: var(--font-heading);
+    font-weight: bold;
+}

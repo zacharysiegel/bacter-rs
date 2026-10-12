@@ -6,6 +6,7 @@ pub mod browser;
 pub mod canvas;
 pub mod connection;
 pub mod hud;
+pub mod leaderboard;
 pub mod menu;
 pub mod screen;
 pub mod title;

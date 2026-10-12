@@ -33,9 +33,9 @@ pub enum MenuFieldKind {
     LeaveTutorial,
 }
 
-/// An error shown in red: under its field, or in the bottom row when `field` is `None` or not shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuIssue {
+    /// `None` is shown in the bottom row.
     pub field: Option<MenuFieldKind>,
     pub text: String,
 }
@@ -91,10 +91,10 @@ pub enum FieldAvailabilityKind {
     Disabled,
 }
 
-/// The fourth ability cannot be deselected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RadioSelectionKind {
     Deselectable,
+    /// Clicks never change the selection.
     Fixed,
 }
 
@@ -158,7 +158,7 @@ impl MenuRow {
     }
 }
 
-/// Header, two-column table, submit button and Back footer; Enter in any field submits.
+/// Enter in a field submits.
 #[component]
 pub fn MenuForm(
     header: &'static str,
@@ -179,16 +179,10 @@ pub fn MenuForm(
 
         place_issues(&issues.get(), &shown_fields)
     });
-    let submit_on_enter = move |event: ev::KeyboardEvent| {
-        if event.key() == ENTER_KEY {
-            event.prevent_default();
-            on_submit.run(());
-        }
-    };
-    let row_views: Vec<AnyView> = rows.into_iter().map(|row| render_row(row, placed_issues)).collect();
+    let row_views: Vec<AnyView> = rows.into_iter().map(|row| render_row(row, placed_issues, on_submit)).collect();
 
     view! {
-        <div class="menu" on:keydown=submit_on_enter>
+        <div class="menu">
             <div class="menu-header">
                 <h2 class="menu-header-text">{header}</h2>
             </div>
@@ -275,7 +269,7 @@ pub fn parse_number_input(input_text: &str) -> Option<i64> {
         return None;
     }
 
-    Some(floored.clamp(i64::MIN as f64, i64::MAX as f64) as i64)
+    Some(floored as i64)
 }
 
 /// Clicking the selected radio of a deselectable group clears it.
@@ -301,7 +295,16 @@ fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
     }
 }
 
-fn render_row(row: MenuRow, placed_issues: Memo<PlacedIssues>) -> AnyView {
+fn create_submit_on_enter(on_submit: Callback<()>) -> impl Fn(ev::KeyboardEvent) + Copy + 'static {
+    move |event: ev::KeyboardEvent| {
+        if event.key() == ENTER_KEY {
+            event.prevent_default();
+            on_submit.run(());
+        }
+    }
+}
+
+fn render_row(row: MenuRow, placed_issues: Memo<PlacedIssues>, on_submit: Callback<()>) -> AnyView {
     let MenuRow {
         field,
         label,
@@ -314,7 +317,7 @@ fn render_row(row: MenuRow, placed_issues: Memo<PlacedIssues>) -> AnyView {
             <tr class="menu-row">
                 <td class="menu-cell menu-cell-label">{label}</td>
                 <td class="menu-cell menu-cell-input">
-                    {render_input(input.clone())}
+                    {render_input(input.clone(), on_submit)}
                     {move || render_issue_texts(placed_issues.get().get_field_texts(field))}
                 </td>
             </tr>
@@ -331,25 +334,25 @@ fn render_issue_texts(issue_texts: Vec<String>) -> AnyView {
         .into_any()
 }
 
-fn render_input(input: MenuInput) -> AnyView {
+fn render_input(input: MenuInput, on_submit: Callback<()>) -> AnyView {
     match input {
-        MenuInput::Text { value } => render_text_input(value),
-        MenuInput::Number { value, placeholder } => render_number_input(value, placeholder),
+        MenuInput::Text { value } => render_text_input(value, on_submit),
+        MenuInput::Number { value, placeholder } => render_number_input(value, placeholder, on_submit),
         MenuInput::List {
             selected_index,
             options,
             availability,
-        } => render_list_input(selected_index, options, availability),
+        } => render_list_input(selected_index, options, availability, on_submit),
         MenuInput::Radios {
             labels,
             selected_index,
             selection,
-        } => render_radios_input(labels, selected_index, selection),
+        } => render_radios_input(labels, selected_index, selection, on_submit),
         MenuInput::Button { on_click } => render_button_input(on_click),
     }
 }
 
-fn render_text_input(value: RwSignal<String>) -> AnyView {
+fn render_text_input(value: RwSignal<String>, on_submit: Callback<()>) -> AnyView {
     view! {
         <input
             class="menu-input"
@@ -357,12 +360,13 @@ fn render_text_input(value: RwSignal<String>) -> AnyView {
             autocomplete="off"
             prop:value=move || value.get()
             on:input=move |event| value.set(event_target_value(&event))
+            on:keydown=create_submit_on_enter(on_submit)
         />
     }
     .into_any()
 }
 
-fn render_number_input(value: RwSignal<Option<i64>>, placeholder: u32) -> AnyView {
+fn render_number_input(value: RwSignal<Option<i64>>, placeholder: u32, on_submit: Callback<()>) -> AnyView {
     view! {
         <input
             class="menu-input"
@@ -371,6 +375,7 @@ fn render_number_input(value: RwSignal<Option<i64>>, placeholder: u32) -> AnyVie
             placeholder=placeholder.to_string()
             prop:value=move || value.get().map(|number| number.to_string()).unwrap_or_default()
             on:input=move |event| value.set(parse_number_input(&event_target_value(&event)))
+            on:keydown=create_submit_on_enter(on_submit)
         />
     }
     .into_any()
@@ -380,6 +385,7 @@ fn render_list_input(
     selected_index: RwSignal<usize>,
     options: Signal<Vec<ListOption>>,
     availability: Signal<FieldAvailabilityKind>,
+    on_submit: Callback<()>,
 ) -> AnyView {
     let select_option = move |event: ev::Event| {
         let chosen_index: Option<usize> = event_target_value(&event).parse::<usize>().ok();
@@ -413,6 +419,7 @@ fn render_list_input(
             class="menu-input menu-list"
             prop:disabled=move || availability.get() == FieldAvailabilityKind::Disabled
             on:change=select_option
+            on:keydown=create_submit_on_enter(on_submit)
         >
             {option_views}
         </select>
@@ -424,6 +431,7 @@ fn render_radios_input(
     labels: Vec<&'static str>,
     selected_index: RwSignal<Option<usize>>,
     selection: RadioSelectionKind,
+    on_submit: Callback<()>,
 ) -> AnyView {
     let radio_views: Vec<AnyView> = labels
         .into_iter()
@@ -434,7 +442,7 @@ fn render_radios_input(
             };
 
             view! {
-                <div class="menu-radio-option">
+                <div class="menu-radio-option" on:keydown=create_submit_on_enter(on_submit)>
                     <div
                         class="menu-radio"
                         class:menu-radio-selected=move || selected_index.get() == Some(index)

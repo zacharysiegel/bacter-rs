@@ -11430,3 +11430,23 @@ M  docs/architecture/testing.md
 **Problem:** bacter-rs could simulate, serve and draw a game, but had no browser client to play it.
 
 **Solution:** the `web` crate: a prerendered Leptos shell with the original's title, game browser and create, join, spectate, respawn and pause menus on a shared menu form engine; HTML overlays for the ability bar, leaderboard, message box and name labels; and a browser driver which owns the wgpu renderer, the title scene, tutorial and online session, the keyboard and the WebSocket. Settings persist in localStorage; `build-site.sh`, `build-release.sh` and `run-release-server.sh` build and serve the static site and the game socket from one origin. Host unit tests cover what every view shows, and a prerender test the document. Repository: `bacter-rs` only.
+
+## Deviations from the plan
+
+- `shared` changes the plan did not list:
+  - feature `test-support` in `shared/Cargo.toml`; `game::test_fixture` and `settings::InMemorySettingsStore` (moved out of the settings tests and made public) are gated `#[cfg(any(test, feature = "test-support"))]`, and `web` enables it as a dev-dependency;
+  - `game::test_fixture::insert_member`;
+  - `TeamSizes::from_participant_counts` (`member/team_assignment.rs`), which `loadout_fields::get_smallest_team` uses instead of its own smallest-team search;
+  - `protocol::WEBSOCKET_PATH`, which the server's route, its test helper and `connection::resolve_websocket_url` share (the plan kept `/ws` literal in each).
+- `web/src/test_fixture/` holds only the client-session helpers (`create_session_joined`, `create_session_in_game`) and re-exports `shared::game::test_fixture`; the plan's game-state, member and loadout fixtures are the shared ones (see the note under Task 10).
+- New files: `web/src/client/js_error.rs` (`get_js_error`, `get_js_error_with_fields`); `web/src/settings/mod.rs` and `hexadecimal.rs` (`encode_hexadecimal`, `decode_hexadecimal`), taken out of `local_storage_settings.rs` so the encoding is host-tested.
+- New functions from the quality reviews:
+  - `menu/menu_form.rs`: `combine_issue_results`, `combine_rejection_results` (shared by the create, join and spectate validation), `get_answered_rejection_issue` (the testable part of `show_request_rejections`);
+  - `menu/join_menu.rs`: `create_credential_rows` and `normalize_credentials`, shared with the spectate menu; `show_unlisted_game`;
+  - `menu/create_menu.rs`: `CreateMenuValues::blank`, `BLANK_WORLD_SHAPE_INDEX`, `BLANK_GAME_MODE_INDEX`; one generic `get_saturated` replaces `get_saturated_u8` and `get_saturated_u32`; `get_player_minimum_visibility`, `get_team_count_visibility` and `get_leaderboard_length_visibility` replace `SKIRMISH_MODES`, `SURVIVAL_MODES` and `RANKED_PLAYER_MODES`;
+  - `hud/ability_bar.rs`: `get_centred_width`, `get_centred_view_box`, `get_carried_shot_dial`, `DIAL_BACK_RADIUS_PIXELS`, `SHOT_DIAL_OUTLINE_MARGIN_PIXELS`; `leaderboard/leaderboard.rs`: `render_heading`, `render_cell`, `get_row_class`;
+  - `client/game_server_config.rs` split into `fetch_game_server_config_response`, `fetch_game_server_config_text`, `read_response_text`, `parse_websocket_url_field`, `get_configured_websocket_url`; a missing `websocket_url` field is an error, a null one the page's origin;
+  - `app.rs`: `AppSignals::lobby_notice_text`; `server.rs`: `create_router`; `canvas/driver.rs`: `Driver::navigate_if_changed`.
+- More tests than the plan's expected outputs: `cargo test --workspace` reports 107 web unit tests (plan: 83) and 506 shared tests (plan: 505).
+- Final review fixes: the `client/mod.rs` doc comment restating the gate in `lib.rs` is removed; `overview.md` names the `test-support` feature and the web crate's dev-dependency on it.
+- Verification: `./scripts/test/test-wasm.sh` did not run its cases on this machine, because the installed chromedriver (149) does not match the installed Chrome (154); the run fails at the WebDriver session with HTTP 404. The local-storage tests remain unverified in a browser.

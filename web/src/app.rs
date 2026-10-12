@@ -110,7 +110,6 @@ pub fn App() -> impl IntoView {
     view! { <div class="screen-layer"></div> }
 }
 
-/// Writes only a different value, so views reading the signal do not re-render for nothing.
 pub fn set_if_changed<T: PartialEq + Send + Sync + 'static>(signal: RwSignal<T>, value: T) {
     let is_changed: bool = signal.with_untracked(|current_value| *current_value != value);
 
@@ -123,11 +122,15 @@ pub fn set_if_changed<T: PartialEq + Send + Sync + 'static>(signal: RwSignal<T>,
 mod tests {
     use super::*;
 
+    use leptos::reactive::effect::ImmediateEffect;
+
     use shared::settings::InMemorySettingsStore;
 
     #[test]
     fn read_gives_the_defaults_from_an_empty_store() {
-        assert_eq!(ClientSettings::read(&InMemorySettingsStore::default()), ClientSettings::defaults());
+        let empty_store_settings: ClientSettings = ClientSettings::read(&InMemorySettingsStore::default());
+
+        assert_eq!(empty_store_settings, ClientSettings::defaults());
         assert_eq!(
             ClientSettings::defaults(),
             ClientSettings {
@@ -160,5 +163,35 @@ mod tests {
         signals.go_back();
 
         assert_eq!(signals.screen.get_untracked(), Screen::Title);
+    }
+
+    #[test]
+    fn go_back_on_title_keeps_the_screen() {
+        let owner: Owner = Owner::new();
+        owner.set();
+        let signals: AppSignals = AppSignals::new();
+
+        signals.go_back();
+
+        assert_eq!(signals.screen.get_untracked(), Screen::Title);
+    }
+
+    #[test]
+    fn set_if_changed_notifies_only_for_a_different_value() {
+        let owner: Owner = Owner::new();
+        owner.set();
+        let signal: RwSignal<u32> = RwSignal::new(1);
+        let run_count: RwSignal<u32> = RwSignal::new(0);
+        let _effect: ImmediateEffect = ImmediateEffect::new_isomorphic(move || {
+            signal.track();
+            run_count.update_untracked(|count| *count += 1);
+        });
+
+        set_if_changed(signal, 1);
+        assert_eq!(run_count.get_untracked(), 1);
+
+        set_if_changed(signal, 2);
+        assert_eq!(run_count.get_untracked(), 2);
+        assert_eq!(signal.get_untracked(), 2);
     }
 }

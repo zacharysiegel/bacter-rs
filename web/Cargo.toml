@@ -49,6 +49,9 @@ tokio = { workspace = true, optional = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 log = { workspace = true, features = ["release_max_level_info"] }
 
+[dev-dependencies]
+shared = { workspace = true, features = ["test-support"] }
+
 # Other targets have no browser to run #[wasm_bindgen_test] cases in.
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }

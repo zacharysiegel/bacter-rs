@@ -7,7 +7,7 @@ use shared::settings::SettingsStore;
 
 use crate::browser::GameListView;
 use crate::connection::ConnectionStatusKind;
-use crate::menu::{CreateMenuFields, RequestRejection};
+use crate::menu::{CreateMenuFields, GameMenuView, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
 #[cfg(feature = "ssr")] // a browser build renders no document
@@ -22,6 +22,7 @@ pub struct AppSignals {
     pub game_list: RwSignal<GameListView>,
     pub request_rejection: RwSignal<Option<RequestRejection>>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
+    pub game_menu: RwSignal<Option<GameMenuView>>,
     pub client_settings: RwSignal<ClientSettings>,
     /// The team choice last sent in a join or respawn.
     pub team_choice: RwSignal<TeamChoiceKindSerialIn>,
@@ -36,6 +37,7 @@ impl AppSignals {
             game_list: RwSignal::new(GameListView::empty()),
             request_rejection: RwSignal::new(None),
             own_member_state: RwSignal::new(None),
+            game_menu: RwSignal::new(None),
             client_settings: RwSignal::new(ClientSettings::defaults()),
             team_choice: RwSignal::new(TeamChoiceKindSerialIn::Auto),
         }

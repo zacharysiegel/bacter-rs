@@ -4,10 +4,12 @@ use shared::ability::{FirstAbilityKind, Loadout, SecondAbilityKind, ThirdAbility
 use shared::game::{GameModeKind, GameState};
 use shared::member;
 use shared::member::{Appearance, OrganismColorKind, SkinKind, TeamKind, TeamSizes};
-use shared::protocol::{TeamChoiceKindSerialIn, TeamKindSerial};
+use shared::protocol::{MessageSerialIn, TeamChoiceKindSerialIn, TeamKindSerial};
 use shared::render::RenderColor;
 use shared::render::render_color;
 
+use crate::canvas::DriverCommandKind;
+use crate::canvas::game_canvas;
 use crate::menu::{
     FieldAvailabilityKind, FieldVisibilityKind, ListOption, MenuFieldKind, MenuInput, MenuIssue, MenuRow,
     RadioSelectionKind,
@@ -296,6 +298,18 @@ pub fn create_team_rows(
         )
         .with_visibility(skirmish_visibility),
     ]
+}
+
+pub fn create_leave_game_row() -> MenuRow {
+    MenuRow::shown(
+        MenuFieldKind::LeaveGame,
+        "Leave Game",
+        MenuInput::Button {
+            on_click: Callback::new(move |_| {
+                game_canvas::dispatch_driver_command(DriverCommandKind::SendRequest(MessageSerialIn::LeaveGame));
+            }),
+        },
+    )
 }
 
 pub fn create_radios_input(

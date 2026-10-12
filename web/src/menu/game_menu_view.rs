@@ -1,3 +1,5 @@
+use leptos::prelude::*;
+
 use shared::ability::Loadout;
 use shared::game::{GameModeKind, GameState};
 use shared::member::{Member, MemberId, TeamKind};
@@ -27,6 +29,13 @@ impl GameMenuView {
             team_sizes: loadout_fields::get_state_team_sizes(state),
         })
     }
+}
+
+pub fn get_game_menu_mode(game_menu: RwSignal<Option<GameMenuView>>) -> Signal<GameModeKind> {
+    Signal::derive(move || {
+        game_menu
+            .with(|game_menu| game_menu.as_ref().map_or(GameModeKind::FreeForAll, |game_menu_view| game_menu_view.mode))
+    })
 }
 
 #[cfg(test)]

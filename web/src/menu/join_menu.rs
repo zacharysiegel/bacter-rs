@@ -54,6 +54,7 @@ pub fn JoinMenu(origin: JoinMenuOrigin) -> impl IntoView {
     let issues: RwSignal<Vec<MenuIssue>> = RwSignal::new(Vec::new());
     let screen_name: RwSignal<String> = RwSignal::new(String::new());
     let password: RwSignal<String> = RwSignal::new(String::new());
+
     let target_origin: JoinMenuOrigin = origin.clone();
     let target: Memo<Option<JoinTarget>> = Memo::new(move |_| {
         signals
@@ -66,32 +67,25 @@ pub fn JoinMenu(origin: JoinMenuOrigin) -> impl IntoView {
         Signal::derive(move || target.get().map(|target| target.team_sizes).unwrap_or_default());
     let password_visibility: Signal<FieldVisibilityKind> =
         Signal::derive(move || target.get().map_or(FieldVisibilityKind::Hidden, |target| target.password_visibility));
+
     let initial_values: LoadoutFieldValues = LoadoutFieldValues::join_defaults(&team_sizes.get_untracked());
     let loadout_fields: LoadoutFields = LoadoutFields::new(&initial_values, team_sizes);
-    let mut rows: Vec<MenuRow> = vec![
-        MenuRow::shown(
-            MenuFieldKind::ScreenName,
-            "Screen Name",
-            MenuInput::Text { value: screen_name },
-        ),
-        MenuRow::shown(MenuFieldKind::Password, "Password", MenuInput::Text { value: password })
-            .with_visibility(password_visibility),
-    ];
-    rows.extend(loadout_fields::create_appearance_rows(loadout_fields, mode));
-    rows.extend(loadout_fields::create_ability_rows(loadout_fields));
-    rows.extend(loadout_fields::create_team_rows(loadout_fields, mode, team_sizes));
+
+    let rows: Vec<MenuRow> = create_rows(
+        screen_name,
+        password,
+        password_visibility,
+        loadout_fields,
+        mode,
+        team_sizes,
+    );
 
     menu_form::show_request_rejections(
         signals.request_rejection,
         &[RequestKind::CreateGame, RequestKind::JoinGame],
         issues,
     );
-
-    Effect::new(move |_| {
-        if target.get().is_none() {
-            issues.set(vec![MenuIssue::from_rejection(RejectionKind::GameNotFound)]);
-        }
-    });
+    show_unlisted_game(target, issues);
 
     let on_submit: Callback<()> = Callback::new(move |_| {
         let values: LoadoutFieldValues = loadout_fields.get_values();
@@ -123,6 +117,39 @@ pub fn JoinMenu(origin: JoinMenuOrigin) -> impl IntoView {
             on_back=on_back
         />
     }
+}
+
+fn create_rows(
+    screen_name: RwSignal<String>,
+    password: RwSignal<String>,
+    password_visibility: Signal<FieldVisibilityKind>,
+    loadout_fields: LoadoutFields,
+    mode: Signal<GameModeKind>,
+    team_sizes: Signal<Vec<TeamSize>>,
+) -> Vec<MenuRow> {
+    let mut rows: Vec<MenuRow> = vec![
+        MenuRow::shown(
+            MenuFieldKind::ScreenName,
+            "Screen Name",
+            MenuInput::Text { value: screen_name },
+        ),
+        MenuRow::shown(MenuFieldKind::Password, "Password", MenuInput::Text { value: password })
+            .with_visibility(password_visibility),
+    ];
+
+    rows.extend(loadout_fields::create_appearance_rows(loadout_fields, mode));
+    rows.extend(loadout_fields::create_ability_rows(loadout_fields));
+    rows.extend(loadout_fields::create_team_rows(loadout_fields, mode, team_sizes));
+
+    rows
+}
+
+fn show_unlisted_game(target: Memo<Option<JoinTarget>>, issues: RwSignal<Vec<MenuIssue>>) {
+    Effect::new(move |_| {
+        if target.get().is_none() {
+            issues.set(vec![MenuIssue::from_rejection(RejectionKind::GameNotFound)]);
+        }
+    });
 }
 
 /// `CreateGame` from the create flow, `JoinGame` from the browser.

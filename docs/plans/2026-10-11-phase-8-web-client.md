@@ -86,7 +86,7 @@
 - Create `web/src/leaderboard/mod.rs`, `leaderboard.rs`: `LeaderboardView`, `Leaderboard`.
 - Create `web/src/message/mod.rs`, `message_box.rs`: `MessageBox`.
 - Create `web/src/tutorial/mod.rs`, `tutorial_view.rs`: `get_tutorial_overlay`.
-- Create `web/src/test_fixture/mod.rs`, `test_fixture.rs` (test only): game states, loadouts and members.
+- Create `web/src/test_fixture/mod.rs`, `test_fixture.rs` (test only): game states, loadouts, members and client sessions.
 - Create `web/tests/prerender.rs` (ssr): the prerendered document.
 - Create `web/static/game-server.json`, `robots.txt`, `favicon.ico` and `fonts/bacter.ttf` (the original's files).
 - Create `web/style/main.scss`, `_tokens.scss`, `_reset.scss`, `_typography.scss`, `_layout.scss` and `components/_menu.scss`, `_browser.scss`, `_title.scss`, `_ability-bar.scss`, `_name-labels.scss`, `_leaderboard.scss`, `_message.scss`.
@@ -435,6 +435,9 @@ Replace the whole contents of `web/src/main.rs` with:
 #![recursion_limit = "512"]
 
 #[cfg(feature = "ssr")] // a browser build has no server to start
+use shared::error::AppError;
+
+#[cfg(feature = "ssr")] // a browser build has no server to start
 const PRERENDER_ARGUMENT: &str = "prerender";
 
 #[cfg(feature = "ssr")] // a browser build has no process to exit
@@ -446,8 +449,6 @@ enum ExitStatusKind {
 #[cfg(feature = "ssr")] // a browser build has no server to start
 #[tokio::main]
 async fn main() {
-    use shared::error::AppError;
-
     let first_argument: Option<String> = std::env::args().nth(1);
 
     let result: Result<(), AppError> = match first_argument.as_deref() {
@@ -474,12 +475,12 @@ Create `web/src/app.rs`:
 ```rust
 use leptos::prelude::*;
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 use leptos::hydration::{AutoReload, HydrationScripts};
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 use leptos_meta::HashedStylesheet;
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document
+#[cfg(feature = "ssr")] // a browser build renders no document
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
@@ -510,7 +511,6 @@ pub fn App() -> impl IntoView {
 Create `web/src/server.rs`:
 
 ```rust
-use std::env;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -526,7 +526,6 @@ use shared::error::AppError;
 
 use crate::app;
 
-const HASH_FILES_VARIABLE: &str = "LEPTOS_HASH_FILES";
 /// The one route; the screen is client state, never a URL.
 pub const PRERENDERED_ROUTE_PATH: &str = "/";
 const PRERENDERED_DOCUMENT_NAME: &str = "index.html";
@@ -538,7 +537,7 @@ pub async fn serve() -> Result<(), AppError> {
     initialize_executor();
 
     let configuration: ConfFile = get_configuration(None)
-        .map_err(|error| AppError::new(&format!("reading the leptos settings failed; [error={error}]")))?;
+        .map_err(|error| AppError::from_error("reading the leptos settings failed", Box::new(error)))?;
     let leptos_options: LeptosOptions = configuration.leptos_options;
     let address: SocketAddr = leptos_options.site_addr;
     let shell_options: LeptosOptions = leptos_options.clone();
@@ -552,16 +551,17 @@ pub async fn serve() -> Result<(), AppError> {
         .fallback(leptos_axum::file_and_error_handler(app::shell))
         .with_state(leptos_options);
     let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&address).await.map_err(|error| {
-        AppError::new(&format!(
-            "binding the dev server failed; [address={address} error={error}]"
-        ))
+        AppError::from_error(
+            &format!("binding the dev server failed; [address={address}]"),
+            Box::new(error),
+        )
     })?;
 
     leptos::logging::log!("listening; [address=http://{address}]");
 
     axum::serve(listener, router.into_make_service())
         .await
-        .map_err(|error| AppError::new(&format!("the dev server stopped; [error={error}]")))
+        .map_err(|error| AppError::from_error("the dev server stopped", Box::new(error)))
 }
 
 /// Writes `index.html` into the site root of a release build.
@@ -572,10 +572,13 @@ pub async fn write_prerendered_document() -> Result<(), AppError> {
     let document_path: PathBuf = site_root.join(PRERENDERED_DOCUMENT_NAME);
 
     fs::write(&document_path, &document_bytes).map_err(|error| {
-        AppError::new(&format!(
-            "writing the prerendered document failed; [path={} error={error}]",
-            document_path.display(),
-        ))
+        AppError::from_error(
+            &format!(
+                "writing the prerendered document failed; [path={}]",
+                document_path.display(),
+            ),
+            Box::new(error),
+        )
     })?;
 
     println!(
@@ -595,7 +598,7 @@ pub async fn prerender_document(leptos_options: LeptosOptions) -> Result<Bytes, 
     let request: Request<Body> = Request::builder()
         .uri(PRERENDERED_ROUTE_PATH)
         .body(Body::empty())
-        .map_err(|error| AppError::new(&format!("building the render request failed; [error={error}]")))?;
+        .map_err(|error| AppError::from_error("building the render request failed", Box::new(error)))?;
     let response: axum::response::Response = render_document(request).await;
     let status: StatusCode = response.status();
 
@@ -607,33 +610,19 @@ pub async fn prerender_document(leptos_options: LeptosOptions) -> Result<Bytes, 
 
     axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
-        .map_err(|error| AppError::new(&format!("reading the rendered document failed; [error={error}]")))
+        .map_err(|error| AppError::from_error("reading the rendered document failed", Box::new(error)))
 }
 
 /// cargo-leptos sets the `LEPTOS_*` variables only for the processes it runs, so a prerender reads the manifest.
 pub fn read_leptos_manifest_options() -> Result<LeptosOptions, AppError> {
     let configuration: ConfFile = get_configuration(Some(MANIFEST_PATH)).map_err(|error| {
-        AppError::new(&format!(
-            "reading the leptos settings failed; [path={MANIFEST_PATH} error={error}]"
-        ))
+        AppError::from_error(
+            &format!("reading the leptos settings failed; [path={MANIFEST_PATH}]"),
+            Box::new(error),
+        )
     })?;
 
-    apply_hash_files_override(configuration.leptos_options)
-}
-
-/// cargo-leptos hashes only on a full build, so hashed names are a release build's choice, not the manifest's.
-fn apply_hash_files_override(mut leptos_options: LeptosOptions) -> Result<LeptosOptions, AppError> {
-    let declared_hash_files: Result<String, env::VarError> = env::var(HASH_FILES_VARIABLE);
-
-    if let Ok(declared_hash_files) = declared_hash_files {
-        leptos_options.hash_files = declared_hash_files.parse::<bool>().map_err(|error| {
-            AppError::new(&format!(
-                "reading the hashed file name setting failed; [{HASH_FILES_VARIABLE}={declared_hash_files} error={error}]",
-            ))
-        })?;
-    }
-
-    Ok(leptos_options)
+    Ok(configuration.leptos_options)
 }
 
 /// Rendering spawns onto a global executor; an error means one is already set.
@@ -649,10 +638,13 @@ fn resolve_site_root(leptos_options: &LeptosOptions) -> Result<PathBuf, AppError
     let declared_site_root: PathBuf = workspace_root.join(leptos_options.site_root.as_ref());
 
     fs::canonicalize(&declared_site_root).map_err(|error| {
-        AppError::new(&format!(
-            "the site root does not exist, so no build has run; [path={} error={error}]",
-            declared_site_root.display(),
-        ))
+        AppError::from_error(
+            &format!(
+                "the site root does not exist, so no build has run; [path={}]",
+                declared_site_root.display(),
+            ),
+            Box::new(error),
+        )
     })
 }
 ```
@@ -1056,7 +1048,7 @@ mod tests {
 
         assert_eq!(
             game_focused_screens,
-            vec![Screen::Playing, Screen::Spectating, Screen::Tutorial]
+            vec![Screen::Playing, Screen::Spectating, Screen::Tutorial],
         );
     }
 
@@ -1077,11 +1069,11 @@ mod tests {
         assert_eq!(Screen::CreateMenu.get_back_screen(None), Some(Screen::Title));
         assert_eq!(
             create_join_menu_from_create().get_back_screen(None),
-            Some(Screen::CreateMenu)
+            Some(Screen::CreateMenu),
         );
         assert_eq!(
             create_join_menu_from_browser().get_back_screen(None),
-            Some(Screen::Browser)
+            Some(Screen::Browser),
         );
         assert_eq!(
             Screen::SpectateMenu { game_id: GAME_ID }.get_back_screen(None),
@@ -1169,7 +1161,7 @@ mod tests {
         assert_eq!(LobbyNoticeKind::GameClosed.text(), "The game has closed");
         assert_eq!(
             LobbyNoticeKind::SynchronisationLost.text(),
-            "Lost synchronisation with the game"
+            "Lost synchronisation with the game",
         );
     }
 }
@@ -1427,7 +1419,7 @@ mod tests {
         assert_eq!(ConnectionStatusKind::Open.lobby_access(), LobbyAccessKind::Enabled);
         assert_eq!(
             ConnectionStatusKind::Connecting.lobby_access(),
-            LobbyAccessKind::Disabled
+            LobbyAccessKind::Disabled,
         );
         assert_eq!(
             ConnectionStatusKind::Closed { close_reason: None }.lobby_access(),
@@ -1439,7 +1431,7 @@ mod tests {
     fn notice_text_tells_the_connection_state_or_the_close_reason() {
         assert_eq!(
             ConnectionStatusKind::Connecting.notice_text(),
-            Some("Connecting to the game server")
+            Some("Connecting to the game server"),
         );
         assert_eq!(ConnectionStatusKind::Open.notice_text(), None);
         assert_eq!(
@@ -1477,11 +1469,11 @@ mod tests {
         );
         assert_eq!(
             ConnectionStatusKind::Connecting.reconnect_offer(),
-            ReconnectOfferKind::NotOffered
+            ReconnectOfferKind::NotOffered,
         );
         assert_eq!(
             ConnectionStatusKind::Open.reconnect_offer(),
-            ReconnectOfferKind::NotOffered
+            ReconnectOfferKind::NotOffered,
         );
     }
 }
@@ -1779,9 +1771,9 @@ use shared::settings::SettingsStore;
 use crate::connection::ConnectionStatusKind;
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 use leptos::hydration::{AutoReload, HydrationScripts};
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 use leptos_meta::HashedStylesheet;
 
 /// The reactive state the driver and the views share.
@@ -1847,7 +1839,7 @@ impl ClientSettings {
     }
 }
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document
+#[cfg(feature = "ssr")] // a browser build renders no document
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
@@ -1974,12 +1966,12 @@ pub enum DriverCommandKind {
     StoreClientSettings(ClientSettings),
 }
 
-#[cfg(feature = "hydrate")] // starts and commands the browser driver
+#[cfg(feature = "hydrate")] // the ssr build has no driver to command
 pub use browser::*;
 #[cfg(not(feature = "hydrate"))] // the ssr build has no driver
 pub use server::*;
 
-#[cfg(feature = "hydrate")] // starts and commands the browser driver
+#[cfg(feature = "hydrate")] // the ssr build has no driver to command
 mod browser {
     use crate::canvas::DriverCommandKind;
     use crate::canvas::driver;
@@ -2142,11 +2134,11 @@ mod tests {
     fn get_rejection_field_attaches_rejections_to_their_form_fields() {
         assert_eq!(
             get_rejection_field(RejectionKind::ScreenNameTaken),
-            Some(MenuFieldKind::ScreenName)
+            Some(MenuFieldKind::ScreenName),
         );
         assert_eq!(
             get_rejection_field(RejectionKind::TitleTaken),
-            Some(MenuFieldKind::GameTitle)
+            Some(MenuFieldKind::GameTitle),
         );
         assert_eq!(
             get_rejection_field(RejectionKind::SettingOutOfRange {
@@ -2161,7 +2153,7 @@ mod tests {
         );
         assert_eq!(
             get_rejection_field(RejectionKind::PasswordIncorrect),
-            Some(MenuFieldKind::Password)
+            Some(MenuFieldKind::Password),
         );
         assert_eq!(
             get_rejection_field(RejectionKind::TeamUnbalanced {
@@ -2228,7 +2220,7 @@ use leptos::prelude::*;
 use shared::protocol::{RejectionKind, RequestKind, SettingFieldKind};
 
 const ENTER_KEY: &str = "Enter";
-const BACK_TEXT: &str = "← Back";
+pub const BACK_TEXT: &str = "← Back";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuFieldKind {
@@ -2405,6 +2397,7 @@ pub fn MenuForm(
     });
     let submit_on_enter = move |event: ev::KeyboardEvent| {
         if event.key() == ENTER_KEY {
+            event.prevent_default();
             on_submit.run(());
         }
     };
@@ -3008,7 +3001,7 @@ mod tests {
 
         assert_eq!(
             values.to_team_choice(),
-            TeamChoiceKindSerialIn::Team(TeamKindSerial::Blue)
+            TeamChoiceKindSerialIn::Team(TeamKindSerial::Blue),
         );
 
         values.auto_assign = AutoAssignKind::Selected;
@@ -3047,6 +3040,20 @@ mod tests {
                 swatch: Some(String::from("rgb(255, 90, 81)")),
             },
         );
+    }
+
+    #[test]
+    fn get_values_gives_back_the_values_new_was_given() {
+        let owner: Owner = Owner::new();
+        owner.set();
+        let mut values: LoadoutFieldValues = create_complete_values();
+        values.skin = SkinKind::None;
+        values.auto_assign = AutoAssignKind::Selected;
+
+        let loadout_fields: LoadoutFields =
+            LoadoutFields::new(&values, Signal::stored(create_team_sizes([0, 0, 0])[..2].to_vec()));
+
+        assert_eq!(loadout_fields.get_values(), values);
     }
 
     #[test]
@@ -3235,7 +3242,9 @@ pub struct LoadoutFields {
 }
 
 impl LoadoutFields {
-    pub fn new(initial_values: &LoadoutFieldValues, teams: Signal<Vec<TeamKind>>) -> LoadoutFields {
+    pub fn new(initial_values: &LoadoutFieldValues, team_sizes: Signal<Vec<TeamSize>>) -> LoadoutFields {
+        let teams: Signal<Vec<TeamKind>> =
+            Signal::derive(move || team_sizes.get().into_iter().map(|team_size| team_size.team).collect());
         let team_index: usize = initial_values
             .team
             .and_then(|team| teams.get_untracked().iter().position(|game_team| *game_team == team))
@@ -3505,7 +3514,8 @@ test menu::loadout_fields::tests::to_loadout_builds_the_selected_loadout ... ok
 test menu::loadout_fields::tests::get_team_options_label_each_team_with_its_size ... ok
 test menu::loadout_fields::tests::to_team_choice_asks_for_the_selected_team_unless_auto_assign_is_selected ... ok
 test menu::loadout_fields::tests::to_loadout_reports_every_unselected_ability_at_its_field ... ok
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out
+test menu::loadout_fields::tests::get_values_gives_back_the_values_new_was_given ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -3576,9 +3586,7 @@ Create `web/src/test_fixture/test_fixture.rs`:
 ```rust
 use shared::ability::{FirstAbilityKind, Loadout, SecondAbilityKind, ThirdAbilityKind};
 use shared::game::{GameModeKind, GameSettings, GameState};
-use shared::geometry::WorldPoint;
 use shared::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
-use shared::organism::Organism;
 use shared::world::WorldShapeKind;
 
 pub const FIXTURE_SEED: u64 = 0x5eed;
@@ -3629,13 +3637,6 @@ pub fn create_participant(member_id: MemberId) -> Member {
         score: Score::zero(),
         organism: None,
     }
-}
-
-pub fn create_participant_with_organism(member_id: MemberId, position: WorldPoint) -> Member {
-    let mut member: Member = create_participant(member_id);
-    member.organism = Some(Organism::new(position));
-
-    member
 }
 
 pub fn insert_member(state: &mut GameState, member: Member) {
@@ -3758,7 +3759,7 @@ Expected: PASS:
 ```text
 test menu::game_menu_view::tests::from_state_is_none_before_the_own_member_joins ... ok
 test menu::game_menu_view::tests::from_state_takes_the_own_loadout_team_and_the_team_sizes ... ok
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -3872,9 +3873,8 @@ use crate::app::AppSignals;
 use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
 use crate::connection::ConnectionStatusKind;
-use crate::screen::{JoinMenuOrigin, Screen};
-
-const BACK_TEXT: &str = "← Back";
+use crate::menu::menu_form;
+use crate::screen::{JoinMenuOrigin, LobbyNoticeKind, Screen};
 
 /// The latest `GameList`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3913,7 +3913,13 @@ pub fn GameBrowser() -> impl IntoView {
             .collect_view()
     };
     let online_clients_text = move || format!("Online Clients: {}", signals.game_list.get().online_client_count);
-    let notice_text = move || signals.lobby_notice.get().map(|lobby_notice| lobby_notice.text());
+    let notice_text = move || {
+        signals
+            .lobby_notice
+            .get()
+            .filter(|lobby_notice| *lobby_notice == LobbyNoticeKind::GameClosed)
+            .map(|lobby_notice| lobby_notice.text())
+    };
 
     view! {
         <div class="browser">
@@ -3934,7 +3940,7 @@ pub fn GameBrowser() -> impl IntoView {
                 <p class="browser-notice">{notice_text}</p>
             </div>
             <footer class="browser-footer" on:click=move |_| signals.go_back()>
-                <p class="browser-footer-back">{BACK_TEXT}</p>
+                <p class="browser-footer-back">{menu_form::BACK_TEXT}</p>
                 <p class="browser-footer-clients">{online_clients_text}</p>
             </footer>
         </div>
@@ -4037,7 +4043,7 @@ Expected: PASS:
 
 ```text
 test browser::game_browser::tests::get_mode_label_names_each_mode_as_the_original ... ok
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out
 ```
 
 - [ ] **Step 5: Add the browser styles**
@@ -4213,7 +4219,6 @@ Create `web/src/menu/create_menu.rs`:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::menu::MenuFieldKind;
 
     fn create_blank_values(mode: GameModeKind) -> CreateMenuValues {
         CreateMenuValues {
@@ -4346,6 +4351,7 @@ use shared::protocol::{GameModeKindSerial, GameSettingsSerialIn, RejectionKind, 
 use shared::world::WorldShapeKind;
 
 use crate::app::AppSignals;
+use crate::browser::game_browser;
 use crate::menu::{
     FieldAvailabilityKind, FieldVisibilityKind, ListOption, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow,
 };
@@ -4359,7 +4365,6 @@ pub const DEFAULT_LEADERBOARD_LENGTH: u8 = 10;
 const WORLD_SHAPE_KINDS: [WorldShapeKind; 2] = [WorldShapeKind::Rectangle, WorldShapeKind::Ellipse];
 const WORLD_SHAPE_LABELS: [&str; 2] = ["Square", "Circle"];
 const GAME_MODE_KINDS: [GameModeKind; 3] = [GameModeKind::FreeForAll, GameModeKind::Skirmish, GameModeKind::Survival];
-const GAME_MODE_LABELS: [&str; 3] = ["Free for All", "Skirmish", "Survival"];
 const SURVIVAL_MODES: &[GameModeKind] = &[GameModeKind::Survival];
 const SKIRMISH_MODES: &[GameModeKind] = &[GameModeKind::Skirmish];
 const RANKED_PLAYER_MODES: &[GameModeKind] = &[GameModeKind::FreeForAll, GameModeKind::Survival];
@@ -4520,7 +4525,10 @@ pub fn CreateMenu() -> impl IntoView {
         MenuRow::shown(
             MenuFieldKind::GameMode,
             "Game Mode",
-            create_list_input(fields.game_mode_index, &GAME_MODE_LABELS),
+            create_list_input(
+                fields.game_mode_index,
+                &GAME_MODE_KINDS.map(game_browser::get_mode_label),
+            ),
         ),
     ];
     let on_submit: Callback<()> = Callback::new(move |_| {
@@ -4592,7 +4600,7 @@ pub fn validate_create_menu(values: &CreateMenuValues) -> Result<JoinMenuOrigin,
     }
 }
 
-fn create_list_input(selected_index: RwSignal<usize>, labels: &'static [&'static str]) -> MenuInput {
+fn create_list_input(selected_index: RwSignal<usize>, labels: &[&str]) -> MenuInput {
     let options: Vec<ListOption> = labels
         .iter()
         .map(|label| ListOption {
@@ -4629,7 +4637,7 @@ use crate::browser::GameListView;
 use crate::connection::ConnectionStatusKind;
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 with:
@@ -4640,7 +4648,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::CreateMenuFields;
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 In `web/src/app.rs`, replace:
@@ -4675,7 +4683,7 @@ test menu::create_menu::tests::resolve_game_settings_saturates_numbers_outside_t
 test menu::create_menu::tests::validate_create_menu_opens_the_join_step_with_valid_settings ... ok
 test menu::create_menu::tests::validate_create_menu_reports_a_blank_title_and_a_long_password_together ... ok
 test menu::create_menu::tests::validate_create_menu_reports_the_rejected_setting_at_its_field ... ok
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -4703,6 +4711,7 @@ Screen Name, Password (secured games joined from the browser), the loadout rows 
 **Files:**
 - Create: `web/src/menu/join_menu.rs`
 - Modify: `web/src/menu/mod.rs`
+- Modify: `web/src/menu/menu_form.rs`
 - Modify: `web/src/app.rs`
 - Test: inline `mod tests` in `web/src/menu/join_menu.rs` and `web/src/app.rs`
 
@@ -4731,7 +4740,7 @@ Create `web/src/menu/join_menu.rs`:
 mod tests {
     use super::*;
     use shared::ability::{FirstAbilityKind, SecondAbilityKind, ThirdAbilityKind};
-    use shared::member::{OrganismColorKind, SkinKind};
+    use shared::member::{OrganismColorKind, SkinKind, TeamKind};
     use shared::protocol::{
         GameModeKindSerial, GameSettingsSerialIn, TeamChoiceKindSerialIn, TeamKindSerial, WorldShapeKindSerial,
     };
@@ -4895,7 +4904,6 @@ use leptos::prelude::*;
 use shared::ability::Loadout;
 use shared::game::{GameId, GameModeKind, GameSummary};
 use shared::member;
-use shared::member::TeamKind;
 use shared::protocol::protocol_limits;
 use shared::protocol::{JoinerSerialIn, LoadoutSerial, MessageSerialIn, RejectionKind, RequestKind};
 
@@ -4903,9 +4911,10 @@ use crate::app::AppSignals;
 use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
 use crate::menu::loadout_fields;
+use crate::menu::menu_form;
 use crate::menu::{
     FieldVisibilityKind, LoadoutFieldValues, LoadoutFields, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow,
-    RequestRejection, TeamSize,
+    TeamSize,
 };
 use crate::screen::JoinMenuOrigin;
 
@@ -4913,7 +4922,7 @@ use crate::screen::JoinMenuOrigin;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JoinTarget {
     pub mode: GameModeKind,
-    /// The creator gave the password in the create menu.
+    /// Shown only for a secured listed game; the create flow carries the create menu's password.
     pub password_visibility: FieldVisibilityKind,
     pub team_sizes: Vec<TeamSize>,
 }
@@ -4956,12 +4965,10 @@ pub fn JoinMenu(origin: JoinMenuOrigin) -> impl IntoView {
         Signal::derive(move || target.get().map_or(GameModeKind::FreeForAll, |target| target.mode));
     let team_sizes: Signal<Vec<TeamSize>> =
         Signal::derive(move || target.get().map(|target| target.team_sizes).unwrap_or_default());
-    let teams: Signal<Vec<TeamKind>> =
-        Signal::derive(move || team_sizes.get().into_iter().map(|team_size| team_size.team).collect());
     let password_visibility: Signal<FieldVisibilityKind> =
         Signal::derive(move || target.get().map_or(FieldVisibilityKind::Hidden, |target| target.password_visibility));
     let initial_values: LoadoutFieldValues = LoadoutFieldValues::join_defaults(&team_sizes.get_untracked());
-    let loadout_fields: LoadoutFields = LoadoutFields::new(&initial_values, teams);
+    let loadout_fields: LoadoutFields = LoadoutFields::new(&initial_values, team_sizes);
     let mut rows: Vec<MenuRow> = vec![
         MenuRow::shown(
             MenuFieldKind::ScreenName,
@@ -4975,15 +4982,11 @@ pub fn JoinMenu(origin: JoinMenuOrigin) -> impl IntoView {
     rows.extend(loadout_fields::create_ability_rows(loadout_fields));
     rows.extend(loadout_fields::create_team_rows(loadout_fields, mode, team_sizes));
 
-    Effect::new(move |_| {
-        let rejection: Option<RequestRejection> = signals.request_rejection.get();
-
-        if let Some(rejection) = rejection
-            && matches!(rejection.request, RequestKind::CreateGame | RequestKind::JoinGame)
-        {
-            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
-        }
-    });
+    menu_form::show_request_rejections(
+        signals.request_rejection,
+        &[RequestKind::CreateGame, RequestKind::JoinGame],
+        issues,
+    );
 
     Effect::new(move |_| {
         if target.get().is_none() {
@@ -5030,13 +5033,11 @@ pub fn build_join_request(
     password: &str,
     values: &LoadoutFieldValues,
 ) -> Result<MessageSerialIn, Vec<MenuIssue>> {
-    let normalized_screen_name: Result<String, RejectionKind> = protocol_limits::normalize_screen_name(screen_name);
-    let normalized_password: Result<Option<String>, RejectionKind> =
-        protocol_limits::normalize_password(Some(String::from(password)));
+    let credentials: Result<(String, Option<String>), Vec<MenuIssue>> = normalize_credentials(screen_name, password);
     let loadout: Result<Loadout, Vec<MenuIssue>> = values.to_loadout();
 
-    match (normalized_screen_name, normalized_password, loadout) {
-        (Ok(screen_name), Ok(password), Ok(loadout)) => {
+    match (credentials, loadout) {
+        (Ok((screen_name, password)), Ok(loadout)) => {
             let joiner: JoinerSerialIn = JoinerSerialIn {
                 screen_name,
                 loadout: LoadoutSerial::from(&loadout),
@@ -5045,17 +5046,29 @@ pub fn build_join_request(
 
             Ok(create_join_request(origin, password, joiner))
         }
-        (screen_name_result, password_result, loadout_result) => {
-            let mut issues: Vec<MenuIssue> = screen_name_result
-                .err()
-                .into_iter()
-                .chain(password_result.err())
-                .map(MenuIssue::from_rejection)
-                .collect();
+        (credentials_result, loadout_result) => {
+            let mut issues: Vec<MenuIssue> = credentials_result.err().unwrap_or_default();
             issues.extend(loadout_result.err().unwrap_or_default());
 
             Err(issues)
         }
+    }
+}
+
+/// The trimmed screen name and the password, or an issue for each one which is invalid.
+pub fn normalize_credentials(screen_name: &str, password: &str) -> Result<(String, Option<String>), Vec<MenuIssue>> {
+    let normalized_screen_name: Result<String, RejectionKind> = protocol_limits::normalize_screen_name(screen_name);
+    let normalized_password: Result<Option<String>, RejectionKind> =
+        protocol_limits::normalize_password(Some(String::from(password)));
+
+    match (normalized_screen_name, normalized_password) {
+        (Ok(screen_name), Ok(password)) => Ok((screen_name, password)),
+        (screen_name_result, password_result) => Err(screen_name_result
+            .err()
+            .into_iter()
+            .chain(password_result.err())
+            .map(MenuIssue::from_rejection)
+            .collect()),
     }
 }
 
@@ -5101,6 +5114,34 @@ fn get_empty_team_sizes(team_count: u8) -> Vec<TeamSize> {
 }
 ```
 
+In `web/src/menu/menu_form.rs`, replace:
+
+```rust
+fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
+```
+
+with:
+
+```rust
+pub fn show_request_rejections(
+    request_rejection: RwSignal<Option<RequestRejection>>,
+    answered_requests: &'static [RequestKind],
+    issues: RwSignal<Vec<MenuIssue>>,
+) {
+    Effect::new(move |_| {
+        let rejection: Option<RequestRejection> = request_rejection.get();
+
+        if let Some(rejection) = rejection
+            && answered_requests.contains(&rejection.request)
+        {
+            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
+        }
+    });
+}
+
+fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
+```
+
 In `web/src/app.rs`, replace:
 
 ```rust
@@ -5130,7 +5171,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::CreateMenuFields;
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 with:
@@ -5141,7 +5182,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::{CreateMenuFields, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 In `web/src/app.rs`, replace:
@@ -5164,7 +5205,7 @@ with:
     pub request_rejection: RwSignal<Option<RequestRejection>>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub client_settings: RwSignal<ClientSettings>,
-    /// The team choice last sent in a join or respawn, which the respawn menu starts from.
+    /// The team choice last sent in a join or respawn.
     pub team_choice: RwSignal<TeamChoiceKindSerialIn>,
 }
 
@@ -5320,7 +5361,7 @@ test menu::join_menu::tests::from_origin_describes_a_game_being_created ... ok
 test menu::join_menu::tests::find_game_summary_finds_the_listed_game_by_id ... ok
 test menu::join_menu::tests::from_origin_describes_a_listed_game_from_its_summary ... ok
 test menu::join_menu::tests::build_join_request_reports_the_screen_name_and_every_missing_ability ... ok
-test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -5328,6 +5369,7 @@ test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out
 ```sh
 git add web/src/menu/mod.rs
 git add web/src/menu/join_menu.rs
+git add web/src/menu/menu_form.rs
 git add web/src/app.rs
 git status --short
 git commit -m "join menu"
@@ -5338,6 +5380,7 @@ Expected `git status --short` before the commit:
 ```text
 M  web/src/app.rs
 A  web/src/menu/join_menu.rs
+M  web/src/menu/menu_form.rs
 M  web/src/menu/mod.rs
 ```
 
@@ -5420,14 +5463,14 @@ In `web/src/menu/spectate_menu.rs`, replace everything above `#[cfg(test)]` with
 use leptos::prelude::*;
 
 use shared::game::GameId;
-use shared::protocol::protocol_limits;
-use shared::protocol::{MessageSerialIn, RejectionKind, RequestKind};
+use shared::protocol::{MessageSerialIn, RequestKind};
 
 use crate::app::AppSignals;
 use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
 use crate::menu::join_menu;
-use crate::menu::{FieldVisibilityKind, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow, RequestRejection};
+use crate::menu::menu_form;
+use crate::menu::{FieldVisibilityKind, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow};
 
 #[component]
 pub fn SpectateMenu(game_id: GameId) -> impl IntoView {
@@ -5451,15 +5494,7 @@ pub fn SpectateMenu(game_id: GameId) -> impl IntoView {
             .with_visibility(password_visibility),
     ];
 
-    Effect::new(move |_| {
-        let rejection: Option<RequestRejection> = signals.request_rejection.get();
-
-        if let Some(rejection) = rejection
-            && rejection.request == RequestKind::SpectateGame
-        {
-            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
-        }
-    });
+    menu_form::show_request_rejections(signals.request_rejection, &[RequestKind::SpectateGame], issues);
 
     let on_submit: Callback<()> = Callback::new(move |_| {
         let built_request: Result<MessageSerialIn, Vec<MenuIssue>> =
@@ -5492,23 +5527,13 @@ pub fn build_spectate_request(
     screen_name: &str,
     password: &str,
 ) -> Result<MessageSerialIn, Vec<MenuIssue>> {
-    let normalized_screen_name: Result<String, RejectionKind> = protocol_limits::normalize_screen_name(screen_name);
-    let normalized_password: Result<Option<String>, RejectionKind> =
-        protocol_limits::normalize_password(Some(String::from(password)));
-
-    match (normalized_screen_name, normalized_password) {
-        (Ok(screen_name), Ok(password)) => Ok(MessageSerialIn::SpectateGame {
+    join_menu::normalize_credentials(screen_name, password).map(|(screen_name, password)| {
+        MessageSerialIn::SpectateGame {
             game_id: game_id.0,
             password,
             screen_name,
-        }),
-        (screen_name_result, password_result) => Err(screen_name_result
-            .err()
-            .into_iter()
-            .chain(password_result.err())
-            .map(MenuIssue::from_rejection)
-            .collect()),
-    }
+        }
+    })
 }
 ```
 
@@ -5521,7 +5546,7 @@ Expected: PASS:
 ```text
 test menu::spectate_menu::tests::build_spectate_request_spectates_with_the_trimmed_screen_name ... ok
 test menu::spectate_menu::tests::build_spectate_request_reports_an_empty_screen_name ... ok
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -5547,6 +5572,8 @@ Prefilled from the member's loadout and team (a Participant) or the join default
 **Files:**
 - Create: `web/src/menu/respawn_menu.rs`
 - Modify: `web/src/menu/mod.rs`
+- Modify: `web/src/menu/loadout_fields.rs`
+- Modify: `web/src/menu/game_menu_view.rs`
 - Modify: `web/src/app.rs`
 - Test: inline `mod tests` in `web/src/menu/respawn_menu.rs`
 
@@ -5663,55 +5690,34 @@ use shared::protocol::{LoadoutSerial, MessageSerialIn, RequestKind, TeamChoiceKi
 use crate::app::AppSignals;
 use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
+use crate::menu::game_menu_view;
 use crate::menu::loadout_fields;
+use crate::menu::menu_form;
 use crate::menu::{
-    AutoAssignKind, GameMenuView, LoadoutFieldValues, LoadoutFields, MenuFieldKind, MenuForm, MenuInput, MenuIssue,
-    MenuRow, RequestRejection, TeamSize,
+    AutoAssignKind, GameMenuView, LoadoutFieldValues, LoadoutFields, MenuForm, MenuIssue, MenuRow, TeamSize,
 };
 
 #[component]
 pub fn RespawnMenu() -> impl IntoView {
     let signals: AppSignals = expect_context();
     let issues: RwSignal<Vec<MenuIssue>> = RwSignal::new(Vec::new());
-    let mode: Signal<GameModeKind> = Signal::derive(move || {
-        signals
-            .game_menu
-            .with(|game_menu| game_menu.as_ref().map_or(GameModeKind::FreeForAll, |view| view.mode))
-    });
+    let mode: Signal<GameModeKind> = game_menu_view::get_game_menu_mode(signals.game_menu);
     let team_sizes: Signal<Vec<TeamSize>> = Signal::derive(move || {
-        signals
-            .game_menu
-            .with(|game_menu| game_menu.as_ref().map(|view| view.team_sizes.clone()).unwrap_or_default())
+        signals.game_menu.with(|game_menu| {
+            game_menu.as_ref().map(|game_menu_view| game_menu_view.team_sizes.clone()).unwrap_or_default()
+        })
     });
-    let teams: Signal<Vec<TeamKind>> =
-        Signal::derive(move || team_sizes.get().into_iter().map(|team_size| team_size.team).collect());
     let initial_values: LoadoutFieldValues = get_respawn_values(
         signals.game_menu.get_untracked().as_ref(),
         signals.team_choice.get_untracked(),
     );
-    let loadout_fields: LoadoutFields = LoadoutFields::new(&initial_values, teams);
+    let loadout_fields: LoadoutFields = LoadoutFields::new(&initial_values, team_sizes);
     let mut rows: Vec<MenuRow> = loadout_fields::create_appearance_rows(loadout_fields, mode);
     rows.extend(loadout_fields::create_ability_rows(loadout_fields));
     rows.extend(loadout_fields::create_team_rows(loadout_fields, mode, team_sizes));
-    rows.push(MenuRow::shown(
-        MenuFieldKind::LeaveGame,
-        "Leave Game",
-        MenuInput::Button {
-            on_click: Callback::new(move |_| {
-                game_canvas::dispatch_driver_command(DriverCommandKind::SendRequest(MessageSerialIn::LeaveGame));
-            }),
-        },
-    ));
+    rows.push(loadout_fields::create_leave_game_row());
 
-    Effect::new(move |_| {
-        let rejection: Option<RequestRejection> = signals.request_rejection.get();
-
-        if let Some(rejection) = rejection
-            && rejection.request == RequestKind::Respawn
-        {
-            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
-        }
-    });
+    menu_form::show_request_rejections(signals.request_rejection, &[RequestKind::Respawn], issues);
 
     let on_submit: Callback<()> = Callback::new(move |_| {
         let values: LoadoutFieldValues = loadout_fields.get_values();
@@ -5768,6 +5774,96 @@ pub fn get_respawn_values(
 }
 ```
 
+In `web/src/menu/loadout_fields.rs`, replace:
+
+```rust
+use shared::protocol::{TeamChoiceKindSerialIn, TeamKindSerial};
+use shared::render::RenderColor;
+use shared::render::render_color;
+
+use crate::menu::{
+```
+
+with:
+
+```rust
+use shared::protocol::{MessageSerialIn, TeamChoiceKindSerialIn, TeamKindSerial};
+use shared::render::RenderColor;
+use shared::render::render_color;
+
+use crate::canvas::DriverCommandKind;
+use crate::canvas::game_canvas;
+use crate::menu::{
+```
+
+In `web/src/menu/loadout_fields.rs`, replace:
+
+```rust
+pub fn create_radios_input(
+```
+
+with:
+
+```rust
+pub fn create_leave_game_row() -> MenuRow {
+    MenuRow::shown(
+        MenuFieldKind::LeaveGame,
+        "Leave Game",
+        MenuInput::Button {
+            on_click: Callback::new(move |_| {
+                game_canvas::dispatch_driver_command(DriverCommandKind::SendRequest(MessageSerialIn::LeaveGame));
+            }),
+        },
+    )
+}
+
+pub fn create_radios_input(
+```
+
+In `web/src/menu/game_menu_view.rs`, replace:
+
+```rust
+use shared::ability::Loadout;
+use shared::game::{GameModeKind, GameState};
+```
+
+with:
+
+```rust
+use leptos::prelude::*;
+
+use shared::ability::Loadout;
+use shared::game::{GameModeKind, GameState};
+```
+
+In `web/src/menu/game_menu_view.rs`, replace:
+
+```rust
+            team_sizes: loadout_fields::get_state_team_sizes(state),
+        })
+    }
+}
+```
+
+with:
+
+```rust
+            team_sizes: loadout_fields::get_state_team_sizes(state),
+        })
+    }
+}
+
+pub fn get_game_menu_mode(game_menu: RwSignal<Option<GameMenuView>>) -> Signal<GameModeKind> {
+    Signal::derive(move || {
+        game_menu.with(|game_menu| {
+            game_menu
+                .as_ref()
+                .map_or(GameModeKind::FreeForAll, |game_menu_view| game_menu_view.mode)
+        })
+    })
+}
+```
+
 In `web/src/app.rs`, replace:
 
 ```rust
@@ -5776,7 +5872,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::{CreateMenuFields, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 with:
@@ -5787,7 +5883,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::{CreateMenuFields, GameMenuView, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 In `web/src/app.rs`, replace:
@@ -5796,7 +5892,7 @@ In `web/src/app.rs`, replace:
     pub request_rejection: RwSignal<Option<RequestRejection>>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub client_settings: RwSignal<ClientSettings>,
-    /// The team choice last sent in a join or respawn, which the respawn menu starts from.
+    /// The team choice last sent in a join or respawn.
 ```
 
 with:
@@ -5806,7 +5902,7 @@ with:
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub game_menu: RwSignal<Option<GameMenuView>>,
     pub client_settings: RwSignal<ClientSettings>,
-    /// The team choice last sent in a join or respawn, which the respawn menu starts from.
+    /// The team choice last sent in a join or respawn.
 ```
 
 In `web/src/app.rs`, replace:
@@ -5838,7 +5934,7 @@ Expected: PASS:
 test menu::respawn_menu::tests::get_respawn_values_prefill_a_participant_from_its_loadout_and_team ... ok
 test menu::respawn_menu::tests::get_respawn_values_give_a_spectator_the_join_defaults ... ok
 test menu::respawn_menu::tests::get_respawn_values_keep_auto_assign_when_it_was_chosen ... ok
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -5846,6 +5942,8 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out
 ```sh
 git add web/src/menu/mod.rs
 git add web/src/menu/respawn_menu.rs
+git add web/src/menu/loadout_fields.rs
+git add web/src/menu/game_menu_view.rs
 git add web/src/app.rs
 git status --short
 git commit -m "respawn menu"
@@ -5855,6 +5953,8 @@ Expected `git status --short` before the commit:
 
 ```text
 M  web/src/app.rs
+M  web/src/menu/game_menu_view.rs
+M  web/src/menu/loadout_fields.rs
 M  web/src/menu/mod.rs
 A  web/src/menu/respawn_menu.rs
 ```
@@ -5952,6 +6052,7 @@ use shared::protocol::{AppearanceSerial, MessageSerialIn};
 use crate::app::{AppSignals, ClientSettings};
 use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
+use crate::menu::game_menu_view;
 use crate::menu::loadout_fields;
 use crate::menu::{
     AutoAssignKind, LoadoutFieldValues, LoadoutFields, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow,
@@ -6011,11 +6112,7 @@ pub fn PauseGameMenu() -> impl IntoView {
     let signals: AppSignals = expect_context();
     let issues: RwSignal<Vec<MenuIssue>> = RwSignal::new(Vec::new());
     let own_loadout: Option<Loadout> = signals.game_menu.get_untracked().and_then(|game_menu| game_menu.own_loadout);
-    let mode: Signal<GameModeKind> = Signal::derive(move || {
-        signals
-            .game_menu
-            .with(|game_menu| game_menu.as_ref().map_or(GameModeKind::FreeForAll, |view| view.mode))
-    });
+    let mode: Signal<GameModeKind> = game_menu_view::get_game_menu_mode(signals.game_menu);
     let initial_values: LoadoutFieldValues = own_loadout.map_or_else(
         || LoadoutFieldValues::join_defaults(&[]),
         |own_loadout| LoadoutFieldValues::from_loadout(&own_loadout, None, AutoAssignKind::Unselected),
@@ -6024,7 +6121,8 @@ pub fn PauseGameMenu() -> impl IntoView {
     let setting_fields: ClientSettingFields = ClientSettingFields::new(signals.client_settings.get_untracked());
     let mut rows: Vec<MenuRow> = loadout_fields::create_appearance_rows(loadout_fields, mode);
     rows.extend(setting_fields.create_rows());
-    rows.push(create_leave_game_row());
+    rows.push(loadout_fields::create_leave_game_row());
+
     let on_submit: Callback<()> = Callback::new(move |_| {
         let appearance: Appearance = loadout_fields.get_values().appearance();
         let appearance_update: Option<MessageSerialIn> = get_appearance_update(own_loadout.as_ref(), appearance);
@@ -6055,7 +6153,8 @@ pub fn PauseSpectateMenu() -> impl IntoView {
     let issues: RwSignal<Vec<MenuIssue>> = RwSignal::new(Vec::new());
     let setting_fields: ClientSettingFields = ClientSettingFields::new(signals.client_settings.get_untracked());
     let mut rows: Vec<MenuRow> = setting_fields.create_rows();
-    rows.push(create_leave_game_row());
+    rows.push(loadout_fields::create_leave_game_row());
+
     let on_submit: Callback<()> =
         Callback::new(move |_| apply_client_settings(signals, setting_fields.get_client_settings()));
     let on_back: Callback<()> = Callback::new(move |_| signals.go_back());
@@ -6112,18 +6211,6 @@ pub fn get_appearance_update(own_loadout: Option<&Loadout>, appearance: Appearan
     })
 }
 
-fn create_leave_game_row() -> MenuRow {
-    MenuRow::shown(
-        MenuFieldKind::LeaveGame,
-        "Leave Game",
-        MenuInput::Button {
-            on_click: Callback::new(move |_| {
-                game_canvas::dispatch_driver_command(DriverCommandKind::SendRequest(MessageSerialIn::LeaveGame));
-            }),
-        },
-    )
-}
-
 fn apply_client_settings(signals: AppSignals, client_settings: ClientSettings) {
     game_canvas::dispatch_driver_command(DriverCommandKind::StoreClientSettings(client_settings));
     signals.client_settings.set(client_settings);
@@ -6144,7 +6231,7 @@ Expected: PASS:
 ```text
 test menu::pause_menu::tests::get_appearance_update_sends_nothing_for_an_unchanged_appearance_or_no_loadout ... ok
 test menu::pause_menu::tests::get_appearance_update_sends_a_changed_appearance ... ok
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 54 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -6221,7 +6308,7 @@ use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
 use crate::connection::{LobbyAccessKind, ReconnectOfferKind};
 use crate::menu::CreateMenuFields;
-use crate::screen::Screen;
+use crate::screen::{LobbyNoticeKind, Screen};
 
 const RECONNECT_TEXT: &str = "Reconnect";
 
@@ -6246,8 +6333,15 @@ pub fn TitleMenu() -> impl IntoView {
     let start_tutorial = move |_| game_canvas::dispatch_driver_command(DriverCommandKind::StartTutorial);
     let notice_text = move || {
         let connection_notice: Option<String> = signals.connection_status.get().notice_text().map(String::from);
+        let lobby_notice_text = move || {
+            signals
+                .lobby_notice
+                .get()
+                .filter(|lobby_notice| *lobby_notice == LobbyNoticeKind::SynchronisationLost)
+                .map(|lobby_notice| lobby_notice.text())
+        };
 
-        connection_notice.or_else(|| signals.lobby_notice.get().map(|lobby_notice| lobby_notice.text()))
+        connection_notice.or_else(lobby_notice_text)
     };
     let is_reconnect_offered = move || signals.connection_status.get().reconnect_offer() == ReconnectOfferKind::Offered;
     let reconnect = move |_| game_canvas::dispatch_driver_command(DriverCommandKind::Reconnect);
@@ -6402,6 +6496,7 @@ Four slots 100 px apart around the window centre at nine tenths of its height: a
 - Create: `web/src/hud/ability_icon_view.rs`
 - Create: `web/style/components/_ability-bar.scss`
 - Modify: `web/src/lib.rs`
+- Modify: `web/src/test_fixture/test_fixture.rs`
 - Modify: `web/style/main.scss`
 - Test: inline `mod tests` in both new Rust files
 
@@ -6435,6 +6530,35 @@ pub mod client;
 pub mod server;
 ```
 
+In `web/src/test_fixture/test_fixture.rs`, replace:
+
+```rust
+use shared::game::{GameModeKind, GameSettings, GameState};
+use shared::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
+use shared::world::WorldShapeKind;
+```
+
+with:
+
+```rust
+use shared::game::{GameModeKind, GameSettings, GameState};
+use shared::geometry::WorldPoint;
+use shared::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
+use shared::organism::Organism;
+use shared::world::WorldShapeKind;
+```
+
+Append to the end of `web/src/test_fixture/test_fixture.rs`, after one blank line:
+
+```rust
+pub fn create_participant_with_organism(member_id: MemberId, position: WorldPoint) -> Member {
+    let mut member: Member = create_participant(member_id);
+    member.organism = Some(Organism::new(position));
+
+    member
+}
+```
+
 Create `web/src/hud/mod.rs`:
 
 ```rust
@@ -6451,7 +6575,7 @@ Create `web/src/hud/ability_bar.rs`:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::ability::{Projectile, ShotPhase};
+    use shared::ability::Projectile;
     use shared::game::GameModeKind;
     use shared::geometry::{SubpixelPoint, SubpixelVector, WorldPoint};
 
@@ -6591,7 +6715,7 @@ mod tests {
         assert_eq!(ability_bar.slots[3].icon, AbilityIconKind::Secrete);
         assert_eq!(
             ability_bar.slots[3].dial,
-            AbilityDialKind::Partial { filled_proportion: 0.0 }
+            AbilityDialKind::Partial { filled_proportion: 0.0 },
         );
     }
 
@@ -6599,7 +6723,7 @@ mod tests {
     fn get_dial_path_data_draws_a_wedge_clockwise_from_twelve_o_clock() {
         assert_eq!(
             get_dial_path_data(AbilityDialKind::Partial { filled_proportion: 0.0 }, 29.0),
-            ""
+            "",
         );
         assert_eq!(
             get_dial_path_data(
@@ -7025,7 +7149,7 @@ test hud::ability_bar::tests::from_state_shows_ready_abilities_as_full_dials_wit
 test hud::ability_bar::tests::from_state_shows_secretion_on_the_fourth_slot ... ok
 test hud::ability_bar::tests::get_dial_path_data_draws_a_wedge_clockwise_from_twelve_o_clock ... ok
 test hud::ability_icon_view::tests::get_icon_path_data_draws_a_unit_square_for_every_pixel_of_the_pen ... ok
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 56 filtered out
 ```
 
 - [ ] **Step 5: Add the ability bar styles**
@@ -7140,6 +7264,7 @@ git add web/src/lib.rs
 git add web/src/hud/mod.rs
 git add web/src/hud/ability_bar.rs
 git add web/src/hud/ability_icon_view.rs
+git add web/src/test_fixture/test_fixture.rs
 git add web/style/main.scss
 git add web/style/components/_ability-bar.scss
 git status --short
@@ -7153,6 +7278,7 @@ A  web/src/hud/ability_bar.rs
 A  web/src/hud/ability_icon_view.rs
 A  web/src/hud/mod.rs
 M  web/src/lib.rs
+M  web/src/test_fixture/test_fixture.rs
 A  web/style/components/_ability-bar.scss
 M  web/style/main.scss
 ```
@@ -7357,7 +7483,7 @@ Expected: PASS:
 ```text
 test hud::name_labels::tests::get_shown_name_cuts_names_over_thirty_characters_to_twenty_and_an_ellipsis ... ok
 test hud::name_labels::tests::get_name_labels_places_a_label_under_the_centroid_in_view_pixels ... ok
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 63 filtered out
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 64 filtered out
 ```
 
 - [ ] **Step 5: Add the label styles**
@@ -7582,7 +7708,7 @@ use crate::menu::loadout_fields;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowEmphasisKind {
-    /// The own member, or its team; drawn in Verdana bold.
+    /// The own member, or its team.
     Own,
     Other,
 }
@@ -7709,7 +7835,7 @@ Expected: PASS:
 test leaderboard::leaderboard::tests::get_column_heading_names_each_column_as_the_original ... ok
 test leaderboard::leaderboard::tests::from_state_lists_free_for_all_players_and_emphasises_the_own_row ... ok
 test leaderboard::leaderboard::tests::from_state_lists_skirmish_teams_and_emphasises_the_own_team ... ok
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 65 filtered out
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 66 filtered out
 ```
 
 - [ ] **Step 5: Add the leaderboard styles**
@@ -7723,6 +7849,8 @@ Create `web/style/components/_leaderboard.scss`:
     right: 15px;
     border-collapse: collapse;
     table-layout: fixed;
+    /* Not auto, so the fixed layout applies and the table is the sum of its columns. */
+    width: 0;
     color: var(--color-black);
     font-family: var(--font-overlay);
     font-size: 11px;
@@ -8013,20 +8141,26 @@ mod tests {
     const GAME_ID: GameId = GameId(4);
     const OWN_MEMBER_ID: MemberId = MemberId(0);
 
-    fn create_session_in_game(state: &GameState) -> ClientSession {
+    fn create_session_joined(controls: &mut PlayerControls) -> ClientSession {
         let mut client_session: ClientSession = ClientSession::new();
-        let mut controls: PlayerControls = PlayerControls::new();
         let join_accepted: MessageSerialOut = MessageSerialOut::JoinAccepted {
             game_id: GAME_ID.0,
             member_id: OWN_MEMBER_ID.0,
         };
+
+        client_session.receive(&protocol::encode_message_out(&join_accepted), controls, 0.0);
+
+        client_session
+    }
+
+    fn create_session_in_game(state: &GameState, controls: &mut PlayerControls) -> ClientSession {
+        let mut client_session: ClientSession = create_session_joined(controls);
         let snapshot: MessageSerialOut = MessageSerialOut::Snapshot(GameSnapshotSerialOut {
             game_id: GAME_ID.0,
             state: GameStateSerialOut::from(state),
         });
 
-        client_session.receive(&protocol::encode_message_out(&join_accepted), &mut controls, 0.0);
-        client_session.receive(&protocol::encode_message_out(&snapshot), &mut controls, 0.0);
+        client_session.receive(&protocol::encode_message_out(&snapshot), controls, 0.0);
 
         client_session
     }
@@ -8044,7 +8178,8 @@ mod tests {
 
     #[test]
     fn from_active_scene_shows_nothing_before_the_first_snapshot() {
-        let active_scene: ActiveScene = ActiveScene::Online(ClientSession::new());
+        let mut controls: PlayerControls = PlayerControls::new();
+        let active_scene: ActiveScene = ActiveScene::Online(create_session_joined(&mut controls));
 
         assert_eq!(SceneOverlay::from_active_scene(&active_scene), SceneOverlay::empty());
     }
@@ -8056,14 +8191,15 @@ mod tests {
             &mut state,
             test_fixture::create_participant_with_organism(OWN_MEMBER_ID, WorldPoint { x: 200, y: 200 }),
         );
-        let active_scene: ActiveScene = ActiveScene::Online(create_session_in_game(&state));
+        let mut controls: PlayerControls = PlayerControls::new();
+        let active_scene: ActiveScene = ActiveScene::Online(create_session_in_game(&state, &mut controls));
 
         let overlay: SceneOverlay = SceneOverlay::from_active_scene(&active_scene);
 
         assert_eq!(overlay.ability_bar, AbilityBarView::from_state(&state, OWN_MEMBER_ID));
         assert_eq!(
             overlay.leaderboard,
-            Some(LeaderboardView::from_state(&state, OWN_MEMBER_ID))
+            Some(LeaderboardView::from_state(&state, OWN_MEMBER_ID)),
         );
         assert_eq!(overlay.game_menu, GameMenuView::from_state(&state, OWN_MEMBER_ID));
         assert_eq!(overlay.message_text, None);
@@ -8233,7 +8369,7 @@ test tutorial::tutorial_view::tests::get_tutorial_overlay_hides_the_ability_bar_
 test canvas::scene_overlay::tests::from_active_scene_shows_nothing_over_the_title_scene ... ok
 test canvas::scene_overlay::tests::from_active_scene_shows_the_ability_bar_leaderboard_and_menu_view_of_a_playing_member ... ok
 test tutorial::tutorial_view::tests::get_tutorial_overlay_shows_the_ability_bar_from_the_fullscreen_task ... ok
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -8265,6 +8401,8 @@ Phase 7 left choosing the camera and the crosshair per scene to this phase: onli
 **Files:**
 - Create: `web/src/canvas/scene_camera.rs`
 - Modify: `web/src/canvas/mod.rs`
+- Modify: `web/src/test_fixture/test_fixture.rs`
+- Modify: `web/src/canvas/scene_overlay.rs`
 - Test: inline `mod tests` in `web/src/canvas/scene_camera.rs`
 
 - [ ] **Step 1: Write the failing tests**
@@ -8284,18 +8422,166 @@ pub use scene_camera::*;
 pub use scene_overlay::*;
 ```
 
+The scene camera's tests are the second user of the scene overlay's session helpers, so they move to the test fixture. In `web/src/test_fixture/test_fixture.rs`, replace:
+
+```rust
+use shared::game::{GameModeKind, GameSettings, GameState};
+use shared::geometry::WorldPoint;
+use shared::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
+use shared::organism::Organism;
+use shared::world::WorldShapeKind;
+
+pub const FIXTURE_SEED: u64 = 0x5eed;
+```
+
+with:
+
+```rust
+use shared::game::{GameId, GameModeKind, GameSettings, GameState};
+use shared::geometry::WorldPoint;
+use shared::member::{Appearance, Member, MemberId, MemberRoleKind, OrganismColorKind, Score, SkinKind};
+use shared::organism::Organism;
+use shared::play::{ClientSession, PlayerControls};
+use shared::protocol;
+use shared::protocol::{GameSnapshotSerialOut, GameStateSerialOut, MessageSerialOut};
+use shared::world::WorldShapeKind;
+
+pub const FIXTURE_SEED: u64 = 0x5eed;
+pub const FIXTURE_GAME_ID: GameId = GameId(4);
+```
+
+Append to the end of `web/src/test_fixture/test_fixture.rs`, after one blank line:
+
+```rust
+pub fn create_session_joined(own_member_id: MemberId, controls: &mut PlayerControls) -> ClientSession {
+    let mut client_session: ClientSession = ClientSession::new();
+    let join_accepted: MessageSerialOut = MessageSerialOut::JoinAccepted {
+        game_id: FIXTURE_GAME_ID.0,
+        member_id: own_member_id.0,
+    };
+
+    client_session.receive(&protocol::encode_message_out(&join_accepted), controls, 0.0);
+
+    client_session
+}
+
+pub fn create_session_in_game(
+    state: &GameState,
+    own_member_id: MemberId,
+    controls: &mut PlayerControls,
+) -> ClientSession {
+    let mut client_session: ClientSession = create_session_joined(own_member_id, controls);
+    let snapshot: MessageSerialOut = MessageSerialOut::Snapshot(GameSnapshotSerialOut {
+        game_id: FIXTURE_GAME_ID.0,
+        state: GameStateSerialOut::from(state),
+    });
+
+    client_session.receive(&protocol::encode_message_out(&snapshot), controls, 0.0);
+
+    client_session
+}
+```
+
+In `web/src/canvas/scene_overlay.rs`, replace:
+
+```rust
+    use super::*;
+    use shared::game::{GameId, GameModeKind, GameState};
+    use shared::geometry::WorldPoint;
+    use shared::member::MemberId;
+    use shared::play::{PixelSize, PlayerControls};
+    use shared::protocol;
+    use shared::protocol::{GameSnapshotSerialOut, GameStateSerialOut, MessageSerialOut};
+    use shared::title::TitleScene;
+
+    use crate::test_fixture;
+
+    const GAME_ID: GameId = GameId(4);
+    const OWN_MEMBER_ID: MemberId = MemberId(0);
+
+    fn create_session_joined(controls: &mut PlayerControls) -> ClientSession {
+        let mut client_session: ClientSession = ClientSession::new();
+        let join_accepted: MessageSerialOut = MessageSerialOut::JoinAccepted {
+            game_id: GAME_ID.0,
+            member_id: OWN_MEMBER_ID.0,
+        };
+
+        client_session.receive(&protocol::encode_message_out(&join_accepted), controls, 0.0);
+
+        client_session
+    }
+
+    fn create_session_in_game(state: &GameState, controls: &mut PlayerControls) -> ClientSession {
+        let mut client_session: ClientSession = create_session_joined(controls);
+        let snapshot: MessageSerialOut = MessageSerialOut::Snapshot(GameSnapshotSerialOut {
+            game_id: GAME_ID.0,
+            state: GameStateSerialOut::from(state),
+        });
+
+        client_session.receive(&protocol::encode_message_out(&snapshot), controls, 0.0);
+
+        client_session
+    }
+```
+
+with:
+
+```rust
+    use super::*;
+    use shared::game::{GameModeKind, GameState};
+    use shared::geometry::WorldPoint;
+    use shared::member::MemberId;
+    use shared::play::{PixelSize, PlayerControls};
+    use shared::title::TitleScene;
+
+    use crate::test_fixture;
+
+    const OWN_MEMBER_ID: MemberId = MemberId(0);
+```
+
+In `web/src/canvas/scene_overlay.rs`, replace:
+
+```rust
+        let active_scene: ActiveScene = ActiveScene::Online(create_session_joined(&mut controls));
+```
+
+with:
+
+```rust
+        let client_session: ClientSession = test_fixture::create_session_joined(OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
+```
+
+In `web/src/canvas/scene_overlay.rs`, replace:
+
+```rust
+        let active_scene: ActiveScene = ActiveScene::Online(create_session_in_game(&state, &mut controls));
+```
+
+with:
+
+```rust
+        let client_session: ClientSession = test_fixture::create_session_in_game(&state, OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
+```
+
 Create `web/src/canvas/scene_camera.rs`:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::geometry::SubpixelPoint;
+    use shared::game::{GameModeKind, GameState};
+    use shared::geometry::{SubpixelPoint, WorldPoint};
+    use shared::member::MemberId;
     use shared::play::{ClientSession, PixelSize};
     use shared::render::PhysicalSize;
     use shared::title::TitleScene;
     use shared::tutorial::{DisplayModeKind, Tutorial};
 
+    use crate::test_fixture;
+
+    const OWN_MEMBER_ID: MemberId = MemberId(0);
     const SEED: u64 = 5;
     const WINDOW_SIZE: PixelSize = PixelSize {
         width_pixels: 800,
@@ -8328,8 +8614,40 @@ mod tests {
 
         assert_eq!(
             scene_view.camera,
-            Camera::centred_on(InterpolatedPoint { x: 500.0, y: 400.0 }, VIEWPORT)
+            Camera::centred_on(InterpolatedPoint { x: 500.0, y: 400.0 }, VIEWPORT),
         );
+        assert_eq!(scene_view.crosshair, None);
+    }
+
+    #[test]
+    fn get_scene_view_draws_the_crosshair_of_a_playing_member() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll);
+        test_fixture::insert_member(
+            &mut state,
+            test_fixture::create_participant_with_organism(OWN_MEMBER_ID, WorldPoint { x: 200, y: 200 }),
+        );
+        let mut controls: PlayerControls = PlayerControls::new();
+        let client_session: ClientSession = test_fixture::create_session_in_game(&state, OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
+
+        let scene_view: SceneView = get_scene_view(&active_scene, &controls, VIEWPORT);
+
+        assert_eq!(
+            scene_view.crosshair,
+            Some(InterpolatedPoint::from_subpixel_point(controls.crosshair.position())),
+        );
+    }
+
+    #[test]
+    fn get_scene_view_draws_no_crosshair_for_a_dead_participant() {
+        let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll);
+        test_fixture::insert_member(&mut state, test_fixture::create_participant(OWN_MEMBER_ID));
+        let mut controls: PlayerControls = PlayerControls::new();
+        let client_session: ClientSession = test_fixture::create_session_in_game(&state, OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
+
+        let scene_view: SceneView = get_scene_view(&active_scene, &controls, VIEWPORT);
+
         assert_eq!(scene_view.crosshair, None);
     }
 
@@ -8417,7 +8735,9 @@ Expected: PASS:
 test canvas::scene_camera::tests::get_scene_view_follows_the_crosshair_online_without_drawing_it_outside_play ... ok
 test canvas::scene_camera::tests::get_scene_view_draws_the_tutorial_crosshair_over_a_still_world ... ok
 test canvas::scene_camera::tests::get_scene_view_draws_no_crosshair_over_the_title_scene ... ok
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 73 filtered out
+test canvas::scene_camera::tests::get_scene_view_draws_the_crosshair_of_a_playing_member ... ok
+test canvas::scene_camera::tests::get_scene_view_draws_no_crosshair_for_a_dead_participant ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 74 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -8425,6 +8745,8 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 73 filtered out
 ```sh
 git add web/src/canvas/mod.rs
 git add web/src/canvas/scene_camera.rs
+git add web/src/canvas/scene_overlay.rs
+git add web/src/test_fixture/test_fixture.rs
 git status --short
 git commit -m "scene camera"
 ```
@@ -8434,6 +8756,8 @@ Expected `git status --short` before the commit:
 ```text
 M  web/src/canvas/mod.rs
 A  web/src/canvas/scene_camera.rs
+M  web/src/canvas/scene_overlay.rs
+M  web/src/test_fixture/test_fixture.rs
 ```
 
 ### Task 24: Keyboard and pointer mapping
@@ -8497,15 +8821,15 @@ mod tests {
     fn get_key_default_action_keeps_the_browser_fullscreen_key() {
         assert_eq!(
             get_key_default_action(GameKeyKind::FourthAbility),
-            KeyDefaultActionKind::Prevented
+            KeyDefaultActionKind::Prevented,
         );
         assert_eq!(
             get_key_default_action(GameKeyKind::MoveLeft),
-            KeyDefaultActionKind::Prevented
+            KeyDefaultActionKind::Prevented,
         );
         assert_eq!(
             get_key_default_action(GameKeyKind::Fullscreen),
-            KeyDefaultActionKind::Allowed
+            KeyDefaultActionKind::Allowed,
         );
     }
 
@@ -8617,7 +8941,7 @@ test canvas::keyboard::tests::get_aim_vector_is_the_rounded_offset_from_the_cros
 test canvas::keyboard::tests::get_game_key_maps_the_original_keys_and_arrows ... ok
 test canvas::keyboard::tests::get_key_default_action_keeps_the_browser_fullscreen_key ... ok
 test canvas::keyboard::tests::get_key_repeat_tells_an_auto_repeat_apart ... ok
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 76 filtered out
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 79 filtered out
 ```
 
 - [ ] **Step 5: Commit**
@@ -8682,7 +9006,7 @@ pub mod client;
 #[cfg(feature = "ssr")]
 pub mod server;
 
-// wasm32 test builds run their #[wasm_bindgen_test] cases in a headless browser
+// other targets have no browser to run #[wasm_bindgen_test] cases in
 #[cfg(all(test, target_arch = "wasm32"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 ```
@@ -8726,7 +9050,7 @@ mod tests {
 
         assert_eq!(
             store.load(ClientSettingKind::NameLabels),
-            Some(SettingValue::Bool(false))
+            Some(SettingValue::Bool(false)),
         );
         assert!(!settings::NAME_LABELS_SETTING.read(&store));
     }
@@ -8799,11 +9123,12 @@ error[E0425]: cannot find type `Storage` in this scope
 
 - [ ] **Step 3: Implement the store**
 
-In `web/src/client/local_storage_settings.rs`, replace everything above `#[cfg(test)]` with:
+In `web/src/client/local_storage_settings.rs`, replace everything above `#[cfg(all(test, target_arch = "wasm32"))]` with:
 
 ```rust
 use std::fmt::Write;
 
+use wasm_bindgen::JsValue;
 use web_sys::Storage;
 
 use shared::settings::{SettingKey, SettingValue, SettingsStore};
@@ -8829,7 +9154,7 @@ impl SettingsStore for LocalStorageSettingsStore {
             return;
         };
 
-        let stored: Result<(), wasm_bindgen::JsValue> =
+        let stored: Result<(), JsValue> =
             storage.set_item(&get_storage_key(key), &encode_hexadecimal(&value.to_bytes()));
 
         if let Err(error) = stored {
@@ -8910,7 +9235,7 @@ pub fn get_display_mode() -> DisplayModeKind {
 Create `web/src/client/game_server_config.rs`:
 
 ```rust
-use js_sys::{JSON, Reflect};
+use js_sys::{JSON, Promise, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Response, Window};
@@ -8950,7 +9275,7 @@ async fn read_configured_websocket_url(window: &Window) -> Result<Option<String>
         )));
     }
 
-    let text_promise: js_sys::Promise =
+    let text_promise: Promise =
         response.text().map_err(|error| get_js_error("reading the game server config failed", &error))?;
     let text_value: JsValue = JsFuture::from(text_promise)
         .await
@@ -8959,7 +9284,11 @@ async fn read_configured_websocket_url(window: &Window) -> Result<Option<String>
     let config: JsValue =
         JSON::parse(&text).map_err(|error| get_js_error("the game server config is not JSON", &error))?;
     let websocket_url_value: JsValue = Reflect::get(&config, &JsValue::from_str(WEBSOCKET_URL_FIELD))
-        .map_err(|error| get_js_error("the game server config has no websocket_url", &error))?;
+        .map_err(|error| get_js_error("the game server config is not a JSON object", &error))?;
+
+    if websocket_url_value.is_undefined() {
+        return Err(AppError::new("the game server config has no websocket_url"));
+    }
 
     Ok(websocket_url_value.as_string())
 }
@@ -9049,14 +9378,16 @@ impl GameSocket {
         }
     }
 
-    fn add_listeners(&self) -> Result<(), AppError> {
-        let listeners: [(&str, &JsValue); 3] = [
+    fn get_listeners(&self) -> [(&'static str, &JsValue); 3] {
+        [
             (OPEN_EVENT, self.open_listener.as_ref()),
             (MESSAGE_EVENT, self.message_listener.as_ref()),
             (CLOSE_EVENT, self.close_listener.as_ref()),
-        ];
+        ]
+    }
 
-        for (event_type, listener) in listeners {
+    fn add_listeners(&self) -> Result<(), AppError> {
+        for (event_type, listener) in self.get_listeners() {
             self.websocket
                 .add_event_listener_with_callback(event_type, listener.unchecked_ref())
                 .map_err(|error| AppError::new(&format!("listening on the game socket failed; [error={error:?}]")))?;
@@ -9069,13 +9400,7 @@ impl GameSocket {
 impl Drop for GameSocket {
     /// Detaches the handlers before they are freed; closing an already closed socket does nothing.
     fn drop(&mut self) {
-        let listeners: [(&str, &JsValue); 3] = [
-            (OPEN_EVENT, self.open_listener.as_ref()),
-            (MESSAGE_EVENT, self.message_listener.as_ref()),
-            (CLOSE_EVENT, self.close_listener.as_ref()),
-        ];
-
-        for (event_type, listener) in listeners {
+        for (event_type, listener) in self.get_listeners() {
             let _ = self.websocket.remove_event_listener_with_callback(event_type, listener.unchecked_ref());
         }
 
@@ -9202,7 +9527,7 @@ use crate::connection::ConnectionStatusKind;
 use crate::menu::{CreateMenuFields, GameMenuView, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 with:
@@ -9222,7 +9547,7 @@ use crate::message::MessageBox;
 use crate::screen::{LobbyNoticeKind, Screen, ScreenBackdropKind};
 use crate::title::TitleMenu;
 
-#[cfg(feature = "ssr")] // only the ssr build renders the document head
+#[cfg(feature = "ssr")] // a browser build renders no document head
 ```
 
 In `web/src/app.rs`, replace:
@@ -9231,7 +9556,7 @@ In `web/src/app.rs`, replace:
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub game_menu: RwSignal<Option<GameMenuView>>,
     pub client_settings: RwSignal<ClientSettings>,
-    /// The team choice last sent in a join or respawn, which the respawn menu starts from.
+    /// The team choice last sent in a join or respawn.
 ```
 
 with:
@@ -9245,7 +9570,7 @@ with:
     pub message_text: RwSignal<Option<String>>,
     pub name_labels: RwSignal<Vec<NameLabelView>>,
     pub client_settings: RwSignal<ClientSettings>,
-    /// The team choice last sent in a join or respawn, which the respawn menu starts from.
+    /// The team choice last sent in a join or respawn.
 ```
 
 In `web/src/app.rs`, replace:
@@ -9469,6 +9794,7 @@ use crate::client;
 use crate::client::{GameSocket, LocalStorageSettingsStore};
 use crate::connection::ConnectionStatusKind;
 use crate::hud;
+use crate::hud::NameLabelView;
 use crate::menu::RequestRejection;
 use crate::screen::{LobbyNoticeKind, Screen};
 
@@ -9488,9 +9814,23 @@ const MOUSEMOVE_EVENT: &str = "mousemove";
 const RESIZE_EVENT: &str = "resize";
 const BLUR_EVENT: &str = "blur";
 
+#[derive(Clone, Copy, Debug)]
+struct TransientMessage {
+    kind: TransientMessageKind,
+    shown_until_milliseconds: f64,
+}
+
+/// Whether a frame drew a newly applied tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TickLayerChangeKind {
+    Changed,
+    Unchanged,
+}
+
 /// Outside the reactive graph: wgpu resources are `!Send`.
 struct Driver {
-    renderer: GameRenderer,
+    /// `None` when this browser cannot create one.
+    renderer: Option<GameRenderer>,
     canvas: HtmlCanvasElement,
     viewport: ViewportSize,
     active_scene: ActiveScene,
@@ -9507,19 +9847,6 @@ struct Driver {
     transient_message: Option<TransientMessage>,
     pointer: ViewPoint,
     input_focus: InputFocusKind,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct TransientMessage {
-    kind: TransientMessageKind,
-    shown_until_milliseconds: f64,
-}
-
-/// Whether a frame drew a newly applied tick.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TickLayerChangeKind {
-    Changed,
-    Unchanged,
 }
 
 impl Driver {
@@ -9684,8 +10011,7 @@ impl Driver {
 
         self.render_scene = None;
         self.transient_message = None;
-        self.controls.keyboard.release_all_keys();
-        self.controls.keyboard.discard_ability_presses();
+        self.release_keyboard();
 
         if !matches!(self.active_scene, ActiveScene::Online(_)) {
             self.signals.own_member_state.set(None);
@@ -9868,11 +10194,15 @@ impl Driver {
         let input_focus: InputFocusKind = self.signals.screen.get_untracked().input_focus();
 
         if input_focus == InputFocusKind::Menu && self.input_focus == InputFocusKind::Game {
-            self.controls.keyboard.release_all_keys();
-            self.controls.keyboard.discard_ability_presses();
+            self.release_keyboard();
         }
 
         self.input_focus = input_focus;
+    }
+
+    fn release_keyboard(&mut self) {
+        self.controls.keyboard.release_all_keys();
+        self.controls.keyboard.discard_ability_presses();
     }
 
     fn release_all_keys(&mut self) {
@@ -9881,7 +10211,11 @@ impl Driver {
 
     fn resize(&mut self) {
         self.viewport = configure_canvas_backing_store(&self.canvas);
-        self.renderer.resize(self.viewport.physical_size);
+
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.resize(self.viewport.physical_size);
+        }
+
         self.render_scene = None;
 
         let window_size: PixelSize = get_window_size(&self.canvas);
@@ -9897,6 +10231,10 @@ impl Driver {
     }
 
     fn draw(&mut self, interpolation_alpha: f32, tick_layer_change: TickLayerChangeKind) {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+
         let Some(state) = self.active_scene.render_state() else {
             return;
         };
@@ -9913,7 +10251,7 @@ impl Driver {
             (Some(_), TickLayerChangeKind::Changed) | (None, _) => {
                 let render_scene: RenderScene =
                     RenderScene::from_state(state, &interpolation, scene_view.camera, scene_view.crosshair);
-                self.renderer.upload_tick_layer(&render_scene.tick_layer);
+                renderer.upload_tick_layer(&render_scene.tick_layer);
                 self.render_scene = Some(render_scene);
             }
         }
@@ -9922,7 +10260,7 @@ impl Driver {
             return;
         };
 
-        let drawn: Result<(), AppError> = self.renderer.draw_frame(render_scene);
+        let drawn: Result<(), AppError> = renderer.draw_frame(render_scene);
 
         if let Err(error) = drawn {
             log::error!("drawing a frame failed; [error={error}]");
@@ -9941,7 +10279,7 @@ impl Driver {
     /// Online only, and only while the Name Labels setting is on.
     fn publish_name_labels(&self) {
         let is_shown: bool = self.signals.client_settings.get_untracked().name_labels_shown;
-        let name_labels: Vec<hud::NameLabelView> = match (&self.active_scene, is_shown) {
+        let name_labels: Vec<NameLabelView> = match (&self.active_scene, is_shown) {
             (ActiveScene::Online(client_session), true) => client_session
                 .render_state()
                 .map(|state| {
@@ -9990,7 +10328,7 @@ pub fn start(canvas: HtmlCanvasElement, signals: AppSignals) {
 
         match created {
             Ok(()) => connect(),
-            Err(error) => log::error!("the game cannot be drawn in this browser; [error={error}]"),
+            Err(error) => log::error!("the game client could not start; [error={error}]"),
         }
     });
 }
@@ -10002,15 +10340,11 @@ pub fn dispatch(command: DriverCommandKind) {
 }
 
 async fn create_driver(canvas: HtmlCanvasElement, signals: AppSignals) -> Result<(), AppError> {
-    let viewport: ViewportSize = configure_canvas_backing_store(&canvas);
-    let renderer: GameRenderer =
-        GameRenderer::from_canvas(canvas.clone(), get_renderer_backend(), viewport.physical_size).await?;
-
-    log::info!("renderer created; [adapter={:?}]", renderer.adapter_info());
-
     let settings_store: LocalStorageSettingsStore = LocalStorageSettingsStore;
     signals.client_settings.set(ClientSettings::read(&settings_store));
 
+    let viewport: ViewportSize = configure_canvas_backing_store(&canvas);
+    let renderer: Option<GameRenderer> = create_renderer(&canvas, viewport).await;
     let driver: Driver = Driver {
         renderer,
         active_scene: ActiveScene::Title(TitleScene::new(get_window_size(&canvas), get_random_seed())),
@@ -10035,6 +10369,24 @@ async fn create_driver(canvas: HtmlCanvasElement, signals: AppSignals) -> Result
     schedule_animation_frame();
 
     Ok(())
+}
+
+async fn create_renderer(canvas: &HtmlCanvasElement, viewport: ViewportSize) -> Option<GameRenderer> {
+    let created_renderer: Result<GameRenderer, AppError> =
+        GameRenderer::from_canvas(canvas.clone(), get_renderer_backend(), viewport.physical_size).await;
+
+    match created_renderer {
+        Ok(renderer) => {
+            log::info!("renderer created; [adapter={:?}]", renderer.adapter_info());
+
+            Some(renderer)
+        }
+        Err(error) => {
+            log::error!("the game cannot be drawn in this browser; [error={error}]");
+
+            None
+        }
+    }
 }
 
 fn connect() {
@@ -10237,12 +10589,12 @@ pub fn GameCanvas() -> impl IntoView {
     view! { <canvas node_ref=canvas_ref class="game-canvas"></canvas> }
 }
 
-#[cfg(feature = "hydrate")] // starts and commands the browser driver
+#[cfg(feature = "hydrate")] // the ssr build has no driver to command
 pub use browser::*;
 #[cfg(not(feature = "hydrate"))] // the ssr build has no driver
 pub use server::*;
 
-#[cfg(feature = "hydrate")] // starts and commands the browser driver
+#[cfg(feature = "hydrate")] // the ssr build has no driver to command
 mod browser {
     use leptos::html::Canvas;
     use leptos::prelude::*;
@@ -10353,7 +10705,7 @@ Run: `cargo test -p web --lib`
 Expected: PASS, every web unit test:
 
 ```text
-test result: ok. 80 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 - [ ] **Step 8: Play in the browser**
@@ -10466,6 +10818,7 @@ function main {
 
     require_program "cargo-leptos" "cargo install --locked cargo-leptos"
     require_program "jq" "brew install jq"
+    require_program "lsof" "the lsof package of the system's package manager"
     refuse_while_the_dev_server_runs "${web_directory}/Cargo.toml"
 
     # Hashed names let the server cache /pkg/* as immutable; both the build and the prerender read this.
@@ -10644,6 +10997,8 @@ function main {
         fail "./.env is missing; run ./setup.sh first"
     fi
 
+    unset "${REQUIRED_VARIABLES[@]}" BACTER_TLS_CERTIFICATE_PATH BACTER_TLS_PRIVATE_KEY_PATH
+
     set -a
     source ./.env
     set +a
@@ -10677,10 +11032,11 @@ Expected:
 
 Run: `./scripts/build/build-site.sh 2>&1 | tail -4`
 
-Expected: nothing may listen on port 3011 (stop `./scripts/dev/web.sh` first). The release build takes several minutes; the last lines, after the `wrote the prerendered document; [path=... bytes=...]` line:
+Expected: nothing may listen on port 3011 (stop `./scripts/dev/web.sh` first). The release build takes several minutes; the last lines:
 
 ```text
 prerendering the document
+wrote the prerendered document; [path=/Users/singularity/bacter-rs/target/site/index.html bytes=...]
 naming the page's origin in game-server.json
 /Users/singularity/bacter-rs/target/site: prerendered document present, 3 referenced assets present and content-hashed
 ```
@@ -10849,6 +11205,56 @@ with:
 In `docs/architecture/client-web.md`, replace:
 
 ```markdown
+- `alert()` replaced by the message box or inline form errors.
+```
+
+with:
+
+```markdown
+- `alert()` replaced by the message box or inline form errors.
+- A renderer which cannot be created is logged (`the game cannot be drawn in this browser`); the menus keep working.
+- The title notice line sits centred below the title box.
+```
+
+In `docs/architecture/client-web.md`, replace:
+
+```markdown
+- Pause game: Color (not skm), Skin, Name Labels, Messages, Leave Game; Apply sends `UpdateAppearance` and stores settings.
+```
+
+with:
+
+```markdown
+- Pause game: Color (not skm), Skin, Name Labels, Messages, Leave Game; Apply sends `UpdateAppearance` when the colour or skin changed, and stores settings.
+```
+
+In `docs/architecture/client-web.md`, replace:
+
+```markdown
+shot or secretion timer disc r 8 at x - 41; active dots:
+```
+
+with:
+
+```markdown
+shot or secretion timer disc r 8 at x - 41 (a shot's or spore's secretion dial drains over the secretion duration alone; the original continued from where the flight stopped); active dots:
+```
+
+In `docs/architecture/client-web.md`, replace:
+
+```markdown
+- `web/src/client/local_storage_settings.rs`: `LocalStorageSettingsStore`.
+```
+
+with:
+
+```markdown
+- `web/src/client/local_storage_settings.rs`: `LocalStorageSettingsStore`; key `bacter.` plus the setting's storage key, value the `SettingValue` bytes as lowercase hexadecimal.
+```
+
+In `docs/architecture/client-web.md`, replace:
+
+```markdown
 - `keydown`/`keyup`: `keyboard.key_changed(GameKeyKind, KeyTransitionKind, repeat)` (`canvas/keyboard.rs`).
 ```
 
@@ -10953,7 +11359,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
-test result: ok. 80 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out

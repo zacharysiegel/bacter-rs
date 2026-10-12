@@ -3784,6 +3784,8 @@ A  web/src/test_fixture/mod.rs
 A  web/src/test_fixture/test_fixture.rs
 ```
 
+**Deviations:** the premise above is out of date: `shared::game::test_fixture` is gated `#[cfg(any(test, feature = "test-support"))]` and the web crate's dev builds enable `test-support`, so Task 10's quality fixes deleted `web/src/test_fixture/` and the `test_fixture` module in `web/src/lib.rs`. The web tests import `shared::game::test_fixture` and call `create_state(mode, WorldShapeKind::Rectangle, 800)`; `insert_member` moved to `shared/src/game/test_fixture.rs`. Tasks 18 to 23 reference `crate::test_fixture`: they use the shared fixture for game states, members and loadouts (it already has `create_participant_with_organism`), and the `web/src/lib.rs` replacements in those tasks drop the `test_fixture` module. The web-only client-session helpers of Task 23 create `web/src/test_fixture/` then, holding only those helpers.
+
 ### Task 11: Game browser
 
 The full-width table of the original (Title, Mode, Players, Spectators, Player Cap, Join and Spectate), the Back and Online Clients footer, and the lobby notice under the table. Every visit subscribes to the game list while connected: an accepted create, join or spectate ends the server's subscription.

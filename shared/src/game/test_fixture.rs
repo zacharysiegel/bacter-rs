@@ -65,6 +65,11 @@ pub fn create_participant(member_id: MemberId) -> Member {
     }
 }
 
+pub fn insert_member(state: &mut GameState, member: Member) {
+    state.next_member_id = member.member_id.next().max(state.next_member_id);
+    state.members.insert(member.member_id, member);
+}
+
 pub fn create_spectator(member_id: MemberId) -> Member {
     let mut member: Member = create_participant(member_id);
     member.role = MemberRoleKind::Spectator;

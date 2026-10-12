@@ -4,6 +4,7 @@
 pub mod app;
 pub mod canvas;
 pub mod connection;
+pub mod menu;
 pub mod screen;
 
 // browser runtime glue; the ssr build compiles none of it

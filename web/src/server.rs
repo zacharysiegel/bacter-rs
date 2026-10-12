@@ -29,16 +29,9 @@ pub async fn serve() -> Result<(), AppError> {
         .map_err(|error| AppError::from_error("reading the leptos settings failed", Box::new(error)))?;
     let leptos_options: LeptosOptions = configuration.leptos_options;
     let address: SocketAddr = leptos_options.site_addr;
-    let shell_options: LeptosOptions = leptos_options.clone();
-    let router: Router = Router::new()
-        .route(
-            PRERENDERED_ROUTE_PATH,
-            routing::get(leptos_axum::render_app_to_stream(move || {
-                app::shell(shell_options.clone())
-            })),
-        )
-        .fallback(leptos_axum::file_and_error_handler(app::shell))
-        .with_state(leptos_options);
+
+    let router: Router = create_router(leptos_options);
+
     let listener: TcpListener = TcpListener::bind(&address).await.map_err(|error| {
         AppError::from_error(
             &format!("binding the dev server failed; [address={address}]"),
@@ -51,6 +44,20 @@ pub async fn serve() -> Result<(), AppError> {
     axum::serve(listener, router.into_make_service())
         .await
         .map_err(|error| AppError::from_error("the dev server stopped", Box::new(error)))
+}
+
+fn create_router(leptos_options: LeptosOptions) -> Router {
+    let shell_options: LeptosOptions = leptos_options.clone();
+
+    Router::new()
+        .route(
+            PRERENDERED_ROUTE_PATH,
+            routing::get(leptos_axum::render_app_to_stream(move || {
+                app::shell(shell_options.clone())
+            })),
+        )
+        .fallback(leptos_axum::file_and_error_handler(app::shell))
+        .with_state(leptos_options)
 }
 
 /// Writes `index.html` into the site root of a release build.
@@ -83,11 +90,12 @@ pub async fn write_prerendered_document() -> Result<(), AppError> {
 pub async fn prerender_document(leptos_options: LeptosOptions) -> Result<Bytes, AppError> {
     initialize_executor();
 
-    let render_document = leptos_axum::render_app_async(move || app::shell(leptos_options.clone()));
     let request: Request<Body> = Request::builder()
         .uri(PRERENDERED_ROUTE_PATH)
         .body(Body::empty())
         .map_err(|error| AppError::from_error("building the render request failed", Box::new(error)))?;
+
+    let render_document = leptos_axum::render_app_async(move || app::shell(leptos_options.clone()));
     let response: Response = render_document(request).await;
     let status: StatusCode = response.status();
 

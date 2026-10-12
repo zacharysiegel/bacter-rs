@@ -27,7 +27,7 @@ body {
     position: fixed;
     inset: 0;
     background: var(--color-white);
-    opacity: 0.5;
+    opacity: var(--opacity-shade);
     z-index: var(--z-shade);
 }
 

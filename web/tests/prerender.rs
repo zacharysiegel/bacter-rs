@@ -3,7 +3,7 @@
 use axum::body::Bytes;
 use leptos::prelude::LeptosOptions;
 
-/// Rendered here rather than read from a built site, so the assertions need no build.
+/// Renders in-process; needs no built site.
 async fn get_prerendered_document() -> String {
     let leptos_options: LeptosOptions = web::server::read_leptos_manifest_options().unwrap();
     let document_bytes: Bytes = web::server::prerender_document(leptos_options).await.unwrap();

@@ -56,42 +56,16 @@ impl SceneOverlay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::game::test_fixture;
-    use shared::game::{GameId, GameModeKind, GameState};
+    use shared::game::{GameModeKind, GameState};
     use shared::geometry::WorldPoint;
     use shared::member::MemberId;
     use shared::play::{PixelSize, PlayerControls};
-    use shared::protocol;
-    use shared::protocol::{GameSnapshotSerialOut, GameStateSerialOut, MessageSerialOut};
     use shared::title::TitleScene;
     use shared::world::WorldShapeKind;
 
-    const GAME_ID: GameId = GameId(4);
+    use crate::test_fixture;
+
     const OWN_MEMBER_ID: MemberId = MemberId(0);
-
-    fn create_session_joined(controls: &mut PlayerControls) -> ClientSession {
-        let mut client_session: ClientSession = ClientSession::new();
-        let join_accepted: MessageSerialOut = MessageSerialOut::JoinAccepted {
-            game_id: GAME_ID.0,
-            member_id: OWN_MEMBER_ID.0,
-        };
-
-        client_session.receive(&protocol::encode_message_out(&join_accepted), controls, 0.0);
-
-        client_session
-    }
-
-    fn create_session_in_game(state: &GameState, controls: &mut PlayerControls) -> ClientSession {
-        let mut client_session: ClientSession = create_session_joined(controls);
-        let snapshot: MessageSerialOut = MessageSerialOut::Snapshot(GameSnapshotSerialOut {
-            game_id: GAME_ID.0,
-            state: GameStateSerialOut::from(state),
-        });
-
-        client_session.receive(&protocol::encode_message_out(&snapshot), controls, 0.0);
-
-        client_session
-    }
 
     #[test]
     fn from_active_scene_shows_nothing_over_the_title_scene() {
@@ -107,7 +81,8 @@ mod tests {
     #[test]
     fn from_active_scene_shows_nothing_before_the_first_snapshot() {
         let mut controls: PlayerControls = PlayerControls::new();
-        let active_scene: ActiveScene = ActiveScene::Online(create_session_joined(&mut controls));
+        let client_session: ClientSession = test_fixture::create_session_joined(OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
 
         assert_eq!(SceneOverlay::from_active_scene(&active_scene), SceneOverlay::empty());
     }
@@ -120,7 +95,8 @@ mod tests {
             test_fixture::create_participant_with_organism(OWN_MEMBER_ID, WorldPoint { x: 200, y: 200 }),
         );
         let mut controls: PlayerControls = PlayerControls::new();
-        let active_scene: ActiveScene = ActiveScene::Online(create_session_in_game(&state, &mut controls));
+        let client_session: ClientSession = test_fixture::create_session_in_game(&state, OWN_MEMBER_ID, &mut controls);
+        let active_scene: ActiveScene = ActiveScene::Online(client_session);
 
         let overlay: SceneOverlay = SceneOverlay::from_active_scene(&active_scene);
 

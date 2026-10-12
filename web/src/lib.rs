@@ -13,6 +13,10 @@ pub mod screen;
 pub mod title;
 pub mod tutorial;
 
+// fixtures shared by the unit tests of several modules; absent from every non-test build
+#[cfg(test)]
+pub mod test_fixture;
+
 // browser runtime glue; the ssr build compiles none of it
 #[cfg(feature = "hydrate")]
 pub mod client;

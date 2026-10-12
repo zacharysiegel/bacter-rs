@@ -8764,6 +8764,8 @@ M  web/src/canvas/scene_overlay.rs
 M  web/src/test_fixture/test_fixture.rs
 ```
 
+**Deviations:** as Task 10's note describes, `web/src/test_fixture/` did not exist; this task creates it (`mod.rs`, and `test_fixture.rs` with `FIXTURE_GAME_ID`, `create_session_joined` and `create_session_in_game`) and adds `#[cfg(test)] pub mod test_fixture;` to `web/src/lib.rs`. Its `mod.rs` also re-exports `shared::game::test_fixture::*`, so a test needing both state and session helpers imports one `crate::test_fixture` instead of two modules of the same name. The scene camera and scene overlay tests call `create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 800)`. The filtered run reports 94 filtered out.
+
 ### Task 24: Keyboard and pointer mapping
 
 The original's keys by `KeyboardEvent.code` (A/W/S/D and the arrows, X, C, V, Space, R, Escape, F11), which keys keep the browser's default action, and the shot aim from the pointer.

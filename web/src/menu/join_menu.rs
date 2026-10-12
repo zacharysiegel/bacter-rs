@@ -127,15 +127,7 @@ fn create_rows(
     mode: Signal<GameModeKind>,
     team_sizes: Signal<Vec<TeamSize>>,
 ) -> Vec<MenuRow> {
-    let mut rows: Vec<MenuRow> = vec![
-        MenuRow::shown(
-            MenuFieldKind::ScreenName,
-            "Screen Name",
-            MenuInput::Text { value: screen_name },
-        ),
-        MenuRow::shown(MenuFieldKind::Password, "Password", MenuInput::Text { value: password })
-            .with_visibility(password_visibility),
-    ];
+    let mut rows: Vec<MenuRow> = create_credential_rows(screen_name, password, password_visibility);
 
     rows.extend(loadout_fields::create_appearance_rows(loadout_fields, mode));
     rows.extend(loadout_fields::create_ability_rows(loadout_fields));
@@ -171,6 +163,22 @@ pub fn build_join_request(
     };
 
     Ok(create_join_request(origin, password, joiner))
+}
+
+pub fn create_credential_rows(
+    screen_name: RwSignal<String>,
+    password: RwSignal<String>,
+    password_visibility: Signal<FieldVisibilityKind>,
+) -> Vec<MenuRow> {
+    vec![
+        MenuRow::shown(
+            MenuFieldKind::ScreenName,
+            "Screen Name",
+            MenuInput::Text { value: screen_name },
+        ),
+        MenuRow::shown(MenuFieldKind::Password, "Password", MenuInput::Text { value: password })
+            .with_visibility(password_visibility),
+    ]
 }
 
 /// The trimmed screen name and the password, or an issue for each one which is invalid.

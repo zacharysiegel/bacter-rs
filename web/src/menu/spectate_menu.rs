@@ -8,7 +8,7 @@ use crate::canvas::DriverCommandKind;
 use crate::canvas::game_canvas;
 use crate::menu::join_menu;
 use crate::menu::menu_form;
-use crate::menu::{FieldVisibilityKind, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow};
+use crate::menu::{FieldVisibilityKind, MenuForm, MenuIssue, MenuRow};
 
 #[component]
 pub fn SpectateMenu(game_id: GameId) -> impl IntoView {
@@ -22,15 +22,7 @@ pub fn SpectateMenu(game_id: GameId) -> impl IntoView {
                 .map_or(FieldVisibilityKind::Hidden, join_menu::get_password_visibility)
         })
     });
-    let rows: Vec<MenuRow> = vec![
-        MenuRow::shown(
-            MenuFieldKind::ScreenName,
-            "Screen Name",
-            MenuInput::Text { value: screen_name },
-        ),
-        MenuRow::shown(MenuFieldKind::Password, "Password", MenuInput::Text { value: password })
-            .with_visibility(password_visibility),
-    ];
+    let rows: Vec<MenuRow> = join_menu::create_credential_rows(screen_name, password, password_visibility);
 
     menu_form::show_request_rejections(signals.request_rejection, &[RequestKind::SpectateGame], issues);
 
@@ -78,6 +70,8 @@ pub fn build_spectate_request(
 mod tests {
     use super::*;
 
+    use crate::menu::MenuFieldKind;
+
     const GAME_ID: GameId = GameId(5);
 
     #[test]
@@ -87,6 +81,18 @@ mod tests {
             Ok(MessageSerialIn::SpectateGame {
                 game_id: GAME_ID.0,
                 password: None,
+                screen_name: String::from("Watcher"),
+            }),
+        );
+    }
+
+    #[test]
+    fn build_spectate_request_spectates_with_the_entered_password() {
+        assert_eq!(
+            build_spectate_request(GAME_ID, "Watcher", "swordfish"),
+            Ok(MessageSerialIn::SpectateGame {
+                game_id: GAME_ID.0,
+                password: Some(String::from("swordfish")),
                 screen_name: String::from("Watcher"),
             }),
         );

@@ -83,7 +83,7 @@ Create `scripts/test/test-preconditions.sh` (not executable; it is sourced):
 ```sh
 # Precondition checks shared by the scripts in scripts/test/; sourced, not run.
 
-readonly MISSING_PROGRAM_EXIT_STATUS=1
+readonly MISSING_PRECONDITION_EXIT_STATUS=1
 
 function require_program {
     local program_name="$1"
@@ -94,7 +94,7 @@ function require_program {
 
     if test -z "${program_path}"; then
         echo "error: the \`${program_name}\` program is required; install it with: ${install_hint}" >&2
-        exit "${MISSING_PROGRAM_EXIT_STATUS}"
+        exit "${MISSING_PRECONDITION_EXIT_STATUS}"
     fi
 }
 ```
@@ -192,7 +192,7 @@ function require_rust_target {
 
     if test -z "${installed_target}"; then
         echo "error: the \`${target_name}\` Rust target is required; install it with: rustup target add ${target_name}" >&2
-        exit "${MISSING_PROGRAM_EXIT_STATUS}"
+        exit "${MISSING_PRECONDITION_EXIT_STATUS}"
     fi
 }
 

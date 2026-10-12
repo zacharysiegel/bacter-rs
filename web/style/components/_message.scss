@@ -1,0 +1,15 @@
+/* Shrinks to its text, so the box is the DOM's measure of it; 25 px wider, as the original's. */
+.message-box {
+    position: absolute;
+    left: 12.5px;
+    top: 12px;
+    padding: 5px 12.5px 3px;
+    color: var(--color-white);
+    font-family: var(--font-overlay);
+    font-size: 14px;
+    line-height: 18px;
+    white-space: pre;
+    background: var(--color-black);
+    border: 1px solid var(--color-white);
+    box-shadow: 5px 4px 0 var(--color-shadow);
+}

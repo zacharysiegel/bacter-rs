@@ -8,6 +8,7 @@ pub mod connection;
 pub mod hud;
 pub mod leaderboard;
 pub mod menu;
+pub mod message;
 pub mod screen;
 pub mod title;
 

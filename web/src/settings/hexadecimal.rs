@@ -14,6 +14,12 @@ pub fn decode_hexadecimal(text: &str) -> Option<Vec<u8>> {
         return None;
     }
 
+    let every_character_is_hexadecimal: bool = text.bytes().all(|byte| byte.is_ascii_hexdigit());
+
+    if !every_character_is_hexadecimal {
+        return None;
+    }
+
     (0..text.len())
         .step_by(2)
         .map(|index| u8::from_str_radix(text.get(index..index + 2)?, 16).ok())
@@ -41,5 +47,10 @@ mod tests {
     #[test]
     fn decode_hexadecimal_rejects_an_invalid_character() {
         assert_eq!(decode_hexadecimal("0g"), None);
+    }
+
+    #[test]
+    fn decode_hexadecimal_rejects_a_sign() {
+        assert_eq!(decode_hexadecimal("+f"), None);
     }
 }

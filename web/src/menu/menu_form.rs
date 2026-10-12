@@ -291,14 +291,24 @@ pub fn show_request_rejections(
     issues: RwSignal<Vec<MenuIssue>>,
 ) {
     Effect::new(move |_| {
-        let rejection: Option<RequestRejection> = request_rejection.get();
+        let answered_issue: Option<MenuIssue> =
+            get_answered_rejection_issue(request_rejection.get(), answered_requests);
 
-        if let Some(rejection) = rejection
-            && answered_requests.contains(&rejection.request)
-        {
-            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
+        if let Some(answered_issue) = answered_issue {
+            issues.set(vec![answered_issue]);
         }
     });
+}
+
+/// `None` unless the rejected request is one of `answered_requests`.
+pub fn get_answered_rejection_issue(
+    rejection: Option<RequestRejection>,
+    answered_requests: &[RequestKind],
+) -> Option<MenuIssue> {
+    let answered_rejection: RequestRejection =
+        rejection.filter(|rejection| answered_requests.contains(&rejection.request))?;
+
+    Some(MenuIssue::from_rejection(answered_rejection.reason))
 }
 
 fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
@@ -564,6 +574,40 @@ mod tests {
             MenuIssue::from_rejection(RejectionKind::PasswordRequired),
             MenuIssue::at_field(MenuFieldKind::Password, "A password is required for this game"),
         );
+    }
+
+    #[test]
+    fn get_answered_rejection_issue_shows_a_rejection_of_an_answered_request() {
+        let rejection: RequestRejection = RequestRejection {
+            request: RequestKind::JoinGame,
+            reason: RejectionKind::PasswordRequired,
+        };
+
+        assert_eq!(
+            get_answered_rejection_issue(Some(rejection), &[RequestKind::CreateGame, RequestKind::JoinGame]),
+            Some(MenuIssue::at_field(
+                MenuFieldKind::Password,
+                "A password is required for this game",
+            )),
+        );
+    }
+
+    #[test]
+    fn get_answered_rejection_issue_ignores_a_rejection_of_another_request() {
+        let rejection: RequestRejection = RequestRejection {
+            request: RequestKind::SpectateGame,
+            reason: RejectionKind::GameNotFound,
+        };
+
+        assert_eq!(
+            get_answered_rejection_issue(Some(rejection), &[RequestKind::JoinGame]),
+            None,
+        );
+    }
+
+    #[test]
+    fn get_answered_rejection_issue_is_none_without_a_rejection() {
+        assert_eq!(get_answered_rejection_issue(None, &[RequestKind::JoinGame]), None);
     }
 
     #[test]

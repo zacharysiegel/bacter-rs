@@ -282,7 +282,23 @@ mod tests {
 
         assert_eq!(target.mode, GameModeKind::Skirmish);
         assert_eq!(target.password_visibility, FieldVisibilityKind::Hidden);
-        assert_eq!(target.team_sizes, get_empty_team_sizes(3));
+        assert_eq!(
+            target.team_sizes,
+            vec![
+                TeamSize {
+                    team: TeamKind::Red,
+                    participant_count: 0,
+                },
+                TeamSize {
+                    team: TeamKind::Blue,
+                    participant_count: 0,
+                },
+                TeamSize {
+                    team: TeamKind::Green,
+                    participant_count: 0,
+                },
+            ],
+        );
     }
 
     #[test]
@@ -293,7 +309,19 @@ mod tests {
 
         assert_eq!(target.mode, GameModeKind::Skirmish);
         assert_eq!(target.password_visibility, FieldVisibilityKind::Shown);
-        assert_eq!(target.team_sizes, loadout_fields::get_summary_team_sizes(&[2, 1]));
+        assert_eq!(
+            target.team_sizes,
+            vec![
+                TeamSize {
+                    team: TeamKind::Red,
+                    participant_count: 2,
+                },
+                TeamSize {
+                    team: TeamKind::Blue,
+                    participant_count: 1,
+                },
+            ],
+        );
     }
 
     #[test]

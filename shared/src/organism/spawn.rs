@@ -339,6 +339,26 @@ mod tests {
     }
 
     #[test]
+    fn is_spawn_position_valid_checks_every_organism_after_the_first() {
+        let state: GameState = test_fixture::create_state_with_organisms(
+            GameModeKind::FreeForAll,
+            300,
+            &[WorldPoint { x: 100, y: 100 }, WorldPoint { x: 200, y: 200 }],
+        );
+
+        assert!(!is_spawn_position_valid(
+            &state.world,
+            &state.members,
+            WorldPoint { x: 200, y: 200 },
+        ));
+        assert!(is_spawn_position_valid(
+            &state.world,
+            &state.members,
+            WorldPoint { x: 150, y: 150 },
+        ));
+    }
+
+    #[test]
     fn is_spawn_position_valid_rejects_points_outside_an_ellipse() {
         let state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Ellipse, 800);
 

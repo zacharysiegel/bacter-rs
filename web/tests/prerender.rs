@@ -1,3 +1,4 @@
+// a browser build has no prerender to test
 #![cfg(feature = "ssr")]
 
 use axum::body::Bytes;

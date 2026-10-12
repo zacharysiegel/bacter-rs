@@ -42,29 +42,13 @@ impl LeaderboardView {
     }
 }
 
-/// Top right of the window, over the canvas.
 #[component]
 pub fn Leaderboard(leaderboard: Signal<Option<LeaderboardView>>) -> impl IntoView {
     move || {
         leaderboard.get().map(|leaderboard_view| {
-            let heading_views = leaderboard_view
-                .columns
-                .iter()
-                .map(|column| view! { <th>{get_column_heading(*column)}</th> })
-                .collect_view();
-            let row_views = leaderboard_view
-                .rows
-                .into_iter()
-                .map(|row| {
-                    let row_class: &str = match row.emphasis {
-                        RowEmphasisKind::Own => "leaderboard-row leaderboard-row-own",
-                        RowEmphasisKind::Other => "leaderboard-row",
-                    };
-                    let cell_views = row.cells.into_iter().map(|cell| view! { <td>{cell}</td> }).collect_view();
-
-                    view! { <tr class=row_class>{cell_views}</tr> }
-                })
-                .collect_view();
+            let heading_views: Vec<AnyView> =
+                leaderboard_view.columns.iter().map(|column| render_heading(*column)).collect();
+            let row_views: Vec<AnyView> = leaderboard_view.rows.into_iter().map(render_row).collect();
 
             view! {
                 <table class="leaderboard">
@@ -75,6 +59,28 @@ pub fn Leaderboard(leaderboard: Signal<Option<LeaderboardView>>) -> impl IntoVie
                 </table>
             }
         })
+    }
+}
+
+fn render_heading(column: LeaderboardColumnKind) -> AnyView {
+    view! { <th>{get_column_heading(column)}</th> }.into_any()
+}
+
+fn render_row(row: LeaderboardRowView) -> AnyView {
+    let row_class: &'static str = get_row_class(row.emphasis);
+    let cell_views: Vec<AnyView> = row.cells.into_iter().map(render_cell).collect();
+
+    view! { <tr class=row_class>{cell_views}</tr> }.into_any()
+}
+
+fn render_cell(cell: String) -> AnyView {
+    view! { <td>{cell}</td> }.into_any()
+}
+
+fn get_row_class(emphasis: RowEmphasisKind) -> &'static str {
+    match emphasis {
+        RowEmphasisKind::Own => "leaderboard-row leaderboard-row-own",
+        RowEmphasisKind::Other => "leaderboard-row",
     }
 }
 
@@ -137,9 +143,11 @@ mod tests {
 
     fn create_state_with_two_participants(mode: GameModeKind) -> GameState {
         let mut state: GameState = test_fixture::create_state(mode, WorldShapeKind::Rectangle, 800);
+
         let mut own_member: Member = test_fixture::create_participant(OWN_MEMBER_ID);
         own_member.score.kills = 3;
         own_member.score.deaths = 2;
+
         let mut other_member: Member = test_fixture::create_participant(OTHER_MEMBER_ID);
         other_member.score.kills = 5;
 

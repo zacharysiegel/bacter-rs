@@ -4,7 +4,7 @@
     right: 15px;
     border-collapse: collapse;
     table-layout: fixed;
-    /* Not auto, so the fixed layout applies and the table is the sum of its columns. */
+    /* Fixed layout sizes the table to the sum of its column widths. */
     width: 0;
     color: var(--color-black);
     font-family: var(--font-overlay);

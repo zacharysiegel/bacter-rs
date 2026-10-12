@@ -266,6 +266,27 @@ mod tests {
     }
 
     #[test]
+    fn run_round_transition_phase_gives_the_win_once_while_the_survivor_lives_on() {
+        let mut state: GameState = create_survival_state(2, RoundPhase::Playing);
+        give_organisms(&mut state, &[MemberId(1)]);
+
+        let round_end_events: Vec<SimulationEvent> = run_round_transition_phase(&mut state, Tick(1001));
+        let post_round_events: Vec<SimulationEvent> = run_round_transition_phase(&mut state, Tick(1002));
+
+        assert_eq!(
+            round_end_events,
+            vec![
+                SimulationEvent::RoundPhaseChanged {
+                    phase: RoundPhase::PostRound,
+                },
+                SimulationEvent::RoundWon { member_id: MemberId(1) },
+            ],
+        );
+        assert_eq!(post_round_events, Vec::new());
+        assert_eq!(state.members[&MemberId(1)].score.wins, 1);
+    }
+
+    #[test]
     fn run_round_transition_phase_ends_without_a_winner_when_nobody_survives() {
         let mut state: GameState = create_survival_state(2, RoundPhase::Playing);
 

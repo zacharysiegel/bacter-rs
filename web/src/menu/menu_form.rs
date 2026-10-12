@@ -285,6 +285,22 @@ pub fn get_toggled_radio(
     }
 }
 
+pub fn show_request_rejections(
+    request_rejection: RwSignal<Option<RequestRejection>>,
+    answered_requests: &'static [RequestKind],
+    issues: RwSignal<Vec<MenuIssue>>,
+) {
+    Effect::new(move |_| {
+        let rejection: Option<RequestRejection> = request_rejection.get();
+
+        if let Some(rejection) = rejection
+            && answered_requests.contains(&rejection.request)
+        {
+            issues.set(vec![MenuIssue::from_rejection(rejection.reason)]);
+        }
+    });
+}
+
 fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
     match setting_field {
         SettingFieldKind::WorldSize => MenuFieldKind::WorldWidth,

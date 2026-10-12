@@ -1,12 +1,13 @@
 use leptos::prelude::*;
 
 use shared::play::OwnMemberStateKind;
+use shared::protocol::TeamChoiceKindSerialIn;
 use shared::settings;
 use shared::settings::SettingsStore;
 
 use crate::browser::GameListView;
 use crate::connection::ConnectionStatusKind;
-use crate::menu::CreateMenuFields;
+use crate::menu::{CreateMenuFields, RequestRejection};
 use crate::screen::{LobbyNoticeKind, Screen};
 
 #[cfg(feature = "ssr")] // a browser build renders no document
@@ -19,8 +20,11 @@ pub struct AppSignals {
     pub connection_status: RwSignal<ConnectionStatusKind>,
     pub lobby_notice: RwSignal<Option<LobbyNoticeKind>>,
     pub game_list: RwSignal<GameListView>,
+    pub request_rejection: RwSignal<Option<RequestRejection>>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub client_settings: RwSignal<ClientSettings>,
+    /// The team choice last sent in a join or respawn.
+    pub team_choice: RwSignal<TeamChoiceKindSerialIn>,
 }
 
 impl AppSignals {
@@ -30,12 +34,16 @@ impl AppSignals {
             connection_status: RwSignal::new(ConnectionStatusKind::Connecting),
             lobby_notice: RwSignal::new(None),
             game_list: RwSignal::new(GameListView::empty()),
+            request_rejection: RwSignal::new(None),
             own_member_state: RwSignal::new(None),
             client_settings: RwSignal::new(ClientSettings::defaults()),
+            team_choice: RwSignal::new(TeamChoiceKindSerialIn::Auto),
         }
     }
 
+    /// A rejection belongs to the screen whose request it answers.
     pub fn navigate(&self, screen: Screen) {
+        self.request_rejection.set(None);
         self.screen.set(screen);
     }
 
@@ -129,6 +137,7 @@ mod tests {
 
     use leptos::reactive::effect::ImmediateEffect;
 
+    use shared::protocol::{RejectionKind, RequestKind};
     use shared::settings::InMemorySettingsStore;
 
     #[test]
@@ -159,15 +168,20 @@ mod tests {
     }
 
     #[test]
-    fn go_back_opens_the_back_screen() {
+    fn go_back_opens_the_back_screen_and_clears_the_rejection() {
         let owner: Owner = Owner::new();
         owner.set();
         let signals: AppSignals = AppSignals::new();
         signals.screen.set(Screen::Browser);
+        signals.request_rejection.set(Some(RequestRejection {
+            request: RequestKind::JoinGame,
+            reason: RejectionKind::GameFull,
+        }));
 
         signals.go_back();
 
         assert_eq!(signals.screen.get_untracked(), Screen::Title);
+        assert_eq!(signals.request_rejection.get_untracked(), None);
     }
 
     #[test]

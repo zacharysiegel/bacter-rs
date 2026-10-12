@@ -4,6 +4,7 @@ use shared::play::OwnMemberStateKind;
 use shared::settings;
 use shared::settings::SettingsStore;
 
+use crate::browser::GameListView;
 use crate::connection::ConnectionStatusKind;
 use crate::screen::{LobbyNoticeKind, Screen};
 
@@ -16,6 +17,7 @@ pub struct AppSignals {
     pub screen: RwSignal<Screen>,
     pub connection_status: RwSignal<ConnectionStatusKind>,
     pub lobby_notice: RwSignal<Option<LobbyNoticeKind>>,
+    pub game_list: RwSignal<GameListView>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub client_settings: RwSignal<ClientSettings>,
 }
@@ -26,6 +28,7 @@ impl AppSignals {
             screen: RwSignal::new(Screen::Title),
             connection_status: RwSignal::new(ConnectionStatusKind::Connecting),
             lobby_notice: RwSignal::new(None),
+            game_list: RwSignal::new(GameListView::empty()),
             own_member_state: RwSignal::new(None),
             client_settings: RwSignal::new(ClientSettings::defaults()),
         }

@@ -2,6 +2,7 @@
 #![recursion_limit = "512"]
 
 pub mod app;
+pub mod connection;
 pub mod screen;
 
 // browser runtime glue; the ssr build compiles none of it

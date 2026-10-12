@@ -35,3 +35,10 @@ async fn prerender_document_opens_on_the_title_screen() {
     assert!(document.contains(r#"<div class="title-menu">"#));
     assert!(document.contains("Connecting to the game server"));
 }
+
+#[tokio::test]
+async fn prerender_document_contains_the_canvas_root() {
+    let document: String = get_prerendered_document().await;
+
+    assert!(document.contains(r#"<canvas class="game-canvas""#));
+}

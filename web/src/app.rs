@@ -6,6 +6,7 @@ use shared::settings;
 use shared::settings::SettingsStore;
 
 use crate::browser::{GameBrowser, GameListView};
+use crate::canvas::GameCanvas;
 use crate::connection::ConnectionStatusKind;
 use crate::hud::{AbilityBar, AbilityBarView, NameLabelView, NameLabels};
 use crate::leaderboard::{Leaderboard, LeaderboardView};
@@ -149,6 +150,7 @@ pub fn App() -> impl IntoView {
     let is_shaded = move || screen.get().backdrop() == ScreenBackdropKind::Shaded;
 
     view! {
+        <GameCanvas />
         <div class="overlay-layer">
             <NameLabels name_labels=signals.name_labels.into() />
             <Leaderboard leaderboard=signals.leaderboard.into() />

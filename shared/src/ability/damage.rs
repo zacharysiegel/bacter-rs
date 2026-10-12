@@ -249,6 +249,22 @@ mod tests {
     }
 
     #[test]
+    fn run_damage_phase_spares_cells_inside_any_neutralize_field_from_a_shot_secretion() {
+        let mut state: GameState = create_state(GameModeKind::FreeForAll);
+        secrete_shot_at(&mut state, OWNER_ID, 0, VICTIM_POSITION);
+        activate_field(
+            &mut state,
+            OTHER_OWNER_ID,
+            ThirdAbilityKind::Neutralize,
+            WorldPoint { x: 245, y: 300 },
+        );
+
+        run_damage_phase(&mut state);
+
+        assert_eq!(get_cells(&state, VICTIM_ID), vec![LatticeCoordinate { i: 0, j: 0 }]);
+    }
+
+    #[test]
     fn run_damage_phase_spares_teammates_of_the_owner() {
         let mut state: GameState = create_state(GameModeKind::Skirmish);
 

@@ -1,0 +1,35 @@
+// Reference these via var(--token-name); raw values appear nowhere else.
+:root {
+    --color-black:              rgb(0, 0, 0);
+    --color-white:              rgb(255, 255, 255);
+    --color-backdrop:           rgb(70, 70, 70); // the scene's clear colour, shown before the first frame
+    --color-shadow:             rgb(50, 50, 50); // the backdrop darkened by 20, as the scene's shadows
+    --color-world-border:       rgb(210, 210, 210);
+    --color-title-box:          rgb(10, 10, 10);
+    --color-lobby-disabled:     rgb(110, 110, 110);
+    --color-row-even-browser:   rgb(230, 230, 230);
+    --color-row-even-menu:      rgb(240, 240, 240);
+    --color-browser-pressed:    rgb(210, 210, 210);
+    --color-control:            rgb(240, 240, 240);
+    --color-control-hover:      rgb(220, 220, 220);
+    --color-control-pressed:    rgb(200, 200, 200);
+    --color-field-focus:        rgb(230, 230, 230);
+    --color-field-border:       rgb(50, 50, 50);
+    --color-radio-selected:     rgb(190, 190, 190);
+    --color-issue:              rgb(255, 0, 0);
+    --color-leaderboard-head:   rgb(200, 200, 200);
+    --color-leaderboard-cell:   rgb(245, 245, 245);
+    --color-dial:               rgb(215, 215, 215);
+    --color-own-effect:         rgb(66, 244, 176);
+    --color-enemy-effect:       rgb(255, 141, 135);
+
+    --font-title:               _bacter;
+    --font-heading:             Verdana, sans-serif;
+    --font-menu:                Georgia, serif;
+    --font-overlay:             Helvetica, Arial, sans-serif;
+    --font-key:                 Consolas, monospace;
+
+    --z-canvas:                 -2; // the canvas and the overlays drawn over it
+    --z-shade:                  -1;
+    --z-screen:                 1;
+}

@@ -1,0 +1,43 @@
+body {
+    overflow: hidden;
+    background: var(--color-backdrop);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.game-canvas {
+    position: fixed;
+    left: 0;
+    top: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    z-index: var(--z-canvas);
+}
+
+/* After the canvas in the document, so above it at the same depth. */
+.overlay-layer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-canvas);
+    pointer-events: none;
+}
+
+.shade {
+    position: fixed;
+    inset: 0;
+    background: var(--color-white);
+    opacity: 0.5;
+    z-index: var(--z-shade);
+}
+
+.screen-layer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-screen);
+    pointer-events: none;
+
+    > * {
+        pointer-events: auto;
+    }
+}

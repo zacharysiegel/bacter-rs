@@ -26,8 +26,10 @@ impl SettingsStore for LocalStorageSettingsStore {
             return;
         };
 
-        let stored: Result<(), JsValue> =
-            storage.set_item(&get_storage_key(key), &hexadecimal::encode_hexadecimal(&value.to_bytes()));
+        let stored: Result<(), JsValue> = storage.set_item(
+            &get_storage_key(key),
+            &hexadecimal::encode_hexadecimal(&value.to_bytes()),
+        );
 
         if let Err(error) = stored {
             log::warn!("storing a setting failed; [key={} error={error:?}]", key.storage_key());

@@ -331,7 +331,10 @@ pub fn combine_rejection_results<First, Second>(
     first: Result<First, RejectionKind>,
     second: Result<Second, RejectionKind>,
 ) -> Result<(First, Second), Vec<MenuIssue>> {
-    combine_issue_results(first.map_err(get_rejection_issues), second.map_err(get_rejection_issues))
+    combine_issue_results(
+        first.map_err(get_rejection_issues),
+        second.map_err(get_rejection_issues),
+    )
 }
 
 fn get_rejection_issues(reason: RejectionKind) -> Vec<MenuIssue> {

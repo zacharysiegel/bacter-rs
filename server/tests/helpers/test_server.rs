@@ -66,7 +66,8 @@ impl TestClient {
         let query: String = protocol_version.map_or(String::new(), |version| {
             format!("?{}={version}", protocol::PROTOCOL_VERSION_QUERY_PARAMETER)
         });
-        let mut request: Request = format!("ws://{}{}{query}", test_server.address, protocol::WEBSOCKET_PATH).into_client_request()?;
+        let mut request: Request =
+            format!("ws://{}{}{query}", test_server.address, protocol::WEBSOCKET_PATH).into_client_request()?;
 
         if let Some(origin) = origin {
             request.headers_mut().insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());

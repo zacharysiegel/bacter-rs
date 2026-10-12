@@ -11,6 +11,7 @@ pub mod menu;
 pub mod message;
 pub mod screen;
 pub mod title;
+pub mod tutorial;
 
 // browser runtime glue; the ssr build compiles none of it
 #[cfg(feature = "hydrate")]

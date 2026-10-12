@@ -8396,6 +8396,8 @@ A  web/src/tutorial/mod.rs
 A  web/src/tutorial/tutorial_view.rs
 ```
 
+**Deviations:** as Task 10's note describes, `web/src/lib.rs` keeps no `test_fixture` module, and the scene overlay test imports `shared::game::test_fixture` and `shared::world::WorldShapeKind` and calls `create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 800)`. The filtered run reports 89 filtered out.
+
 ### Task 23: Scene camera
 
 Phase 7 left choosing the camera and the crosshair per scene to this phase: online the camera follows the crosshair, drawn only for a playing member; the title scene and the tutorial keep the world still, and only the tutorial draws a crosshair.

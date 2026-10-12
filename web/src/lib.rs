@@ -24,3 +24,7 @@ pub mod client;
 // the dev server and the prerender; a browser runs neither
 #[cfg(feature = "ssr")]
 pub mod server;
+
+// other targets have no browser to run #[wasm_bindgen_test] cases in
+#[cfg(all(test, target_arch = "wasm32"))]
+wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);

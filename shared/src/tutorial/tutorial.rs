@@ -21,7 +21,7 @@ pub const SURVIVE_TASK_TICKS: u32 = tick::get_ticks_from_milliseconds(4500);
 pub const SHOOT_TASK_TICKS: u32 = tick::get_ticks_from_milliseconds(10_000);
 /// Bright colours which would hide the crosshair.
 pub const TUTORIAL_PLAYER_EXCLUDED_COLORS: [OrganismColorKind; 2] = [OrganismColorKind::Sun, OrganismColorKind::Sky];
-const TUTORIAL_PLAYER_ID: MemberId = MemberId(0);
+pub const TUTORIAL_PLAYER_ID: MemberId = MemberId(0);
 const TUTORIAL_PLAYER_CAP: u8 = 2;
 const TUTORIAL_PLAYER_SCREEN_NAME: &str = "Player";
 

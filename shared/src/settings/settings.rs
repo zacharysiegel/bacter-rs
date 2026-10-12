@@ -81,6 +81,10 @@ where
     pub fn write(&self, store: &impl SettingsStore, value: T) {
         store.store(self.key, value.into());
     }
+
+    pub fn default_value(&self) -> T {
+        self.default.clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,5 +171,13 @@ mod tests {
         store.entries.borrow_mut().insert("name_labels", vec![0xff, 0xff]);
 
         assert!(NAME_LABELS_SETTING.read(&store));
+    }
+
+    #[test]
+    fn default_value_gives_the_declared_default() {
+        let hidden_by_default: Setting<ClientSettingKind, bool> = Setting::new(ClientSettingKind::Messages, false);
+
+        assert!(NAME_LABELS_SETTING.default_value());
+        assert!(!hidden_by_default.default_value());
     }
 }

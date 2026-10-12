@@ -146,6 +146,23 @@ mod tests {
     }
 
     #[test]
+    fn get_respawn_values_preselect_the_smallest_team_for_a_participant_without_a_team() {
+        let game_menu: GameMenuView = create_game_menu(Some(test_fixture::create_loadout()), None);
+
+        let values: LoadoutFieldValues = get_respawn_values(Some(&game_menu), TeamChoiceKindSerialIn::Auto);
+
+        assert_eq!(values.team, Some(TeamKind::Blue));
+    }
+
+    #[test]
+    fn get_respawn_values_give_the_join_defaults_without_a_game_menu() {
+        let values: LoadoutFieldValues = get_respawn_values(None, TeamChoiceKindSerialIn::Auto);
+
+        assert_eq!(values, LoadoutFieldValues::join_defaults(&[]));
+        assert_eq!(values.team, None);
+    }
+
+    #[test]
     fn get_respawn_values_keep_auto_assign_when_it_was_chosen() {
         let game_menu: GameMenuView = create_game_menu(Some(test_fixture::create_loadout()), Some(TeamKind::Red));
 

@@ -9,12 +9,16 @@
 - Escape: create/browser to title; join menu to browser (or back to create when creating); spectate menu to browser; playing to pause; spectating to pause; tutorial to pause; pause/respawn menus back to play.
 - Creating: create menu then join menu (screen name, loadout); its submit sends one `CreateGame`; Back from that join step returns to the create menu with nothing created.
 - `alert()` replaced by the message box or inline form errors.
+- A renderer which cannot be created is logged (`the game cannot be drawn in this browser`); the menus keep working.
+- The title notice line sits centred below the title box.
 - Connection (`client/game_socket.rs`):
   - One socket at a time; opened after hydration, when `game-server.json` has been read, and again only by the Reconnect button; no automatic reconnect.
   - Title and tutorial never need it: the title scene and tutorial run locally ([tutorial and title](#tutorial-and-title)).
   - Title notice line: "Connecting to the game server" until open; after a close, the client notice of its `CloseReasonKind` ([server to client](./protocol.md#server-to-client)) plus a Reconnect button (accepted by the owner; none for `ProtocolVersionMismatch`, whose notice asks for a reload). Host and Join are disabled while not connected.
   - Close or error on any screen other than Title or Tutorial: `ConnectionLost` returns to Title with that notice; the tutorial continues undisturbed.
 - `LeftGame` returns to Browser; `GameEnded` returns to Browser with the notice "The game has closed"; `SynchronisationLost` returns to Title with "Lost synchronisation with the game".
+  - The browser shows its notice under the table; the title shows it on the notice line while connected.
+- The browser subscribes to the game list each time it opens while connected (an accepted create, join or spectate ends the subscription); the client never unsubscribes.
 
 ## Screens
 - Faithful to the original layout.
@@ -27,7 +31,7 @@
 - Join: Screen Name, Password (secured only), Color with swatches (hidden in skm), Skin (3 radios; none selected means None), 1st/2nd/3rd ability (required), 4th Spore fixed, Team list "Red: n" preselecting the smallest team (skm), Auto Assign.
 - Spectate: Screen Name, Password.
 - Respawn: Color, Skin, abilities, Team, Auto Assign prefilled; Leave Game button; opened with R when dead, spawn allowed and alive organisms < cap, otherwise the message "Game is at maximum player capacity".
-- Pause game: Color (not skm), Skin, Name Labels, Messages, Leave Game; Apply sends `UpdateAppearance` and stores settings.
+- Pause game: Color (not skm), Skin, Name Labels, Messages, Leave Game; Apply sends `UpdateAppearance` when the colour or skin changed, and stores settings.
 - Pause spectate: Name Labels, Messages, Leave Game. Pause tutorial: Leave Tutorial.
 
 ## Renderer
@@ -95,13 +99,19 @@ Platform-independent part (`shared/src/play/`):
 Browser part (`web/src/canvas/driver.rs`, hydrate):
 - `thread_local! { static DRIVER: RefCell<Option<Driver>> }`; `Driver` owns `GameRenderer`, `ActiveScene`, `PlayerControls`, the `GameSocket` and the cached rAF `Closure`.
 - WebSocket `onmessage`: `session.receive(bytes, &mut controls, performance.now())`; `SendFrame` goes to the socket, every other effect to Leptos signals. Stepping happens here so a hidden tab keeps simulating.
-- `keydown`/`keyup`: `keyboard.key_changed(GameKeyKind, KeyTransitionKind, repeat)` (`canvas/keyboard.rs`).
+- `keydown`/`keyup`: `keyboard.key_changed(GameKeyKind, KeyTransitionKind, repeat)`, keys from `KeyboardEvent.code` (`canvas/keyboard.rs`):
+  - game keys reach the `KeyboardState` only while the screen's input focus is `Game`; a change to `Menu` releases every held key and drops unsent presses;
+  - Escape goes back from every screen ([shell](#shell)); R acts on `Spectating` only.
+- Pointer: the shot aim is the pointer's offset from the crosshair's view point, refreshed on `mousemove` and every frame.
+- The connection's `ClientSession` waits beside the title scene and the tutorial and moves into `ActiveScene::Online` on `JoinAccepted`; `LeftGame`, `GameEnded` and `SynchronisationLost` move it back.
+- Views command the driver with `canvas::dispatch_driver_command(DriverCommandKind)`; commands queue until the driver can run them.
 - rAF callback (continuous while the canvas is mounted): `advance_frame`, render with the alpha, update overlay signals when a tick was applied, reschedule.
 - Other players' cursors are not drawn (faithful).
 
 ## Overlays
 - HTML, Leptos.
-- HUD ability bar (`hud/ability_bar.rs`), players only: 4 slots at `center.x - 150 + i * 100`, `y = 0.9 * height`; black disc r 30, grey 215 disc r 29; arc draining while Active, refilling while Cooling (proportion from ticks); icon from `ability_icon.rs` rendered as SVG pixels; key tab (X, C, V, `_`); shot or secretion timer disc r 8 at x - 41; active dots:
+- Drawn under the shade of the in-game menus, as the original drew them in its canvas.
+- HUD ability bar (`hud/ability_bar.rs`), players only: 4 slots at `center.x - 150 + i * 100`, `y = 0.9 * height`; black disc r 30, grey 215 disc r 29; arc draining while Active, refilling while Cooling (proportion from ticks); icon from `ability_icon.rs` rendered as SVG pixels; key tab (X, C, V, `_`); shot or secretion timer disc r 8 at x - 41 (a shot's or spore's secretion dial drains over the secretion duration alone; the original continued from where the flight stopped); active dots:
   - green (66,244,176) while own Extended, Immortal or Neutralize field active ([data model](./simulation.md#data-model));
   - red (255,141,135) while own `compressed_until` or `frozen_until` is set (an enemy's effect on this player), or own Toxin field active;
   - never for a Compress or Freeze caster's own timer (faithful, `HUD.js:236-245`).
@@ -115,7 +125,7 @@ Browser part (`web/src/canvas/driver.rs`, hydrate):
   - No rounds: alive, none; without an organism, "Press 'R' to Spawn".
   - Transient texts ([client session, frame pacing and driving](#client-session-frame-pacing-and-driving)) replace these for 3 s.
   - Tutorial task texts verbatim from `Message.js`.
-  - Box width from measured text width (DOM), not character count.
+  - The box shrinks to its text, so its width is the DOM's measure of the text, not a character count.
 - Font: `@font-face` `_bacter` from `/fonts/bacter.ttf`; Verdana, Georgia, Helvetica, Consolas elsewhere as the original.
 
 ## Prediction seam
@@ -140,7 +150,7 @@ Browser part (`web/src/canvas/driver.rs`, hydrate):
 ## Settings
 - `shared::settings` copied from eafora: `SettingKey`, `SettingValue`, `SettingsStore`, `Setting`.
 - Keys: `NameLabels` (default true), `Messages` (default true).
-- `web/src/client/local_storage_settings.rs`: `LocalStorageSettingsStore`.
+- `web/src/client/local_storage_settings.rs`: `LocalStorageSettingsStore`; key `bacter.` plus the setting's storage key, value the `SettingValue` bytes as lowercase hexadecimal.
 
 ## Game server URL
 - `web/static/game-server.json`, committed: `{"websocket_url": "ws://127.0.0.1:3100/ws"}`.

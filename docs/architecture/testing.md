@@ -87,9 +87,20 @@
 - `game/cursor_clamp.rs`: within budget, beyond budget along the same direction, budget cap, reset on spawn, i64 extremes.
 - `game/pending_admissions.rs` and `game/membership.rs`: names, slots, team sizes and member ids counted across pending admissions.
 - `lobby/lobby_broadcast.rs`: revision on summary and client-count changes, at most one list per second.
+- `web` (host `#[test]`, `cargo test -p web --lib`):
+  - `screen/screen.rs`: input focus, backdrop, back screens, own-state and connection-loss transitions, lobby notices;
+  - `connection/`: notices, Reconnect offer, socket URL;
+  - `settings/hexadecimal.rs`: round trip, odd length, characters outside hexadecimal;
+  - `menu/menu_form.rs`: issue placement, rejection fields, number input, radio toggling;
+  - `menu/create_menu.rs`, `join_menu.rs`, `spectate_menu.rs`, `respawn_menu.rs`, `pause_menu.rs`: defaults, validation and the requests built;
+  - `menu/loadout_fields.rs`, `menu/game_menu_view.rs`: loadouts, team choices, team options;
+  - `hud/`: dials, shot dials, effect dots, icon paths, name label placement and truncation;
+  - `leaderboard/leaderboard.rs`: rows and emphasis per mode;
+  - `canvas/`: scene views, scene overlays, key mapping, aim;
+  - `tutorial/tutorial_view.rs`, `app.rs`: tutorial overlay, client settings, back navigation.
 
 ## Other tests
-- `web/tests/prerender.rs` (ssr): prerendered document contains the canvas root, `/pkg/`, `.wasm`, `.css`, `<title>`.
+- `web/tests/prerender.rs` (ssr): prerendered document contains the canvas root, the title screen, `/pkg/`, `.wasm`, `.css`, `<title>`.
 - `LocalStorageSettingsStore`: `#[wasm_bindgen_test]` (browser-only behaviour), via `scripts/test/test-wasm.sh`.
 - Shader pipelines: `#[ignore]` test building every pipeline on a headless device, via `scripts/test/test-shaders.sh`.
 

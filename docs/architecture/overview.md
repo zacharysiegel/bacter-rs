@@ -365,34 +365,41 @@ shutdown/    shutdown.rs          ServerRunState, termination signal wait
 - `[package.metadata.leptos]` as eafora except the ports: `output-name = "bacter"`, `site-root = "target/site"`, `site-pkg-dir = "pkg"`, `style-file = "style/main.scss"`, `assets-dir = "static"`, `site-addr = "127.0.0.1:3011"`, `reload-port = 3012`, `bin-features = ["ssr"]`, `lib-features = ["hydrate"]`, both default-features off, `lib-profile-release = "wasm-release"`.
   - Own ports so the eafora and bacter-rs dev servers can run together, and so `build-site.sh` port detection does not trip on eafora.
 - Hydrate gating (web-sys, js-sys and wasm-bindgen are `hydrate`-only, so the `ssr` build must compile none of their users):
-  - Whole browser-only modules are gated at their `pub mod` with a one-line WHY comment: `client/` (`// browser runtime glue; the ssr build compiles none of it`), `canvas/driver.rs`, `canvas/keyboard.rs`, `message/text_measurement.rs`.
-  - A component which needs one browser call holds a same-file `#[cfg(feature = "hydrate")] mod browser` / `#[cfg(feature = "ssr")] mod server` pair exposing the same function (the ssr one a no-op), per `conditional-compilation.md`.
+  - Whole browser-only modules are gated at their `pub mod` with a one-line WHY comment: `client/` (`// browser runtime glue; the ssr build compiles none of it`) and `canvas/driver.rs`.
+  - A component which needs a browser call holds a same-file `#[cfg(feature = "hydrate")] mod browser` / `#[cfg(not(feature = "hydrate"))] mod server` pair exposing the same functions (the server ones no-ops), per `conditional-compilation.md`; the complement is `not(hydrate)` rather than `ssr` so the featureless workspace build compiles too (`canvas/game_canvas.rs`).
   - Component files otherwise never name web-sys, js-sys or wasm-bindgen.
 - Module tree (`web/src/`), "(hydrate)" and "(ssr)" mark gated modules:
 
 ```
-lib.rs  main.rs  app.rs       shell() (ssr), App (screen switch)
+lib.rs  main.rs  app.rs       shell() (ssr), App (layers, screen switch), AppSignals, ClientSettings
 server.rs                     (ssr) dev serve(), prerender
 client/                       (hydrate)
          hydrate.rs           single #[wasm_bindgen] entry
          game_socket.rs       web-sys WebSocket wrapper
          game_server_config.rs  reads static/game-server.json
          local_storage_settings.rs  SettingsStore over localStorage
-         fullscreen.rs
-screen/  screen.rs            Screen enum, navigation, Escape mapping
+         fullscreen.rs        DisplayModeKind by the original's test
+         js_error.rs          JsValue failures as AppError
+screen/  screen.rs            Screen enum, navigation, Escape mapping, LobbyNoticeKind
+connection/ connection_status.rs  ConnectionStatusKind, notice line, Reconnect offer
+         websocket_url.rs     socket URL from game-server.json or the page's origin
 settings/ hexadecimal.rs       setting bytes as text
-canvas/  game_canvas.rs       canvas component (mount through a browser/server submodule pair)
-         driver.rs            (hydrate) thread_local DRIVER, rAF scheduling, renderer ownership
-         keyboard.rs          (hydrate) KeyboardEvent to GameKeyKind
+canvas/  game_canvas.rs       canvas component, DriverCommandKind (browser/server submodule pair)
+         driver.rs            (hydrate) thread_local DRIVER, rAF scheduling, renderer ownership, command queue
+         keyboard.rs          KeyboardEvent.code to GameKeyKind, default actions, shot aim
+         scene_camera.rs      camera and crosshair per scene
+         scene_overlay.rs     overlay and in-game menu views per scene
 title/   title_menu.rs        includes the connection notice line (client-web.md#shell)
-browser/ game_browser.rs
-menu/    menu_form.rs         generic form engine, field kinds, per-mode visibility
+browser/ game_browser.rs      GameListView
+menu/    menu_form.rs         generic form engine, field kinds, per-mode visibility, issue placement
+         loadout_fields.rs    rows shared by the join, respawn and pause menus
+         game_menu_view.rs    the own member's game, for the in-game menus
          create_menu.rs  join_menu.rs  spectate_menu.rs  respawn_menu.rs  pause_menu.rs
 hud/     ability_bar.rs  ability_icon_view.rs  name_labels.rs
 leaderboard/ leaderboard.rs
 message/ message_box.rs
-         text_measurement.rs  (hydrate) DOM text width
 tutorial/ tutorial_view.rs
+test_fixture/ test_fixture.rs (test) game states for unit tests
 style/   main.scss + partials (_tokens, _reset, _typography, _layout, components/_*.scss)
 static/  fonts/bacter.ttf, favicon, robots.txt, game-server.json
 tests/   prerender.rs         #![cfg(feature = "ssr")]

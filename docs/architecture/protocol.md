@@ -1,7 +1,7 @@
 # Protocol
 
 ## Transport, codec, version
-- One binary WebSocket per client at `/ws?protocol_version=<PROTOCOL_VERSION>`; text frames are a protocol error.
+- One binary WebSocket per client at `/ws?protocol_version=<PROTOCOL_VERSION>` (`protocol::get_versioned_websocket_url`); text frames are a protocol error.
 - Version check outside bitcode: the server reads the query parameter before decoding any frame. Missing or different: the upgrade is accepted and immediately closed with code 4001, reason text `server protocol version <N>` (plain WebSocket close, no bitcode on either side), so an old tab after a redeploy can always read the reason.
 - Every message after the upgrade is one frame: `bitcode::encode(&MessageSerialIn)` (client to server) or `bitcode::encode(&MessageSerialOut)` (server to client). There is no `Hello` message.
 - `protocol::encode_message_in`, `decode_message_in`, `encode_message_out`, `decode_message_out`; decode returns `Result<_, AppError>`; then each payload converts to its model through `TryFrom`, which carries the semantic validation ([wire types](#wire-types)).

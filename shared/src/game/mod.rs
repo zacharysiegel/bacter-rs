@@ -5,8 +5,7 @@ pub mod input_bundle;
 pub mod player_input;
 pub mod simulation_event;
 pub mod step;
-// Fixtures shared by the unit tests of several modules; absent from every non-test build.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))] // test fixtures, left out of production builds
 pub mod test_fixture;
 pub mod tick;
 

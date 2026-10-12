@@ -10,6 +10,11 @@ pub struct TeamSizes {
 }
 
 impl TeamSizes {
+    /// `participant_counts` are in team order.
+    pub fn from_participant_counts(participant_counts: Vec<(TeamKind, u32)>) -> TeamSizes {
+        TeamSizes { participant_counts }
+    }
+
     /// `excluded_member_id` is not counted.
     pub fn from_members(
         members: &BTreeMap<MemberId, Member>,
@@ -183,6 +188,16 @@ mod tests {
         let team_sizes: TeamSizes = TeamSizes::from_members(&members, 3, None);
 
         assert_eq!(team_sizes.get_smallest_teams(), vec![TeamKind::Red, TeamKind::Green]);
+    }
+
+    #[test]
+    fn from_participant_counts_keeps_the_given_counts() {
+        let team_sizes: TeamSizes = TeamSizes::from_participant_counts(vec![(TeamKind::Red, 2), (TeamKind::Blue, 1)]);
+
+        assert_eq!(team_sizes.get_size(TeamKind::Red), Some(2));
+        assert_eq!(team_sizes.get_size(TeamKind::Blue), Some(1));
+        assert_eq!(team_sizes.get_size(TeamKind::Green), None);
+        assert_eq!(team_sizes.get_smallest_teams(), vec![TeamKind::Blue]);
     }
 
     #[test]

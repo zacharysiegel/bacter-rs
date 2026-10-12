@@ -23,7 +23,7 @@ pub const SECOND_ABILITY_LABELS: [&str; 2] = ["Immortality", "Freeze"];
 pub const THIRD_ABILITY_KINDS: [ThirdAbilityKind; 2] = [ThirdAbilityKind::Neutralize, ThirdAbilityKind::Toxin];
 pub const THIRD_ABILITY_LABELS: [&str; 2] = ["Neutralize", "Toxin"];
 pub const FOURTH_ABILITY_LABELS: [&str; 1] = ["Spore"];
-/// A single unlabelled radio, as Auto Assign, Name Labels and Messages are drawn.
+/// A single unlabelled radio.
 pub const SINGLE_RADIO_LABELS: [&str; 1] = [""];
 const FIRST_ABILITY_MISSING_TEXT: &str = "Select a first ability";
 const SECOND_ABILITY_MISSING_TEXT: &str = "Select a second ability";
@@ -327,7 +327,7 @@ pub fn get_color_label(color: OrganismColorKind) -> &'static str {
     }
 }
 
-/// "Red", as the leaderboard and the team list name a team.
+/// Capitalised team name, e.g. "Red".
 pub fn get_team_label(team: TeamKind) -> String {
     let team_name: &str = team.as_str();
     let mut team_name_characters: std::str::Chars<'_> = team_name.chars();
@@ -362,13 +362,13 @@ pub fn get_team_options(team_sizes: &[TeamSize]) -> Vec<ListOption> {
 
 /// The first in team order among the teams with the fewest participants.
 pub fn get_smallest_team(team_sizes: &[TeamSize]) -> Option<TeamKind> {
-    team_sizes
-        .iter()
-        .min_by_key(|team_size| team_size.participant_count)
-        .map(|team_size| team_size.team)
+    let participant_counts: Vec<(TeamKind, u32)> =
+        team_sizes.iter().map(|team_size| (team_size.team, team_size.participant_count)).collect();
+
+    TeamSizes::from_participant_counts(participant_counts).get_smallest_teams().first().copied()
 }
 
-/// `team_sizes` per team in team order, as a game summary carries them.
+/// `team_participant_counts[i]` is the count of the i-th team in team order.
 pub fn get_summary_team_sizes(team_participant_counts: &[u8]) -> Vec<TeamSize> {
     let team_count: u8 = u8::try_from(team_participant_counts.len()).unwrap_or(u8::MAX);
 
@@ -410,6 +410,9 @@ fn get_index_of<T: PartialEq>(kinds: &[T], kind: T) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::game::test_fixture;
+    use shared::member::{Member, MemberId};
+    use shared::world::WorldShapeKind;
 
     fn create_team_sizes(participant_counts: [u32; 3]) -> Vec<TeamSize> {
         [TeamKind::Red, TeamKind::Blue, TeamKind::Green]
@@ -420,6 +423,23 @@ mod tests {
                 participant_count,
             })
             .collect()
+    }
+
+    fn create_state_with_team_members(mode: GameModeKind) -> GameState {
+        let mut state: GameState = test_fixture::create_state(mode, WorldShapeKind::Rectangle, 300);
+        let member_teams: [(Member, TeamKind); 4] = [
+            (test_fixture::create_participant(MemberId(0)), TeamKind::Blue),
+            (test_fixture::create_participant(MemberId(1)), TeamKind::Blue),
+            (test_fixture::create_spectator(MemberId(2)), TeamKind::Red),
+            (test_fixture::create_participant(MemberId(3)), TeamKind::Green),
+        ];
+
+        for (mut member, team) in member_teams {
+            member.team = Some(team);
+            state.members.insert(member.member_id, member);
+        }
+
+        state
     }
 
     fn create_complete_values() -> LoadoutFieldValues {
@@ -523,6 +543,40 @@ mod tests {
             LoadoutFields::new(&values, Signal::stored(create_team_sizes([0, 0, 0])[..2].to_vec()));
 
         assert_eq!(loadout_fields.get_values(), values);
+    }
+
+    #[test]
+    fn get_state_team_sizes_counts_the_participants_of_the_game_teams_in_skirmish() {
+        let state: GameState = create_state_with_team_members(GameModeKind::Skirmish);
+
+        assert_eq!(state.settings.team_count, Some(2));
+        assert_eq!(
+            get_state_team_sizes(&state),
+            vec![
+                TeamSize {
+                    team: TeamKind::Red,
+                    participant_count: 0,
+                },
+                TeamSize {
+                    team: TeamKind::Blue,
+                    participant_count: 2,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn get_state_team_sizes_is_empty_in_free_for_all() {
+        let state: GameState = create_state_with_team_members(GameModeKind::FreeForAll);
+
+        assert_eq!(get_state_team_sizes(&state), Vec::new());
+    }
+
+    #[test]
+    fn get_state_team_sizes_is_empty_in_survival() {
+        let state: GameState = create_state_with_team_members(GameModeKind::Survival);
+
+        assert_eq!(get_state_team_sizes(&state), Vec::new());
     }
 
     #[test]

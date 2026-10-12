@@ -47,13 +47,7 @@ pub fn GameBrowser() -> impl IntoView {
             .collect_view()
     };
     let online_clients_text = move || format!("Online Clients: {}", signals.game_list.get().online_client_count);
-    let notice_text = move || {
-        signals
-            .lobby_notice
-            .get()
-            .filter(|lobby_notice| *lobby_notice == LobbyNoticeKind::GameClosed)
-            .map(|lobby_notice| lobby_notice.text())
-    };
+    let notice_text = move || signals.lobby_notice_text(LobbyNoticeKind::GameClosed);
 
     view! {
         <div class="browser">

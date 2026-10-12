@@ -49,6 +49,13 @@ impl AppSignals {
         self.screen.set(screen);
     }
 
+    pub fn lobby_notice_text(&self, kind: LobbyNoticeKind) -> Option<String> {
+        self.lobby_notice
+            .get()
+            .filter(|lobby_notice| *lobby_notice == kind)
+            .map(|lobby_notice| lobby_notice.text())
+    }
+
     pub fn go_back(&self) {
         let back_screen: Option<Screen> =
             self.screen.get_untracked().get_back_screen(self.own_member_state.get_untracked());

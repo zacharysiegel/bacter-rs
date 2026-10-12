@@ -14,8 +14,10 @@ const RECONNECT_TEXT: &str = "Reconnect";
 pub fn TitleMenu() -> impl IntoView {
     let signals: AppSignals = expect_context();
     let create_menu_fields: CreateMenuFields = expect_context();
+
     let lobby_access: Signal<LobbyAccessKind> = Signal::derive(move || signals.connection_status.get().lobby_access());
     let is_lobby_disabled = move || lobby_access.get() == LobbyAccessKind::Disabled;
+
     let open_create_menu = move |_| {
         if lobby_access.get_untracked() == LobbyAccessKind::Enabled {
             create_menu_fields.reset();
@@ -28,17 +30,11 @@ pub fn TitleMenu() -> impl IntoView {
         }
     };
     let start_tutorial = move |_| game_canvas::dispatch_driver_command(DriverCommandKind::StartTutorial);
+
     let notice_text = move || {
         let connection_notice: Option<String> = signals.connection_status.get().notice_text().map(String::from);
-        let lobby_notice_text = move || {
-            signals
-                .lobby_notice
-                .get()
-                .filter(|lobby_notice| *lobby_notice == LobbyNoticeKind::SynchronisationLost)
-                .map(|lobby_notice| lobby_notice.text())
-        };
 
-        connection_notice.or_else(lobby_notice_text)
+        connection_notice.or_else(|| signals.lobby_notice_text(LobbyNoticeKind::SynchronisationLost))
     };
     let is_reconnect_offered = move || signals.connection_status.get().reconnect_offer() == ReconnectOfferKind::Offered;
     let reconnect = move |_| game_canvas::dispatch_driver_command(DriverCommandKind::Reconnect);

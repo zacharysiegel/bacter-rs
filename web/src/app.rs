@@ -6,6 +6,7 @@ use shared::settings::SettingsStore;
 
 use crate::browser::GameListView;
 use crate::connection::ConnectionStatusKind;
+use crate::menu::CreateMenuFields;
 use crate::screen::{LobbyNoticeKind, Screen};
 
 #[cfg(feature = "ssr")] // a browser build renders no document
@@ -109,6 +110,7 @@ mod ssr {
 pub fn App() -> impl IntoView {
     let signals: AppSignals = AppSignals::new();
     provide_context(signals);
+    provide_context(CreateMenuFields::new());
 
     view! { <div class="screen-layer"></div> }
 }

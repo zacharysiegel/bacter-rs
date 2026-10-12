@@ -205,6 +205,23 @@ mod tests {
     }
 
     #[test]
+    fn lobby_notice_text_gives_only_the_requested_notice() {
+        let owner: Owner = Owner::new();
+        owner.set();
+        let signals: AppSignals = AppSignals::new();
+
+        assert_eq!(signals.lobby_notice_text(LobbyNoticeKind::GameClosed), None);
+
+        signals.lobby_notice.set(Some(LobbyNoticeKind::GameClosed));
+
+        assert_eq!(
+            signals.lobby_notice_text(LobbyNoticeKind::GameClosed),
+            Some(LobbyNoticeKind::GameClosed.text()),
+        );
+        assert_eq!(signals.lobby_notice_text(LobbyNoticeKind::SynchronisationLost), None);
+    }
+
+    #[test]
     fn set_if_changed_notifies_only_for_a_different_value() {
         let owner: Owner = Owner::new();
         owner.set();

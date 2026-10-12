@@ -1,8 +1,10 @@
 use shared::protocol::MessageSerialIn;
 
 use crate::app::ClientSettings;
+#[cfg(feature = "hydrate")] // the ssr build has no driver
+use crate::canvas::driver;
 
-/// What the views ask of the driver, which owns the socket and the scenes.
+/// What the views ask of the driver.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DriverCommandKind {
     SendRequest(MessageSerialIn),
@@ -12,24 +14,10 @@ pub enum DriverCommandKind {
     StoreClientSettings(ClientSettings),
 }
 
-#[cfg(feature = "hydrate")] // the ssr build has no driver to command
-pub use browser::*;
-#[cfg(not(feature = "hydrate"))] // the ssr build has no driver
-pub use server::*;
-
-#[cfg(feature = "hydrate")] // the ssr build has no driver to command
-mod browser {
-    use crate::canvas::DriverCommandKind;
-    use crate::canvas::driver;
-
-    pub fn dispatch_driver_command(command: DriverCommandKind) {
-        driver::dispatch(command);
-    }
+#[cfg(feature = "hydrate")] // the ssr build has no driver
+pub fn dispatch_driver_command(command: DriverCommandKind) {
+    driver::dispatch(command);
 }
 
-#[cfg(not(feature = "hydrate"))] // the ssr build renders the canvas without driving it
-mod server {
-    use crate::canvas::DriverCommandKind;
-
-    pub fn dispatch_driver_command(_command: DriverCommandKind) {}
-}
+#[cfg(not(feature = "hydrate"))] // the hydrate build dispatches to the driver
+pub fn dispatch_driver_command(_command: DriverCommandKind) {}

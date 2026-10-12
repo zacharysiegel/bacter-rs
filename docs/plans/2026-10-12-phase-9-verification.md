@@ -21,12 +21,13 @@
   - "Create `path`" with the whole new file;
   - "Replace the whole contents of `path`";
   - "In `path`, replace" a text which occurs exactly once in the file, "with" its replacement;
-  - "In `path`, insert after" a text which occurs exactly once in the file.
+  - "In `path`, insert after" a text which occurs exactly once in the file;
+  - "In `path`, insert before" a text which occurs exactly once in the file.
 - Builds stay warning-free, tests included; a warning is a defect to fix before committing.
 - Expected outputs were observed by executing Tasks 1 to 5 and the automated suites in a scratch clone of this branch. The `finished in` timing of each `test result` line, the build timings and `Compiling` lines are left out; a native panic line's thread number (`(61298604)`) differs per run.
 - Sandboxes: commands which bind a loopback port (the server's integration tests, `./scripts/dev/server.sh`, `./scripts/dev/web.sh`, `wasm-pack test`) fail with `Operation not permitted (os error 1)` inside a command sandbox; run them outside it.
 - Long commands (a cold `cargo test --workspace`, `./scripts/test/check-wasm.sh`, `./scripts/test/test-slow-consumer.sh`, `cargo leptos watch`) start with the Bash tool's `run_in_background` option and are polled with short commands.
-- A ledger regression test (Tasks 3 to 5) guards behaviour the code already has, so it passes when written. Its failing run is a mutation check instead: a one-line edit restores the original's defect, the new test fails, and the edit is undone before the commit.
+- A ledger regression test (Tasks 3 to 5) guards behaviour the code already has, so it passes when written. Its failing run is a mutation check instead: a one-line edit removes the behaviour the entry's resolution provides (for Task 5 the neutralize protection itself, since the rewrite has one neutralize check for every acid source), the new test fails, and the edit is undone before the commit.
 - Browser checks (Task 9): start `./scripts/dev/server.sh` and `./scripts/dev/web.sh` detached with `nohup` (a tracked background task could not bind 127.0.0.1:3011 in phase 8), drive Chrome through the chrome-devtools MCP tools (load them with ToolSearch, query `chrome-devtools navigate screenshot console`, or `select:` the exact names), and stop every process you started by its PID. Leave processes you did not start alone, including a `cargo leptos watch` of another project. If the MCP tools are unavailable, record that in the verification notes rather than claiming a check passed.
 - The menus' radio buttons are `div`s the accessibility snapshot does not list; click them from `evaluate_script` (`document.querySelectorAll('.menu-radio')[index].click()`), counting them in row order (Skin 0 to 2, 1st ability 3 and 4, 2nd 5 and 6, 3rd 7 and 8, 4th 9, then Auto Assign).
 - Results of every observation go into [Verification notes](#verification-notes) at the end of this file, one bullet per check, as the tasks say; the owner reads them in the PR.
@@ -38,12 +39,12 @@
 - `scripts/test/test-replay-wasm.sh` sets `CARGO_TARGET_WASM32_WASIP1_RUNNER` to `wasmtime run --dir=<repository>/shared/tests/fixtures`: the test locates its fixtures through `env!("CARGO_MANIFEST_DIR")`, an absolute host path, and wasmtime's `--dir` without a guest path preopens the directory under that same path. No `.cargo/config.toml`: the runner needs the repository's absolute path, and only this script runs the target.
 - The wasm run uses the debug profile, so overflow checks stay on for the 32-bit `usize` arithmetic it exists to cover; it takes about 10 s.
 - The wasm run passes `--nocapture`: under `wasm32-wasip1` a panic aborts the process, and libtest's captured output (the assertion message) would be lost.
-- `require_program` moves into `scripts/test/test-preconditions.sh`, sourced by `test-wasm.sh` and `test-replay-wasm.sh`, as `scripts/git/git-preconditions.sh` is for the git scripts. `setup.sh` keeps its own copy: it sits outside `scripts/test/` and also needs `recommend_program`. `require_rust_target` has one consumer and stays in `test-replay-wasm.sh`.
+- `require_program` moves into `scripts/test/test-preconditions.sh`, sourced by `test-wasm.sh` and `test-replay-wasm.sh`, as `scripts/git/git-preconditions.sh` is for the git scripts. `setup.sh` and `scripts/build/build-site.sh` keep their own copies: they sit outside `scripts/test/` (and `setup.sh` also needs `recommend_program`). `require_rust_target` has one consumer and stays in `test-replay-wasm.sh`.
 - Ledger walk-through: an entry whose resolution is testable gets a regression test when no test exercises the original's specific defect. Three entries qualify: the spawn search stopping after the first organism, the round win applied more than once, and the neutralize check of shot secretions (the existing damage test uses a spore). Every other entry maps to an existing test or to a structural resolution (a type, a missing message, the tick order); the mapping is [Bug-fix ledger walk-through](#bug-fix-ledger-walk-through) below, checked mechanically in Task 6.
 - Visual parity is judged against `docs/architecture/client-web.md` and the original's sources (`public/css/*.css`, `public/js/ui/*.js` of `/Users/singularity/bacter`, branch `master`): the original needs its Node and socket.io server, which this phase does not run.
 - Safari is not driven: the chrome-devtools tools drive Chrome only, and `safaridriver` needs the owner to enable remote automation with administrator rights. The Safari checks are recorded as left to the owner.
 - Network throttling uses the MCP `emulate` presets, which shape latency and throughput but cannot drop packets; packet loss is recorded as not emulated. CPU throttling (`cpuThrottlingRate`) drives the backlog resync path, which a slow network alone may not reach.
-- The documentation pass is mechanical where it can be: every path the architecture and convention docs name must exist, and every source file must appear in a module tree. The pass found three files missing from the trees (`shared/src/game/tick.rs`, `shared/src/game/test_fixture.rs`, `server/src/game/test_fixture.rs`) and one named script not yet present (`scripts/test/test-replay-wasm.sh`, created in Task 2).
+- The documentation pass is mechanical where it can be: every path the architecture and convention docs name must exist, and every source, test and script file must appear in an architecture doc. The pass found three files missing from the module trees (`shared/src/game/tick.rs`, `shared/src/game/test_fixture.rs`, `server/src/game/test_fixture.rs`), three named nowhere (`scripts/git/git-preconditions.sh`, `shared/tests/determinism.rs`, `shared/tests/helpers/replay_fixture.rs`) and one named script not yet present (`scripts/test/test-replay-wasm.sh`, created in Task 2).
 
 ## File structure
 
@@ -54,8 +55,8 @@
 - Modify `shared/src/round/round.rs`: test `run_round_transition_phase_gives_the_win_once_while_the_survivor_lives_on`.
 - Modify `shared/src/ability/damage.rs`: test `run_damage_phase_spares_cells_inside_any_neutralize_field_from_a_shot_secretion`.
 - Modify `docs/architecture/overview.md`: the three missing files in the `shared` and `server` module trees.
-- Modify `docs/architecture/dev-workflow.md`: `scripts/test/test-preconditions.sh` in the script list.
-- Modify `docs/architecture/testing.md`: the new regression tests in the simulation unit test list.
+- Modify `docs/architecture/dev-workflow.md`: `scripts/test/test-preconditions.sh` and `scripts/git/git-preconditions.sh` in the script list.
+- Modify `docs/architecture/testing.md`: the new regression tests in the simulation unit test list; `shared/tests/determinism.rs` and `shared/tests/helpers/replay_fixture.rs` in the determinism and replay test lists.
 - Modify `docs/plans/2026-10-12-phase-9-verification.md` (this file): verification notes, deviations.
 
 ### Task 1: Shared program check for the test scripts
@@ -806,7 +807,7 @@ for doc_path in docs/architecture/*.md docs/conventions/*.md CLAUDE.md; do
     done
 done
 
-source_paths=$(find shared/src server/src web/src -name '*.rs' ! -name mod.rs ! -name lib.rs ! -name main.rs | sort)
+source_paths=$(find shared/src server/src web/src shared/tests server/tests web/tests scripts -name '*.rs' -o -name '*.sh' | grep -v -e '/mod.rs$' -e '/lib.rs$' -e '/main.rs$' -e '/fixtures/' | sort)
 
 for source_path in ${source_paths}; do
     base_name=$(basename "${source_path}")
@@ -825,11 +826,15 @@ echo "${missing_count} problems"
 
 Run: `bash /tmp/bacter-phase9-check-docs.sh`
 
-Expected: FAIL, the files missing from the module trees (the replay script exists since Task 2):
+Expected: FAIL, the files missing from the module trees and the script and test lists (the replay script exists since Task 2):
 
 ```text
+undocumented: scripts/git/git-preconditions.sh
+undocumented: scripts/test/test-preconditions.sh
 undocumented: shared/src/game/tick.rs
-1 problems
+undocumented: shared/tests/determinism.rs
+undocumented: shared/tests/helpers/replay_fixture.rs
+5 problems
 ```
 
 `shared/src/game/test_fixture.rs` and `server/src/game/test_fixture.rs` pass this check only through the web tree's `test_fixture.rs` line; Step 3 lists them in their own trees.
@@ -860,10 +865,10 @@ with:
 
 ```text
              replay_capture.rs    optional replay record stream, writer task
-             test_fixture.rs      (test) settings, joiners, members and handles for the game modules' tests
+             test_fixture.rs      (test) settings, joiners, members, game handles and temporary directories
 ```
 
-- [ ] **Step 4: List the sourced test preconditions**
+- [ ] **Step 4: List the sourced preconditions**
 
 In `docs/architecture/dev-workflow.md`, replace:
 
@@ -875,10 +880,22 @@ with:
 
 ```markdown
 - `scripts/test/test-replay-wasm.sh`: [determinism tests](./testing.md#determinism-tests).
-- `scripts/test/test-preconditions.sh`: the program check the `scripts/test/` scripts source; not run directly.
+- `scripts/test/test-preconditions.sh`: `require_program`; sourced, not run directly.
 ```
 
-- [ ] **Step 5: Name the regression tests**
+In `docs/architecture/dev-workflow.md`, insert after:
+
+```markdown
+- `scripts/git/branch-init.sh`, `pr-integrate.sh`, `cleanup-merged.sh`: adapted from eafora; `pr-integrate.sh` has no `--budget` mode (bacter-rs has no site budget script).
+```
+
+the line:
+
+```markdown
+- `scripts/git/git-preconditions.sh`: the git scripts' shared checks; sourced, not run directly.
+```
+
+- [ ] **Step 5: Name the regression tests and the shared test files**
 
 In `docs/architecture/testing.md`, replace:
 
@@ -906,20 +923,56 @@ with:
 pop applies once per target, neutralize protection against spore and shot acid, teammate immunity,
 ```
 
+In `docs/architecture/testing.md`, replace:
+
+```markdown
+- Same seed and bundles stepped twice in process give
+```
+
+with:
+
+```markdown
+- `shared/tests/determinism.rs`: same seed and bundles stepped twice in process give
+```
+
+In `docs/architecture/testing.md`, replace:
+
+```markdown
+- Snapshot round trip: at tick t,
+```
+
+with:
+
+```markdown
+- Snapshot round trip (`shared/tests/determinism.rs`): at tick t,
+```
+
+In `docs/architecture/testing.md`, insert after:
+
+```markdown
+- `shared/tests/replay.rs`: every fixture in `shared/tests/fixtures/*.replay` re-run, compared with its committed checksum file.
+```
+
+the line:
+
+```markdown
+- `shared/tests/helpers/replay_fixture.rs`: reads `scripted_game.replay` into a `ReplayLog`.
+```
+
 - [ ] **Step 6: Run the check and see it pass**
 
-Run: `bash /tmp/bacter-phase9-check-docs.sh && grep -c 'tick.rs\|test_fixture.rs\|test-preconditions.sh\|once per round\|every organism checked\|spore and shot acid' docs/architecture/overview.md docs/architecture/dev-workflow.md docs/architecture/testing.md`
+Run: `bash /tmp/bacter-phase9-check-docs.sh && grep -c 'tick.rs\|test_fixture.rs\|test-preconditions.sh\|git-preconditions.sh\|determinism.rs\|replay_fixture.rs\|once per round\|every organism checked\|spore and shot acid' docs/architecture/overview.md docs/architecture/dev-workflow.md docs/architecture/testing.md`
 
 Expected (the three count lines in any order):
 
 ```text
 0 problems
 docs/architecture/overview.md:4
-docs/architecture/dev-workflow.md:1
-docs/architecture/testing.md:3
+docs/architecture/dev-workflow.md:2
+docs/architecture/testing.md:6
 ```
 
-`overview.md` counts the two new `test_fixture.rs` lines, the `tick.rs` line and the web tree's existing `test_fixture/ test_fixture.rs` line; `testing.md` the ability, rounds and spawn lines.
+`overview.md` counts the two new `test_fixture.rs` lines, the `tick.rs` line and the web tree's existing `test_fixture/ test_fixture.rs` line; `dev-workflow.md` the two precondition lines; `testing.md` the ability, rounds and spawn lines, the two `determinism.rs` lines and the `replay_fixture.rs` line.
 
 - [ ] **Step 7: Commit**
 
@@ -970,7 +1023,7 @@ Compare each screen with `docs/architecture/client-web.md` (Screens, Renderer, O
 - Browser: the table's columns (Title, Mode, Players, Spectators, Player Cap, Join or Spectate), the "← Back" and "Online Clients: N" footer, against `browser.css`.
 - Create, join, spectate, respawn and pause menus: header, two-column striped rows, red per-field errors, the bottom general row, the Back footer, against `menus.css`; the per-mode visibility of Create (ffa, skm, srv).
 - In a game (create a Free for All game, world 600): the world colours and draw order of the Renderer section (backdrop 70,70,70, shadow, black body, 210 border), each skin (Grid, Circles, Ghost, None; join four times, or change it in the pause menu), the ability bar's slots, dials, icons, key tabs and dots against `HUD.js`, the leaderboard's place, row height, columns and own-row bold against `Board.js`, the message box's place and font against `Message.js`, the name label under the organism.
-- Tutorial: the task texts of `public/js/Tutorial.js` in the message box, the crosshair over a still world, the HUD hidden during the move and survive tasks.
+- Tutorial: the task texts of `public/js/ui/Message.js` (its tutorial branch) in the message box, the crosshair over a still world, the HUD hidden during the move and survive tasks.
 
 Record one bullet per screen: parity, or each difference with the original's value and ours.
 
@@ -1055,7 +1108,7 @@ async () => {
 }
 ```
 
-(for X: `slotIndex = 0`, `keyCode = 'KeyX'`, key `'x'`, `sampleCount = 90`). Expected timings from `ability_constants.rs`: the spore flies about 1.7 s, secretes 0.8 s and cools 7.5 s; Extend is active 4.5 s and cools 4 s; the dial drains while active or flying and refills while cooling. Watch a spore and a Freeze shot fly in `take_screenshot`s taken during the flight. Record the measured speed, the dial timings and what the flights looked like.
+(for X: `slotIndex = 0`, `keyCode = 'KeyX'`, key `'x'`, `sampleCount = 90`). Expected timings from `ability_constants.rs`: the spore flies about 1.7 s, then cools 7.5 s (no secretion without a second press); Extend is active 4.5 s and cools 4 s; the dial drains while active or flying and refills while cooling. Watch a spore and a Freeze shot fly in `take_screenshot`s taken during the flight. Record the measured speed, the dial timings and what the flights looked like.
 
 - [ ] **Step 6: Two browsers, then throttling**
 
@@ -1066,6 +1119,8 @@ On the second page, in turn, for about 30 s each while holding a movement key in
 - `emulate` `networkConditions` `Slow 3G`, then `Fast 3G`;
 - `emulate` `cpuThrottlingRate` 20 (no network throttling);
 - then `emulate` with `cpuThrottlingRate` 1 and no `networkConditions` (both off).
+
+The client advances only from `requestAnimationFrame`, which Chrome pauses on a hidden page, so a hidden page builds a backlog of its own. Before each condition and before each `list_console_messages`, run `evaluate_script` `() => document.visibilityState` on both pages and record it. If a page reports `hidden`, bring it forward with `select_page` (`bringToFront`) or tile the two windows; attribute any warning from a page which was hidden to the hidden page, not to the throttle.
 
 After each, `list_console_messages` on both pages. Record per condition: whether the game kept playing on both pages, any `applied tick too far behind the server`, `state checksum differs from the server's`, `synchronisation lost, leaving the game` or `cursor correction dropped` warning, whether the crosshair jumped back (a clamp), and whether the "Catching up" message showed during a resync. Record packet loss as not emulated (the presets shape latency and throughput only).
 

@@ -1,0 +1,10 @@
+/* Centred on the shown text, its baseline at the label point. */
+.name-label {
+    position: absolute;
+    color: var(--color-world-border);
+    font-family: var(--font-overlay);
+    font-size: 10px;
+    line-height: 1;
+    white-space: pre;
+    transform: translate(-50%, -80%);
+}

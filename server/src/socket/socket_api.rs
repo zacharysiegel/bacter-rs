@@ -27,7 +27,7 @@ pub struct SocketContext {
 }
 
 pub fn configurer(service_config: &mut web::ServiceConfig) {
-    service_config.route("/ws", web::get().to(open_socket));
+    service_config.route(protocol::WEBSOCKET_PATH, web::get().to(open_socket));
 }
 
 /// Version and connection-limit failures upgrade, then close at once, so the client can read the close reason.

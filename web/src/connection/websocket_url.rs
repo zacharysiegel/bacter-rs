@@ -3,7 +3,6 @@ use shared::protocol;
 const SECURE_PAGE_PROTOCOL: &str = "https:";
 const SECURE_WEBSOCKET_SCHEME: &str = "wss:";
 const PLAIN_WEBSOCKET_SCHEME: &str = "ws:";
-const WEBSOCKET_PATH: &str = "/ws";
 
 /// The parts of the page's location a same-origin socket URL is built from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,7 +30,7 @@ fn get_same_origin_websocket_url(page_origin: &PageOrigin) -> String {
         PLAIN_WEBSOCKET_SCHEME
     };
 
-    format!("{scheme}//{}{WEBSOCKET_PATH}", page_origin.host)
+    format!("{scheme}//{}{}", page_origin.host, protocol::WEBSOCKET_PATH)
 }
 
 #[cfg(test)]

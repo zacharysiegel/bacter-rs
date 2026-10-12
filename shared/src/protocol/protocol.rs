@@ -7,7 +7,8 @@ use crate::protocol::{
 
 /// Bumped on any change to a wire type.
 pub const PROTOCOL_VERSION: u16 = 1;
-/// The `/ws` query parameter carrying the client's `PROTOCOL_VERSION`.
+pub const WEBSOCKET_PATH: &str = "/ws";
+/// The `WEBSOCKET_PATH` query parameter carrying the client's `PROTOCOL_VERSION`.
 pub const PROTOCOL_VERSION_QUERY_PARAMETER: &str = "protocol_version";
 
 /// `websocket_url` with this build's protocol version as its query.

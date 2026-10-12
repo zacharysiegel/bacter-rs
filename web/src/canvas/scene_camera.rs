@@ -68,10 +68,7 @@ mod tests {
 
     #[test]
     fn get_scene_view_follows_the_crosshair_online_without_drawing_it_outside_play() {
-        let controls: PlayerControls = create_controls_at(SubpixelPoint {
-            x: 1024 * 500,
-            y: 1024 * 400,
-        });
+        let controls: PlayerControls = create_controls_at(WorldPoint { x: 500, y: 400 }.to_subpixel_point());
         let active_scene: ActiveScene = ActiveScene::Online(ClientSession::new());
 
         let scene_view: SceneView = get_scene_view(&active_scene, &controls, VIEWPORT);

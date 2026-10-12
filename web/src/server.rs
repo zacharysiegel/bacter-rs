@@ -6,8 +6,10 @@ use any_spawner::Executor;
 use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::http::{Request, StatusCode};
+use axum::response::Response;
 use axum::routing;
 use leptos::prelude::*;
+use tokio::net::TcpListener;
 
 use shared::error::AppError;
 
@@ -37,7 +39,7 @@ pub async fn serve() -> Result<(), AppError> {
         )
         .fallback(leptos_axum::file_and_error_handler(app::shell))
         .with_state(leptos_options);
-    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&address).await.map_err(|error| {
+    let listener: TcpListener = TcpListener::bind(&address).await.map_err(|error| {
         AppError::from_error(
             &format!("binding the dev server failed; [address={address}]"),
             Box::new(error),
@@ -86,7 +88,7 @@ pub async fn prerender_document(leptos_options: LeptosOptions) -> Result<Bytes, 
         .uri(PRERENDERED_ROUTE_PATH)
         .body(Body::empty())
         .map_err(|error| AppError::from_error("building the render request failed", Box::new(error)))?;
-    let response: axum::response::Response = render_document(request).await;
+    let response: Response = render_document(request).await;
     let status: StatusCode = response.status();
 
     if !status.is_success() {

@@ -176,9 +176,7 @@ impl Driver {
                 let screen: Screen = self.signals.screen.get_untracked();
                 let next_screen: Screen = screen.after_own_member_state_change(own_member_state);
 
-                if next_screen != screen {
-                    self.signals.navigate(next_screen);
-                }
+                self.navigate_if_changed(next_screen);
             }
             ClientEffect::OwnSpawnRejected => self.show_transient_message(TransientMessageKind::NoRoomToSpawn),
             ClientEffect::ResyncStarted | ClientEffect::ResyncFinished => self.publish_scene_overlay(),
@@ -236,6 +234,13 @@ impl Driver {
         let screen: Screen = self.signals.screen.get_untracked();
         let next_screen: Screen = screen.after_connection_lost();
 
+        self.navigate_if_changed(next_screen);
+    }
+
+    fn navigate_if_changed(&self, next_screen: Screen) {
+        let screen: Screen = self.signals.screen.get_untracked();
+
+        // navigating also clears the request rejection
         if next_screen != screen {
             self.signals.navigate(next_screen);
         }

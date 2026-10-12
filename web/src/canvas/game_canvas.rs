@@ -27,7 +27,7 @@ pub fn GameCanvas() -> impl IntoView {
 
 #[cfg(feature = "hydrate")] // the ssr build has no driver to command
 pub use browser::*;
-#[cfg(not(feature = "hydrate"))] // the ssr build has no driver
+#[cfg(not(feature = "hydrate"))] // the hydrate build starts and commands the real driver
 pub use server::*;
 
 #[cfg(feature = "hydrate")] // the ssr build has no driver to command
@@ -52,7 +52,7 @@ mod browser {
     }
 }
 
-#[cfg(not(feature = "hydrate"))] // the ssr build renders the canvas without driving it
+#[cfg(not(feature = "hydrate"))] // the hydrate build starts and commands the real driver
 mod server {
     use leptos::html::Canvas;
     use leptos::prelude::*;

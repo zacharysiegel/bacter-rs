@@ -1347,4 +1347,12 @@ Each bullet is a ledger entry (or a group of entries with one resolution) and th
 
 ### Bug-fix ledger walk-through
 
+- Mapping check (`/tmp/bacter-phase9-check-ledger-tests.sh`): `98 tests named, 0 problems`.
+- No `alert(` in the web client: `grep -rn 'alert(' web/src` printed nothing.
+- Client messages carry intents only: `MessageSerialIn` has `SubscribeGameList`, `UnsubscribeGameList`, `CreateGame`, `JoinGame`, `SpectateGame`, `Respawn`, `UpdateAppearance`, `Input`, `RequestSnapshot`, `LeaveGame`; none carries a board, a leaderboard, a member list, a password change or an end-game request.
+- Tick order: `step` runs `activation::run_ability_press_phase` before `projectile::run_flight_phase`, `growth::run_birth_phase`, `growth::run_natural_death_phase` and `damage::run_damage_phase`.
+- Fresh abilities on spawn: both spawn paths assign `Some(Organism::new(position))` (`shared/src/organism/spawn.rs:85`, `shared/src/organism/spawn.rs:139`); `Organism::new` sets `abilities: OrganismAbilities::all_ready()` (`shared/src/organism/organism.rs:50`).
+- One socket, no automatic reconnect: `connect()` is called from `start` once the driver is created and from `reconnect`, which returns while `self.socket` is set and runs only for `DriverCommandKind::Reconnect` (dispatched only by the title menu's reconnect button, shown while the connection status offers it); `GameSocket::open` is called only from `open_socket`, which only `connect` reaches.
+- Other structural claims read against the code, all held: the password hash is computed only in `CreateGame` handling (`server/src/socket/request_dispatch.rs:165`) and stored in `GameHandle::password_hash`; round and tutorial timing are tick values (`phase_started_at: Tick` in the round state, `task_deadline: Option<Tick>` in `Tutorial`), and the server's only timers are the tick interval, lobby poll, removal poll, ping, write timeouts and shutdown delay; cell occupancy is a row bitmap (`CellOccupancy::row_bitmap_bytes`); `MessageBox` is a DOM `<p>` whose width the browser lays out; `MessageSerialIn` and `MessageSerialOut` are defined once in `shared/src/protocol/` and used by both `server` and `web`.
+
 ### Manual checks

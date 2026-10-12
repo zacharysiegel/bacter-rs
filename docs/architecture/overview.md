@@ -232,6 +232,7 @@ bacter-rs/
   - Client session (sans-IO), crosshair controller, tutorial, title scene.
   - Settings trait.
   - Renderer behind feature `render`.
+  - Test fixtures (`game::test_fixture`, `settings::InMemorySettingsStore`) behind feature `test-support`, for other crates' tests.
 - `[lib]` default; no binding code (no wasm-bindgen exports, no UniFFI).
 - Dependencies: bitcode (`protocol/` only), libm, minimer, log.
 - Feature `render = ["dep:wgpu", "dep:raw-window-handle", "dep:bytemuck"]`; off by default so `server` never links wgpu.
@@ -357,6 +358,7 @@ shutdown/    shutdown.rs          ServerRunState, termination signal wait
 - Responsibility: Leptos UI tree, browser glue (WebSocket, localStorage, requestAnimationFrame, canvas, keyboard).
 - `crate-type = ["cdylib", "rlib"]`; `#![recursion_limit = "512"]` in `lib.rs` and `main.rs`.
 - Dependencies: shared with `render`, leptos, leptos_meta, log; optional per feature.
+- Dev-dependencies: shared with `test-support`.
 - Feature `hydrate`: wasm-bindgen, wasm-bindgen-futures, js-sys, web-sys, console_log, console_error_panic_hook, `leptos/hydrate`.
 - Feature `ssr`: leptos_axum, axum, any_spawner, tokio (`rt`, `rt-multi-thread`, `net`, `macros`), `leptos/ssr`, `leptos_meta/ssr`.
 - web-sys features: `Window`, `Document`, `Location`, `Storage`, `Performance`, `HtmlCanvasElement`, `HtmlElement`, `Element`, `DomRect`, `EventTarget`, `Event`, `KeyboardEvent`, `MouseEvent`, `FocusEvent`, `WebSocket`, `BinaryType`, `MessageEvent`, `CloseEvent`, `ErrorEvent`, `Response`, `RequestInit`.

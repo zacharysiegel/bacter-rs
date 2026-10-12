@@ -1,5 +1,3 @@
-//! Browser runtime glue; compiled only under the `hydrate` feature.
-
 pub mod fullscreen;
 pub mod game_server_config;
 pub mod game_socket;

@@ -161,24 +161,16 @@ pub fn build_join_request(
 ) -> Result<MessageSerialIn, Vec<MenuIssue>> {
     let credentials: Result<(String, Option<String>), Vec<MenuIssue>> = normalize_credentials(screen_name, password);
     let loadout: Result<Loadout, Vec<MenuIssue>> = values.to_loadout();
+    let ((screen_name, password), loadout): ((String, Option<String>), Loadout) =
+        menu_form::combine_issue_results(credentials, loadout)?;
 
-    match (credentials, loadout) {
-        (Ok((screen_name, password)), Ok(loadout)) => {
-            let joiner: JoinerSerialIn = JoinerSerialIn {
-                screen_name,
-                loadout: LoadoutSerial::from(&loadout),
-                team: values.to_team_choice(),
-            };
+    let joiner: JoinerSerialIn = JoinerSerialIn {
+        screen_name,
+        loadout: LoadoutSerial::from(&loadout),
+        team: values.to_team_choice(),
+    };
 
-            Ok(create_join_request(origin, password, joiner))
-        }
-        (credentials_result, loadout_result) => {
-            let mut issues: Vec<MenuIssue> = credentials_result.err().unwrap_or_default();
-            issues.extend(loadout_result.err().unwrap_or_default());
-
-            Err(issues)
-        }
-    }
+    Ok(create_join_request(origin, password, joiner))
 }
 
 /// The trimmed screen name and the password, or an issue for each one which is invalid.
@@ -187,15 +179,7 @@ pub fn normalize_credentials(screen_name: &str, password: &str) -> Result<(Strin
     let normalized_password: Result<Option<String>, RejectionKind> =
         protocol_limits::normalize_password(Some(String::from(password)));
 
-    match (normalized_screen_name, normalized_password) {
-        (Ok(screen_name), Ok(password)) => Ok((screen_name, password)),
-        (screen_name_result, password_result) => Err(screen_name_result
-            .err()
-            .into_iter()
-            .chain(password_result.err())
-            .map(MenuIssue::from_rejection)
-            .collect()),
-    }
+    menu_form::combine_rejection_results(normalized_screen_name, normalized_password)
 }
 
 pub fn find_game_summary(game_summaries: &[GameSummary], game_id: GameId) -> Option<&GameSummary> {
@@ -352,6 +336,17 @@ mod tests {
     }
 
     #[test]
+    fn from_origin_hides_the_password_of_an_unsecured_listed_game() {
+        let origin: JoinMenuOrigin = JoinMenuOrigin::Browser { game_id: GAME_ID };
+        let mut game_summary: GameSummary = create_game_summary();
+        game_summary.secured = false;
+
+        let target: JoinTarget = JoinTarget::from_origin(&origin, &[game_summary]).unwrap();
+
+        assert_eq!(target.password_visibility, FieldVisibilityKind::Hidden);
+    }
+
+    #[test]
     fn from_origin_is_none_for_a_game_no_longer_listed() {
         let origin: JoinMenuOrigin = JoinMenuOrigin::Browser { game_id: GameId(4) };
 
@@ -402,6 +397,20 @@ mod tests {
                 MenuIssue::at_field(MenuFieldKind::SecondAbility, "Select a second ability"),
                 MenuIssue::at_field(MenuFieldKind::ThirdAbility, "Select a third ability"),
             ]),
+        );
+    }
+
+    #[test]
+    fn build_join_request_reports_a_password_over_the_limit() {
+        let origin: JoinMenuOrigin = JoinMenuOrigin::Browser { game_id: GAME_ID };
+        let long_password: String = "p".repeat(protocol_limits::PASSWORD_BYTE_LIMIT + 1);
+
+        assert_eq!(
+            build_join_request(&origin, "Blob", &long_password, &create_values()),
+            Err(vec![MenuIssue::at_field(
+                MenuFieldKind::Password,
+                &RejectionKind::PasswordTooLong.message_text(),
+            )]),
         );
     }
 

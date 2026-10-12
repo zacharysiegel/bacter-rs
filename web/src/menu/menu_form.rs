@@ -311,6 +311,33 @@ pub fn get_answered_rejection_issue(
     Some(MenuIssue::from_rejection(answered_rejection.reason))
 }
 
+/// Both values, or the issues of every failed result in argument order.
+pub fn combine_issue_results<First, Second>(
+    first: Result<First, Vec<MenuIssue>>,
+    second: Result<Second, Vec<MenuIssue>>,
+) -> Result<(First, Second), Vec<MenuIssue>> {
+    match (first, second) {
+        (Ok(first_value), Ok(second_value)) => Ok((first_value, second_value)),
+        (first_result, second_result) => {
+            let mut issues: Vec<MenuIssue> = first_result.err().unwrap_or_default();
+            issues.extend(second_result.err().unwrap_or_default());
+
+            Err(issues)
+        }
+    }
+}
+
+pub fn combine_rejection_results<First, Second>(
+    first: Result<First, RejectionKind>,
+    second: Result<Second, RejectionKind>,
+) -> Result<(First, Second), Vec<MenuIssue>> {
+    combine_issue_results(first.map_err(get_rejection_issues), second.map_err(get_rejection_issues))
+}
+
+fn get_rejection_issues(reason: RejectionKind) -> Vec<MenuIssue> {
+    vec![MenuIssue::from_rejection(reason)]
+}
+
 fn get_setting_field(setting_field: SettingFieldKind) -> MenuFieldKind {
     match setting_field {
         SettingFieldKind::WorldSize => MenuFieldKind::WorldWidth,
@@ -608,6 +635,28 @@ mod tests {
     #[test]
     fn get_answered_rejection_issue_is_none_without_a_rejection() {
         assert_eq!(get_answered_rejection_issue(None, &[RequestKind::JoinGame]), None);
+    }
+
+    #[test]
+    fn combine_rejection_results_reports_both_rejections_in_order() {
+        let screen_name: Result<String, RejectionKind> = Err(RejectionKind::ScreenNameEmpty);
+        let password: Result<Option<String>, RejectionKind> = Err(RejectionKind::PasswordTooLong);
+
+        assert_eq!(
+            combine_rejection_results(screen_name, password),
+            Err(vec![
+                MenuIssue::from_rejection(RejectionKind::ScreenNameEmpty),
+                MenuIssue::from_rejection(RejectionKind::PasswordTooLong),
+            ]),
+        );
+    }
+
+    #[test]
+    fn combine_issue_results_pairs_both_values() {
+        let first: Result<u8, Vec<MenuIssue>> = Ok(1);
+        let second: Result<&str, Vec<MenuIssue>> = Ok("two");
+
+        assert_eq!(combine_issue_results(first, second), Ok((1, "two")));
     }
 
     #[test]

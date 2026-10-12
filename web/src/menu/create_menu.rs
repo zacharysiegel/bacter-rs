@@ -7,6 +7,7 @@ use shared::world::WorldShapeKind;
 
 use crate::app::AppSignals;
 use crate::browser::game_browser;
+use crate::menu::menu_form;
 use crate::menu::{
     FieldAvailabilityKind, FieldVisibilityKind, ListOption, MenuFieldKind, MenuForm, MenuInput, MenuIssue, MenuRow,
 };
@@ -261,15 +262,10 @@ pub fn validate_create_menu(values: &CreateMenuValues) -> Result<JoinMenuOrigin,
     let normalized_password: Result<Option<String>, RejectionKind> =
         protocol_limits::normalize_password(Some(values.password.clone()));
 
-    match (validated_settings, normalized_password) {
-        (Ok(_), Ok(password)) => Ok(JoinMenuOrigin::Create { settings, password }),
-        (settings_result, password_result) => Err(settings_result
-            .err()
-            .into_iter()
-            .chain(password_result.err())
-            .map(MenuIssue::from_rejection)
-            .collect()),
-    }
+    let (_, password): (GameSettings, Option<String>) =
+        menu_form::combine_rejection_results(validated_settings, normalized_password)?;
+
+    Ok(JoinMenuOrigin::Create { settings, password })
 }
 
 fn create_list_input(selected_index: RwSignal<usize>, labels: &[&str]) -> MenuInput {

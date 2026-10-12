@@ -15,10 +15,13 @@ pub const ABILITY_SLOT_COUNT: usize = 4;
 /// The original's X, C, V and space, space drawn as an underscore.
 pub const ABILITY_KEY_LABELS: [&str; ABILITY_SLOT_COUNT] = ["X", "C", "V", "_"];
 const SLOT_SPACING_PIXELS: f32 = 100.0;
-/// The first slot's centre, left of the window centre.
-const FIRST_SLOT_OFFSET_PIXELS: f32 = -150.0;
+/// The slots are centred on the window centre.
+const FIRST_SLOT_OFFSET_PIXELS: f32 = -SLOT_SPACING_PIXELS * (ABILITY_SLOT_COUNT - 1) as f32 / 2.0;
+pub const DIAL_BACK_RADIUS_PIXELS: f32 = 30.0;
 const DIAL_RADIUS_PIXELS: f32 = 29.0;
 const SHOT_DIAL_RADIUS_PIXELS: f32 = 8.0;
+/// Room outside the shot dial for its outline.
+const SHOT_DIAL_OUTLINE_MARGIN_PIXELS: f32 = 1.0;
 
 /// A dial's grey disc, full when ready.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -32,9 +35,9 @@ pub enum AbilityDialKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EffectDotKind {
-    /// Green, left above the dial: the own Extend, Immortality or Neutralize.
+    /// The own Extend, Immortality or Neutralize.
     OwnEffect,
-    /// Red, right above the dial: compressed, frozen, or the own Toxin field.
+    /// Compressed, frozen, or the own Toxin field.
     EnemyEffect,
 }
 
@@ -73,7 +76,6 @@ impl AbilityBarView {
     }
 }
 
-/// Slots sit 100 px apart around the window centre, at nine tenths of its height.
 #[component]
 pub fn AbilityBar(ability_bar: Signal<Option<AbilityBarView>>) -> impl IntoView {
     move || {
@@ -113,18 +115,31 @@ pub fn get_dial_path_data(dial: AbilityDialKind, radius: f32) -> String {
     format!("M 0 0 L 0 -{radius} A {radius} {radius} 0 {large_arc_flag} 1 {end_x:.3} {end_y:.3} Z")
 }
 
+/// A square SVG `viewBox` centred on the origin.
+pub fn get_centred_view_box(half_width_pixels: f32) -> String {
+    let width_pixels: String = get_centred_width(half_width_pixels);
+
+    format!("-{half_width_pixels} -{half_width_pixels} {width_pixels} {width_pixels}")
+}
+
+pub fn get_centred_width(half_width_pixels: f32) -> String {
+    (half_width_pixels * 2.0).to_string()
+}
+
 fn render_slot(slot_index: usize, slot: AbilitySlotView) -> AnyView {
     let slot_offset_pixels: f32 = FIRST_SLOT_OFFSET_PIXELS + SLOT_SPACING_PIXELS * slot_index as f32;
     let slot_style: String = format!("left: calc(50% + {slot_offset_pixels}px)");
     let dial_path_data: String = get_dial_path_data(slot.dial, DIAL_RADIUS_PIXELS);
     let shot_dial_view: Option<AnyView> = slot.shot_dial.map(render_shot_dial);
     let effect_dot_views: Vec<AnyView> = slot.effect_dots.into_iter().map(render_effect_dot).collect();
+    let dial_view_box: String = get_centred_view_box(DIAL_BACK_RADIUS_PIXELS);
+    let dial_width_pixels: String = get_centred_width(DIAL_BACK_RADIUS_PIXELS);
 
     view! {
         <div class="ability-slot" style=slot_style>
             <div class="ability-key-tab">{slot.key_label}</div>
-            <svg class="ability-dial" viewBox="-30 -30 60 60" width="60" height="60">
-                <circle class="ability-dial-back" r="30"></circle>
+            <svg class="ability-dial" viewBox=dial_view_box width=dial_width_pixels.clone() height=dial_width_pixels>
+                <circle class="ability-dial-back" r=DIAL_BACK_RADIUS_PIXELS.to_string()></circle>
                 <path class="ability-dial-fill" d=dial_path_data></path>
             </svg>
             <AbilityIconView icon=slot.icon />
@@ -137,9 +152,17 @@ fn render_slot(slot_index: usize, slot: AbilitySlotView) -> AnyView {
 
 fn render_shot_dial(shot_dial: AbilityDialKind) -> AnyView {
     let shot_dial_path_data: String = get_dial_path_data(shot_dial, SHOT_DIAL_RADIUS_PIXELS);
+    let shot_dial_half_width_pixels: f32 = SHOT_DIAL_RADIUS_PIXELS + SHOT_DIAL_OUTLINE_MARGIN_PIXELS;
+    let shot_dial_view_box: String = get_centred_view_box(shot_dial_half_width_pixels);
+    let shot_dial_width_pixels: String = get_centred_width(shot_dial_half_width_pixels);
 
     view! {
-        <svg class="ability-shot-dial" viewBox="-9 -9 18 18" width="18" height="18">
+        <svg
+            class="ability-shot-dial"
+            viewBox=shot_dial_view_box
+            width=shot_dial_width_pixels.clone()
+            height=shot_dial_width_pixels
+        >
             <path class="ability-shot-dial-fill" d=shot_dial_path_data></path>
         </svg>
     }
@@ -156,18 +179,10 @@ fn render_effect_dot(effect_dot: EffectDotKind) -> AnyView {
 }
 
 fn get_first_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick) -> AbilitySlotView {
-    let (icon, shot_dial): (AbilityIconKind, Option<AbilityDialKind>) = match loadout.first {
+    let (icon, carried_shot): (AbilityIconKind, Option<ShotEffectKind>) = match loadout.first {
         FirstAbilityKind::Extend => (AbilityIconKind::Extend, None),
-        FirstAbilityKind::Compress => (
-            AbilityIconKind::Compress,
-            Some(get_shot_dial(
-                &abilities.shots[ShotEffectKind::Compress.slot_index()],
-                tick,
-            )),
-        ),
+        FirstAbilityKind::Compress => (AbilityIconKind::Compress, Some(ShotEffectKind::Compress)),
     };
-    let effect_dots: Vec<EffectDotKind> =
-        get_effect_dots(abilities.is_extended(loadout), abilities.compressed_until.is_some());
 
     AbilitySlotView {
         icon,
@@ -178,24 +193,16 @@ fn get_first_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick) 
             loadout.first.cooldown_ticks(),
             tick,
         ),
-        shot_dial,
-        effect_dots,
+        shot_dial: get_carried_shot_dial(abilities, carried_shot, tick),
+        effect_dots: get_effect_dots(abilities.is_extended(loadout), abilities.is_compressed()),
     }
 }
 
 fn get_second_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick) -> AbilitySlotView {
-    let (icon, shot_dial): (AbilityIconKind, Option<AbilityDialKind>) = match loadout.second {
+    let (icon, carried_shot): (AbilityIconKind, Option<ShotEffectKind>) = match loadout.second {
         SecondAbilityKind::Immortality => (AbilityIconKind::Immortality, None),
-        SecondAbilityKind::Freeze => (
-            AbilityIconKind::Freeze,
-            Some(get_shot_dial(
-                &abilities.shots[ShotEffectKind::Freeze.slot_index()],
-                tick,
-            )),
-        ),
+        SecondAbilityKind::Freeze => (AbilityIconKind::Freeze, Some(ShotEffectKind::Freeze)),
     };
-    let effect_dots: Vec<EffectDotKind> =
-        get_effect_dots(abilities.is_immortal(loadout), abilities.frozen_until.is_some());
 
     AbilitySlotView {
         icon,
@@ -206,8 +213,8 @@ fn get_second_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick)
             loadout.second.cooldown_ticks(),
             tick,
         ),
-        shot_dial,
-        effect_dots,
+        shot_dial: get_carried_shot_dial(abilities, carried_shot, tick),
+        effect_dots: get_effect_dots(abilities.is_immortal(loadout), abilities.is_frozen()),
     }
 }
 
@@ -216,10 +223,6 @@ fn get_third_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick) 
         ThirdAbilityKind::Neutralize => AbilityIconKind::Neutralize,
         ThirdAbilityKind::Toxin => AbilityIconKind::Toxin,
     };
-    let effect_dots: Vec<EffectDotKind> = get_effect_dots(
-        abilities.is_neutralize_field_active(loadout),
-        abilities.is_toxin_field_active(loadout),
-    );
 
     AbilitySlotView {
         icon,
@@ -231,7 +234,10 @@ fn get_third_slot(abilities: &OrganismAbilities, loadout: &Loadout, tick: Tick) 
             tick,
         ),
         shot_dial: None,
-        effect_dots,
+        effect_dots: get_effect_dots(
+            abilities.is_neutralize_field_active(loadout),
+            abilities.is_toxin_field_active(loadout),
+        ),
     }
 }
 
@@ -268,6 +274,14 @@ fn get_ability_dial(phase: AbilityPhase, active_ticks: u32, cooldown_ticks: u32,
         AbilityPhase::Active { ends_at } => get_remaining_dial(ends_at, active_ticks, tick),
         AbilityPhase::Cooling { ready_at } => get_elapsed_dial(ready_at, cooldown_ticks, tick),
     }
+}
+
+fn get_carried_shot_dial(
+    abilities: &OrganismAbilities,
+    carried_shot: Option<ShotEffectKind>,
+    tick: Tick,
+) -> Option<AbilityDialKind> {
+    carried_shot.map(|shot_effect| get_shot_dial(&abilities.shots[shot_effect.slot_index()], tick))
 }
 
 fn get_shot_dial(shot: &ShotPhase, tick: Tick) -> AbilityDialKind {
@@ -449,6 +463,69 @@ mod tests {
             ability_bar.slots[3].dial,
             AbilityDialKind::Partial { filled_proportion: 0.0 },
         );
+    }
+
+    #[test]
+    fn from_state_marks_an_own_neutralize_field_as_an_own_effect() {
+        let mut state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
+        get_own_abilities_mut(&mut state).third = AbilityPhase::Active { ends_at: Tick(130) };
+
+        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+
+        assert_eq!(ability_bar.slots[2].effect_dots, vec![EffectDotKind::OwnEffect]);
+    }
+
+    #[test]
+    fn from_state_marks_an_own_toxin_field_as_an_enemy_effect() {
+        let mut loadout: Loadout = test_fixture::create_loadout();
+        loadout.third = ThirdAbilityKind::Toxin;
+        let mut state: GameState = create_state_with_own_organism(loadout);
+        get_own_abilities_mut(&mut state).third = AbilityPhase::Active { ends_at: Tick(130) };
+
+        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+
+        assert_eq!(ability_bar.slots[2].icon, AbilityIconKind::Toxin);
+        assert_eq!(ability_bar.slots[2].effect_dots, vec![EffectDotKind::EnemyEffect]);
+    }
+
+    #[test]
+    fn from_state_drains_a_flying_spore_and_refills_a_cooling_one() {
+        let mut state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
+        let spore_flight_ticks: u32 = ability_constants::SPORE_FLIGHT_TICKS;
+        let spore_cooldown_ticks: u32 = ability_constants::SPORE_COOLDOWN_TICKS;
+        get_own_abilities_mut(&mut state).spore = SporePhase::Flying {
+            ends_at: Tick(100).plus(spore_flight_ticks / 2),
+            spores: Vec::new(),
+        };
+
+        let flying_ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+
+        get_own_abilities_mut(&mut state).spore = SporePhase::Cooling {
+            ready_at: Tick(100).plus(spore_cooldown_ticks / 4),
+        };
+
+        let cooling_ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+
+        assert_eq!(flying_ability_bar.slots[3].icon, AbilityIconKind::Spore);
+        assert_eq!(
+            flying_ability_bar.slots[3].dial,
+            AbilityDialKind::Partial {
+                filled_proportion: (spore_flight_ticks / 2) as f32 / spore_flight_ticks as f32,
+            },
+        );
+        assert_eq!(cooling_ability_bar.slots[3].icon, AbilityIconKind::Spore);
+        assert_eq!(
+            cooling_ability_bar.slots[3].dial,
+            AbilityDialKind::Partial {
+                filled_proportion: 1.0 - (spore_cooldown_ticks / 4) as f32 / spore_cooldown_ticks as f32,
+            },
+        );
+    }
+
+    #[test]
+    fn get_centred_view_box_spans_twice_the_half_width_around_the_origin() {
+        assert_eq!(get_centred_view_box(30.0), "-30 -30 60 60");
+        assert_eq!(get_centred_view_box(9.0), "-9 -9 18 18");
     }
 
     #[test]

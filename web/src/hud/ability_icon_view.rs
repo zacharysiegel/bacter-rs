@@ -3,14 +3,25 @@ use leptos::prelude::*;
 use shared::ability::ability_icon;
 use shared::ability::{AbilityIconKind, IconPixel};
 
+use crate::hud::ability_bar;
+
 /// A pixel point of the original's pen covers the square around it.
 const PIXEL_HALF_WIDTH: f32 = 0.5;
 
 /// The icon's pixels in black, centred on its slot.
 #[component]
 pub fn AbilityIconView(icon: AbilityIconKind) -> impl IntoView {
+    let icon_view_box: String = ability_bar::get_centred_view_box(ability_bar::DIAL_BACK_RADIUS_PIXELS);
+    let icon_width_pixels: String = ability_bar::get_centred_width(ability_bar::DIAL_BACK_RADIUS_PIXELS);
+
     view! {
-        <svg class="ability-icon" viewBox="-30 -30 60 60" width="60" height="60" shape-rendering="crispEdges">
+        <svg
+            class="ability-icon"
+            viewBox=icon_view_box
+            width=icon_width_pixels.clone()
+            height=icon_width_pixels
+            shape-rendering="crispEdges"
+        >
             <path d=get_icon_path_data(icon)></path>
         </svg>
     }

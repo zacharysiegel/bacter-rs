@@ -35,7 +35,6 @@ impl AppSignals {
         self.screen.set(screen);
     }
 
-    /// Escape and the Back footers.
     pub fn go_back(&self) {
         let back_screen: Option<Screen> =
             self.screen.get_untracked().get_back_screen(self.own_member_state.get_untracked());
@@ -123,35 +122,12 @@ pub fn set_if_changed<T: PartialEq + Send + Sync + 'static>(signal: RwSignal<T>,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::collections::BTreeMap;
 
-    use shared::settings::{SettingKey, SettingValue};
-
-    /// An in-memory store, as a platform's store behaves.
-    struct MemorySettingsStore {
-        stored_values: RefCell<BTreeMap<&'static str, SettingValue>>,
-    }
-
-    impl SettingsStore for MemorySettingsStore {
-        fn load<K: SettingKey>(&self, key: K) -> Option<SettingValue> {
-            self.stored_values.borrow().get(key.storage_key()).cloned()
-        }
-
-        fn store<K: SettingKey>(&self, key: K, value: SettingValue) {
-            self.stored_values.borrow_mut().insert(key.storage_key(), value);
-        }
-    }
-
-    fn create_store() -> MemorySettingsStore {
-        MemorySettingsStore {
-            stored_values: RefCell::new(BTreeMap::new()),
-        }
-    }
+    use shared::settings::InMemorySettingsStore;
 
     #[test]
     fn read_gives_the_defaults_from_an_empty_store() {
-        assert_eq!(ClientSettings::read(&create_store()), ClientSettings::defaults());
+        assert_eq!(ClientSettings::read(&InMemorySettingsStore::default()), ClientSettings::defaults());
         assert_eq!(
             ClientSettings::defaults(),
             ClientSettings {
@@ -163,10 +139,10 @@ mod tests {
 
     #[test]
     fn read_gives_back_what_write_stored() {
-        let store: MemorySettingsStore = create_store();
+        let store: InMemorySettingsStore = InMemorySettingsStore::default();
         let client_settings: ClientSettings = ClientSettings {
             name_labels_shown: false,
-            messages_shown: true,
+            messages_shown: false,
         };
 
         client_settings.write(&store);

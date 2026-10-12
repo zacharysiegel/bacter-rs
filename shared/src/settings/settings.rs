@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+
 const BOOL_TAG: u8 = 1;
 const NAME_LABELS_STORAGE_KEY: &str = "name_labels";
 const MESSAGES_STORAGE_KEY: &str = "messages";
@@ -102,28 +105,27 @@ impl SettingKey for ClientSettingKind {
     }
 }
 
+/// Keeps each value as its encoded bytes, so reads go through decoding.
+#[derive(Default)]
+pub struct InMemorySettingsStore {
+    entries: RefCell<BTreeMap<&'static str, Vec<u8>>>,
+}
+
+impl SettingsStore for InMemorySettingsStore {
+    fn load<K: SettingKey>(&self, key: K) -> Option<SettingValue> {
+        let bytes: Vec<u8> = self.entries.borrow().get(key.storage_key()).cloned()?;
+
+        SettingValue::from_bytes(&bytes)
+    }
+
+    fn store<K: SettingKey>(&self, key: K, value: SettingValue) {
+        self.entries.borrow_mut().insert(key.storage_key(), value.to_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::collections::BTreeMap;
-
-    #[derive(Default)]
-    struct InMemorySettingsStore {
-        entries: RefCell<BTreeMap<&'static str, Vec<u8>>>,
-    }
-
-    impl SettingsStore for InMemorySettingsStore {
-        fn load<K: SettingKey>(&self, key: K) -> Option<SettingValue> {
-            let bytes: Vec<u8> = self.entries.borrow().get(key.storage_key()).cloned()?;
-
-            SettingValue::from_bytes(&bytes)
-        }
-
-        fn store<K: SettingKey>(&self, key: K, value: SettingValue) {
-            self.entries.borrow_mut().insert(key.storage_key(), value.to_bytes());
-        }
-    }
 
     #[test]
     fn read_returns_the_default_when_absent() {

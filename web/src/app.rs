@@ -5,10 +5,17 @@ use shared::protocol::TeamChoiceKindSerialIn;
 use shared::settings;
 use shared::settings::SettingsStore;
 
-use crate::browser::GameListView;
+use crate::browser::{GameBrowser, GameListView};
 use crate::connection::ConnectionStatusKind;
-use crate::menu::{CreateMenuFields, GameMenuView, RequestRejection};
-use crate::screen::{LobbyNoticeKind, Screen};
+use crate::hud::{AbilityBar, AbilityBarView, NameLabelView, NameLabels};
+use crate::leaderboard::{Leaderboard, LeaderboardView};
+use crate::menu::{
+    CreateMenu, CreateMenuFields, GameMenuView, JoinMenu, PauseGameMenu, PauseSpectateMenu, PauseTutorialMenu,
+    RequestRejection, RespawnMenu, SpectateMenu,
+};
+use crate::message::MessageBox;
+use crate::screen::{LobbyNoticeKind, Screen, ScreenBackdropKind};
+use crate::title::TitleMenu;
 
 #[cfg(feature = "ssr")] // a browser build renders no document
 pub use ssr::shell;
@@ -23,6 +30,11 @@ pub struct AppSignals {
     pub request_rejection: RwSignal<Option<RequestRejection>>,
     pub own_member_state: RwSignal<Option<OwnMemberStateKind>>,
     pub game_menu: RwSignal<Option<GameMenuView>>,
+    pub ability_bar: RwSignal<Option<AbilityBarView>>,
+    pub leaderboard: RwSignal<Option<LeaderboardView>>,
+    /// `None` while the Messages setting is off.
+    pub message_text: RwSignal<Option<String>>,
+    pub name_labels: RwSignal<Vec<NameLabelView>>,
     pub client_settings: RwSignal<ClientSettings>,
     /// The team choice last sent in a join or respawn.
     pub team_choice: RwSignal<TeamChoiceKindSerialIn>,
@@ -38,6 +50,10 @@ impl AppSignals {
             request_rejection: RwSignal::new(None),
             own_member_state: RwSignal::new(None),
             game_menu: RwSignal::new(None),
+            ability_bar: RwSignal::new(None),
+            leaderboard: RwSignal::new(None),
+            message_text: RwSignal::new(None),
+            name_labels: RwSignal::new(Vec::new()),
             client_settings: RwSignal::new(ClientSettings::defaults()),
             team_choice: RwSignal::new(TeamChoiceKindSerialIn::Auto),
         }
@@ -129,7 +145,21 @@ pub fn App() -> impl IntoView {
     provide_context(signals);
     provide_context(CreateMenuFields::new());
 
-    view! { <div class="screen-layer"></div> }
+    let screen: Memo<Screen> = Memo::new(move |_| signals.screen.get());
+    let is_shaded = move || screen.get().backdrop() == ScreenBackdropKind::Shaded;
+
+    view! {
+        <div class="overlay-layer">
+            <NameLabels name_labels=signals.name_labels.into() />
+            <Leaderboard leaderboard=signals.leaderboard.into() />
+            <MessageBox message_text=signals.message_text.into() />
+            <AbilityBar ability_bar=signals.ability_bar.into() />
+        </div>
+        <Show when=is_shaded>
+            <div class="shade"></div>
+        </Show>
+        <div class="screen-layer">{move || render_screen(screen.get())}</div>
+    }
 }
 
 pub fn set_if_changed<T: PartialEq + Send + Sync + 'static>(signal: RwSignal<T>, value: T) {
@@ -137,6 +167,21 @@ pub fn set_if_changed<T: PartialEq + Send + Sync + 'static>(signal: RwSignal<T>,
 
     if is_changed {
         signal.set(value);
+    }
+}
+
+fn render_screen(screen: Screen) -> AnyView {
+    match screen {
+        Screen::Title => view! { <TitleMenu /> }.into_any(),
+        Screen::Browser => view! { <GameBrowser /> }.into_any(),
+        Screen::CreateMenu => view! { <CreateMenu /> }.into_any(),
+        Screen::JoinMenu { origin } => view! { <JoinMenu origin=origin /> }.into_any(),
+        Screen::SpectateMenu { game_id } => view! { <SpectateMenu game_id=game_id /> }.into_any(),
+        Screen::RespawnMenu => view! { <RespawnMenu /> }.into_any(),
+        Screen::PauseGame => view! { <PauseGameMenu /> }.into_any(),
+        Screen::PauseSpectate => view! { <PauseSpectateMenu /> }.into_any(),
+        Screen::PauseTutorial => view! { <PauseTutorialMenu /> }.into_any(),
+        Screen::Playing | Screen::Spectating | Screen::Tutorial => ().into_any(),
     }
 }
 

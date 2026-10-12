@@ -27,3 +27,11 @@ async fn prerender_document_names_the_game_in_the_tab() {
 
     assert!(document.contains("<title>Bacter</title>"));
 }
+
+#[tokio::test]
+async fn prerender_document_opens_on_the_title_screen() {
+    let document: String = get_prerendered_document().await;
+
+    assert!(document.contains(r#"<div class="title-menu">"#));
+    assert!(document.contains("Connecting to the game server"));
+}

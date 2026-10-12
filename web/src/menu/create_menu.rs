@@ -20,11 +20,10 @@ pub const DEFAULT_LEADERBOARD_LENGTH: u8 = 10;
 const WORLD_SHAPE_KINDS: [WorldShapeKind; 2] = [WorldShapeKind::Rectangle, WorldShapeKind::Ellipse];
 const WORLD_SHAPE_LABELS: [&str; 2] = ["Square", "Circle"];
 const GAME_MODE_KINDS: [GameModeKind; 3] = [GameModeKind::FreeForAll, GameModeKind::Skirmish, GameModeKind::Survival];
-const SURVIVAL_MODES: &[GameModeKind] = &[GameModeKind::Survival];
-const SKIRMISH_MODES: &[GameModeKind] = &[GameModeKind::Skirmish];
-const RANKED_PLAYER_MODES: &[GameModeKind] = &[GameModeKind::FreeForAll, GameModeKind::Survival];
+const BLANK_WORLD_SHAPE_INDEX: usize = 0;
+const BLANK_GAME_MODE_INDEX: usize = 0;
 
-/// Outlives the create menu: Back from the join step shows the entered values.
+/// Lives in app context, beyond the create menu's lifetime.
 #[derive(Clone, Copy, Debug)]
 pub struct CreateMenuFields {
     pub title: RwSignal<String>,
@@ -41,29 +40,33 @@ pub struct CreateMenuFields {
 
 impl CreateMenuFields {
     pub fn new() -> CreateMenuFields {
+        let blank_values: CreateMenuValues = CreateMenuValues::blank();
+
         CreateMenuFields {
-            title: RwSignal::new(String::new()),
-            password: RwSignal::new(String::new()),
-            world_shape_index: RwSignal::new(0),
-            world_size: RwSignal::new(None),
-            player_minimum: RwSignal::new(None),
-            player_cap: RwSignal::new(None),
-            team_count: RwSignal::new(None),
-            leaderboard_length: RwSignal::new(None),
-            game_mode_index: RwSignal::new(0),
+            title: RwSignal::new(blank_values.title),
+            password: RwSignal::new(blank_values.password),
+            world_shape_index: RwSignal::new(BLANK_WORLD_SHAPE_INDEX),
+            world_size: RwSignal::new(blank_values.world_size),
+            player_minimum: RwSignal::new(blank_values.player_minimum),
+            player_cap: RwSignal::new(blank_values.player_cap),
+            team_count: RwSignal::new(blank_values.team_count),
+            leaderboard_length: RwSignal::new(blank_values.leaderboard_length),
+            game_mode_index: RwSignal::new(BLANK_GAME_MODE_INDEX),
         }
     }
 
     pub fn reset(&self) {
-        self.title.set(String::new());
-        self.password.set(String::new());
-        self.world_shape_index.set(0);
-        self.world_size.set(None);
-        self.player_minimum.set(None);
-        self.player_cap.set(None);
-        self.team_count.set(None);
-        self.leaderboard_length.set(None);
-        self.game_mode_index.set(0);
+        let blank_values: CreateMenuValues = CreateMenuValues::blank();
+
+        self.title.set(blank_values.title);
+        self.password.set(blank_values.password);
+        self.world_shape_index.set(BLANK_WORLD_SHAPE_INDEX);
+        self.world_size.set(blank_values.world_size);
+        self.player_minimum.set(blank_values.player_minimum);
+        self.player_cap.set(blank_values.player_cap);
+        self.team_count.set(blank_values.team_count);
+        self.leaderboard_length.set(blank_values.leaderboard_length);
+        self.game_mode_index.set(BLANK_GAME_MODE_INDEX);
     }
 
     pub fn get_values(&self) -> CreateMenuValues {
@@ -95,97 +98,31 @@ pub struct CreateMenuValues {
     pub mode: GameModeKind,
 }
 
+impl CreateMenuValues {
+    pub fn blank() -> CreateMenuValues {
+        CreateMenuValues {
+            title: String::new(),
+            password: String::new(),
+            world_shape: WORLD_SHAPE_KINDS[BLANK_WORLD_SHAPE_INDEX],
+            world_size: None,
+            player_minimum: None,
+            player_cap: None,
+            team_count: None,
+            leaderboard_length: None,
+            mode: GAME_MODE_KINDS[BLANK_GAME_MODE_INDEX],
+        }
+    }
+}
+
 #[component]
 pub fn CreateMenu() -> impl IntoView {
     let signals: AppSignals = expect_context();
     let fields: CreateMenuFields = expect_context();
     let issues: RwSignal<Vec<MenuIssue>> = RwSignal::new(Vec::new());
     let mode: Signal<GameModeKind> = Signal::derive(move || GAME_MODE_KINDS[fields.game_mode_index.get()]);
-    let shown_in = move |shown_modes: &'static [GameModeKind]| {
-        Signal::derive(move || {
-            if shown_modes.contains(&mode.get()) {
-                FieldVisibilityKind::Shown
-            } else {
-                FieldVisibilityKind::Hidden
-            }
-        })
-    };
-    let rows: Vec<MenuRow> = vec![
-        MenuRow::shown(
-            MenuFieldKind::GameTitle,
-            "Game Title",
-            MenuInput::Text { value: fields.title },
-        ),
-        MenuRow::shown(
-            MenuFieldKind::Password,
-            "Password",
-            MenuInput::Text { value: fields.password },
-        ),
-        MenuRow::shown(
-            MenuFieldKind::WorldShape,
-            "World Shape",
-            create_list_input(fields.world_shape_index, &WORLD_SHAPE_LABELS),
-        ),
-        MenuRow::shown(
-            MenuFieldKind::WorldWidth,
-            "World Width",
-            MenuInput::Number {
-                value: fields.world_size,
-                placeholder: DEFAULT_WORLD_SIZE_PIXELS,
-            },
-        ),
-        MenuRow::shown(
-            MenuFieldKind::WorldHeight,
-            "World Height",
-            MenuInput::Number {
-                value: fields.world_size,
-                placeholder: DEFAULT_WORLD_SIZE_PIXELS,
-            },
-        ),
-        MenuRow::shown(
-            MenuFieldKind::PlayerMinimum,
-            "Player Minimum",
-            MenuInput::Number {
-                value: fields.player_minimum,
-                placeholder: u32::from(DEFAULT_PLAYER_MINIMUM),
-            },
-        )
-        .with_visibility(shown_in(SURVIVAL_MODES)),
-        MenuRow::shown(
-            MenuFieldKind::PlayerCap,
-            "Player Cap",
-            MenuInput::Number {
-                value: fields.player_cap,
-                placeholder: u32::from(DEFAULT_PLAYER_CAP),
-            },
-        ),
-        MenuRow::shown(
-            MenuFieldKind::TeamCount,
-            "Team Count",
-            MenuInput::Number {
-                value: fields.team_count,
-                placeholder: u32::from(DEFAULT_TEAM_COUNT),
-            },
-        )
-        .with_visibility(shown_in(SKIRMISH_MODES)),
-        MenuRow::shown(
-            MenuFieldKind::LeaderboardLength,
-            "Leaderboard Length",
-            MenuInput::Number {
-                value: fields.leaderboard_length,
-                placeholder: u32::from(DEFAULT_LEADERBOARD_LENGTH),
-            },
-        )
-        .with_visibility(shown_in(RANKED_PLAYER_MODES)),
-        MenuRow::shown(
-            MenuFieldKind::GameMode,
-            "Game Mode",
-            create_list_input(
-                fields.game_mode_index,
-                &GAME_MODE_KINDS.map(game_browser::get_mode_label),
-            ),
-        ),
-    ];
+
+    let rows: Vec<MenuRow> = create_rows(fields, mode);
+
     let on_submit: Callback<()> = Callback::new(move |_| {
         let validated: Result<JoinMenuOrigin, Vec<MenuIssue>> = validate_create_menu(&fields.get_values());
 
@@ -208,36 +145,116 @@ pub fn CreateMenu() -> impl IntoView {
     }
 }
 
+fn create_rows(fields: CreateMenuFields, mode: Signal<GameModeKind>) -> Vec<MenuRow> {
+    vec![
+        MenuRow::shown(
+            MenuFieldKind::GameTitle,
+            "Game Title",
+            MenuInput::Text { value: fields.title },
+        ),
+        MenuRow::shown(
+            MenuFieldKind::Password,
+            "Password",
+            MenuInput::Text { value: fields.password },
+        ),
+        MenuRow::shown(
+            MenuFieldKind::WorldShape,
+            "World Shape",
+            create_list_input(fields.world_shape_index, &WORLD_SHAPE_LABELS),
+        ),
+        MenuRow::shown(
+            MenuFieldKind::WorldWidth,
+            "World Width",
+            create_number_input(fields.world_size, DEFAULT_WORLD_SIZE_PIXELS),
+        ),
+        MenuRow::shown(
+            MenuFieldKind::WorldHeight,
+            "World Height",
+            create_number_input(fields.world_size, DEFAULT_WORLD_SIZE_PIXELS),
+        ),
+        MenuRow::shown(
+            MenuFieldKind::PlayerMinimum,
+            "Player Minimum",
+            create_number_input(fields.player_minimum, u32::from(DEFAULT_PLAYER_MINIMUM)),
+        )
+        .with_visibility(Signal::derive(move || get_player_minimum_visibility(mode.get()))),
+        MenuRow::shown(
+            MenuFieldKind::PlayerCap,
+            "Player Cap",
+            create_number_input(fields.player_cap, u32::from(DEFAULT_PLAYER_CAP)),
+        ),
+        MenuRow::shown(
+            MenuFieldKind::TeamCount,
+            "Team Count",
+            create_number_input(fields.team_count, u32::from(DEFAULT_TEAM_COUNT)),
+        )
+        .with_visibility(Signal::derive(move || get_team_count_visibility(mode.get()))),
+        MenuRow::shown(
+            MenuFieldKind::LeaderboardLength,
+            "Leaderboard Length",
+            create_number_input(fields.leaderboard_length, u32::from(DEFAULT_LEADERBOARD_LENGTH)),
+        )
+        .with_visibility(Signal::derive(move || get_leaderboard_length_visibility(mode.get()))),
+        MenuRow::shown(
+            MenuFieldKind::GameMode,
+            "Game Mode",
+            create_list_input(
+                fields.game_mode_index,
+                &GAME_MODE_KINDS.map(game_browser::get_mode_label),
+            ),
+        ),
+    ]
+}
+
+fn get_player_minimum_visibility(mode: GameModeKind) -> FieldVisibilityKind {
+    match mode {
+        GameModeKind::Survival => FieldVisibilityKind::Shown,
+        GameModeKind::FreeForAll | GameModeKind::Skirmish => FieldVisibilityKind::Hidden,
+    }
+}
+
+fn get_team_count_visibility(mode: GameModeKind) -> FieldVisibilityKind {
+    match mode {
+        GameModeKind::Skirmish => FieldVisibilityKind::Shown,
+        GameModeKind::FreeForAll | GameModeKind::Survival => FieldVisibilityKind::Hidden,
+    }
+}
+
+fn get_leaderboard_length_visibility(mode: GameModeKind) -> FieldVisibilityKind {
+    match mode {
+        GameModeKind::FreeForAll | GameModeKind::Survival => FieldVisibilityKind::Shown,
+        GameModeKind::Skirmish => FieldVisibilityKind::Hidden,
+    }
+}
+
 /// Blank fields take their defaults; fields the mode hides are left out or take their defaults.
 pub fn resolve_game_settings(values: &CreateMenuValues) -> GameSettingsSerialIn {
-    let player_minimum: Option<u8> = match values.mode {
-        GameModeKind::Survival => Some(get_saturated_u8(values.player_minimum, DEFAULT_PLAYER_MINIMUM)),
-        GameModeKind::FreeForAll | GameModeKind::Skirmish => None,
+    let player_minimum: Option<u8> = match get_player_minimum_visibility(values.mode) {
+        FieldVisibilityKind::Shown => Some(get_saturated(values.player_minimum, DEFAULT_PLAYER_MINIMUM, u8::MAX)),
+        FieldVisibilityKind::Hidden => None,
     };
-    let team_count: Option<u8> = match values.mode {
-        GameModeKind::Skirmish => Some(get_saturated_u8(values.team_count, DEFAULT_TEAM_COUNT)),
-        GameModeKind::FreeForAll | GameModeKind::Survival => None,
+    let team_count: Option<u8> = match get_team_count_visibility(values.mode) {
+        FieldVisibilityKind::Shown => Some(get_saturated(values.team_count, DEFAULT_TEAM_COUNT, u8::MAX)),
+        FieldVisibilityKind::Hidden => None,
     };
-    let leaderboard_length: u8 = match values.mode {
-        GameModeKind::FreeForAll | GameModeKind::Survival => {
-            get_saturated_u8(values.leaderboard_length, DEFAULT_LEADERBOARD_LENGTH)
-        }
-        GameModeKind::Skirmish => DEFAULT_LEADERBOARD_LENGTH,
+    let leaderboard_length: u8 = match get_leaderboard_length_visibility(values.mode) {
+        FieldVisibilityKind::Shown => get_saturated(values.leaderboard_length, DEFAULT_LEADERBOARD_LENGTH, u8::MAX),
+        FieldVisibilityKind::Hidden => DEFAULT_LEADERBOARD_LENGTH,
     };
 
     GameSettingsSerialIn {
         title: values.title.clone(),
         mode: GameModeKindSerial::from(&values.mode),
         world_shape: WorldShapeKindSerial::from(&values.world_shape),
-        world_size_pixels: get_saturated_u32(values.world_size, DEFAULT_WORLD_SIZE_PIXELS),
+        world_size_pixels: get_saturated(values.world_size, DEFAULT_WORLD_SIZE_PIXELS, u32::MAX),
         player_minimum,
-        player_cap: get_saturated_u8(values.player_cap, DEFAULT_PLAYER_CAP),
+        player_cap: get_saturated(values.player_cap, DEFAULT_PLAYER_CAP, u8::MAX),
         team_count,
         leaderboard_length,
     }
 }
 
-/// The settings pass the same validation as the server's; the join step follows.
+/// The settings pass the same validation as the server's.
 pub fn validate_create_menu(values: &CreateMenuValues) -> Result<JoinMenuOrigin, Vec<MenuIssue>> {
     let settings: GameSettingsSerialIn = resolve_game_settings(values);
     let validated_settings: Result<GameSettings, RejectionKind> = GameSettings::try_from(settings.clone());
@@ -271,17 +288,13 @@ fn create_list_input(selected_index: RwSignal<usize>, labels: &[&str]) -> MenuIn
     }
 }
 
-/// Out-of-range numbers keep their side of the range, so validation names the right bound.
-fn get_saturated_u8(value: Option<i64>, default: u8) -> u8 {
-    value.map_or(default, |value| {
-        u8::try_from(value.clamp(0, i64::from(u8::MAX))).unwrap_or(u8::MAX)
-    })
+fn create_number_input(value: RwSignal<Option<i64>>, placeholder: u32) -> MenuInput {
+    MenuInput::Number { value, placeholder }
 }
 
-fn get_saturated_u32(value: Option<i64>, default: u32) -> u32 {
-    value.map_or(default, |value| {
-        u32::try_from(value.clamp(0, i64::from(u32::MAX))).unwrap_or(u32::MAX)
-    })
+/// Out-of-range numbers keep their side of the range, so validation names the right bound.
+fn get_saturated<T: TryFrom<i64> + Into<i64> + Copy>(value: Option<i64>, default: T, max: T) -> T {
+    value.map_or(default, |value| T::try_from(value.clamp(0, max.into())).unwrap_or(max))
 }
 
 #[cfg(test)]

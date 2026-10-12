@@ -63,7 +63,9 @@ impl TestClient {
         origin: Option<&str>,
         protocol_version: Option<u16>,
     ) -> Result<TestClient, WebSocketError> {
-        let query: String = protocol_version.map_or(String::new(), |version| format!("?protocol_version={version}"));
+        let query: String = protocol_version.map_or(String::new(), |version| {
+            format!("?{}={version}", protocol::PROTOCOL_VERSION_QUERY_PARAMETER)
+        });
         let mut request: Request = format!("ws://{}/ws{query}", test_server.address).into_client_request()?;
 
         if let Some(origin) = origin {

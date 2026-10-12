@@ -7,6 +7,13 @@ use crate::protocol::{
 
 /// Bumped on any change to a wire type.
 pub const PROTOCOL_VERSION: u16 = 1;
+/// The `/ws` query parameter carrying the client's `PROTOCOL_VERSION`.
+pub const PROTOCOL_VERSION_QUERY_PARAMETER: &str = "protocol_version";
+
+/// `websocket_url` with this build's protocol version as its query.
+pub fn get_versioned_websocket_url(websocket_url: &str) -> String {
+    format!("{websocket_url}?{PROTOCOL_VERSION_QUERY_PARAMETER}={PROTOCOL_VERSION}")
+}
 
 pub fn encode_message_in(message_serial_in: &MessageSerialIn) -> Vec<u8> {
     bitcode::encode(message_serial_in)
@@ -314,5 +321,13 @@ mod tests {
         let bundle_bytes: Vec<u8> = encode_replay_bundle(&bundle_serial_out);
 
         assert_eq!(decode_replay_bundle(&bundle_bytes).unwrap(), bundle_serial_out);
+    }
+
+    #[test]
+    fn get_versioned_websocket_url_appends_the_protocol_version_query() {
+        assert_eq!(
+            get_versioned_websocket_url("ws://127.0.0.1:3100/ws"),
+            format!("ws://127.0.0.1:3100/ws?protocol_version={PROTOCOL_VERSION}"),
+        );
     }
 }

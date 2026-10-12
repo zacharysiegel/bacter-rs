@@ -18,8 +18,6 @@ use crate::shutdown::ServerRunState;
 use crate::socket::{CloseCauseKind, Connection, ConnectionId, ConnectionLimitReached, WriterCommand};
 use crate::socket::{connection, connection_limit, connection_model, socket_writer};
 
-const PROTOCOL_VERSION_PARAMETER: &str = "protocol_version";
-
 /// Shared by every connection of one server.
 pub struct SocketContext {
     pub registries: ServerRegistries,
@@ -81,7 +79,7 @@ fn get_protocol_version(query_string: &str) -> Option<u16> {
     query_string
         .split('&')
         .filter_map(|parameter| parameter.split_once('='))
-        .find(|(name, _)| *name == PROTOCOL_VERSION_PARAMETER)
+        .find(|(name, _)| *name == protocol::PROTOCOL_VERSION_QUERY_PARAMETER)
         .and_then(|(_, value)| value.parse::<u16>().ok())
 }
 

@@ -2,6 +2,7 @@
 #![recursion_limit = "512"]
 
 pub mod app;
+pub mod canvas;
 pub mod connection;
 pub mod screen;
 

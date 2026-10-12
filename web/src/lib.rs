@@ -7,6 +7,7 @@ pub mod canvas;
 pub mod connection;
 pub mod menu;
 pub mod screen;
+pub mod title;
 
 // browser runtime glue; the ssr build compiles none of it
 #[cfg(feature = "hydrate")]

@@ -5,6 +5,8 @@ use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use shared::error::AppError;
 
+use crate::client::js_error;
+
 const OPEN_EVENT: &str = "open";
 const MESSAGE_EVENT: &str = "message";
 const CLOSE_EVENT: &str = "close";
@@ -25,8 +27,10 @@ impl GameSocket {
         mut on_message: impl FnMut(Vec<u8>) + 'static,
         mut on_close: impl FnMut(u16) + 'static,
     ) -> Result<GameSocket, AppError> {
-        let websocket: WebSocket = WebSocket::new(url)
-            .map_err(|error| AppError::new(&format!("opening the game socket failed; [url={url} error={error:?}]")))?;
+        let websocket: WebSocket = WebSocket::new(url).map_err(|error| {
+            js_error::get_js_error_with_fields("opening the game socket failed", &format!("url={url}"), &error)
+        })?;
+
         websocket.set_binary_type(BinaryType::Arraybuffer);
 
         let open_listener: Closure<dyn FnMut(Event)> = Closure::new(move |_event: Event| on_open());
@@ -47,6 +51,7 @@ impl GameSocket {
             message_listener,
             close_listener,
         };
+
         game_socket.add_listeners()?;
 
         Ok(game_socket)
@@ -72,7 +77,7 @@ impl GameSocket {
         for (event_type, listener) in self.get_listeners() {
             self.websocket
                 .add_event_listener_with_callback(event_type, listener.unchecked_ref())
-                .map_err(|error| AppError::new(&format!("listening on the game socket failed; [error={error:?}]")))?;
+                .map_err(|error| js_error::get_js_error("listening on the game socket failed", &error))?;
         }
 
         Ok(())
@@ -80,12 +85,12 @@ impl GameSocket {
 }
 
 impl Drop for GameSocket {
-    /// Detaches the handlers before they are freed; closing an already closed socket does nothing.
     fn drop(&mut self) {
         for (event_type, listener) in self.get_listeners() {
             let _ = self.websocket.remove_event_listener_with_callback(event_type, listener.unchecked_ref());
         }
 
+        // closing an already closed socket does nothing
         let _ = self.websocket.close();
     }
 }

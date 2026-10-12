@@ -10,6 +10,7 @@ pub mod leaderboard;
 pub mod menu;
 pub mod message;
 pub mod screen;
+pub mod settings;
 pub mod title;
 pub mod tutorial;
 

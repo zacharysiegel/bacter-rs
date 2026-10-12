@@ -380,6 +380,7 @@ client/                       (hydrate)
          local_storage_settings.rs  SettingsStore over localStorage
          fullscreen.rs
 screen/  screen.rs            Screen enum, navigation, Escape mapping
+settings/ hexadecimal.rs       setting bytes as text
 canvas/  game_canvas.rs       canvas component (mount through a browser/server submodule pair)
          driver.rs            (hydrate) thread_local DRIVER, rAF scheduling, renderer ownership
          keyboard.rs          (hydrate) KeyboardEvent to GameKeyKind

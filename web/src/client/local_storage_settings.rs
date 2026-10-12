@@ -1,9 +1,9 @@
-use std::fmt::Write;
-
 use wasm_bindgen::JsValue;
 use web_sys::Storage;
 
 use shared::settings::{SettingKey, SettingValue, SettingsStore};
+
+use crate::settings::hexadecimal;
 
 const STORAGE_KEY_PREFIX: &str = "bacter.";
 
@@ -14,7 +14,7 @@ impl SettingsStore for LocalStorageSettingsStore {
     fn load<K: SettingKey>(&self, key: K) -> Option<SettingValue> {
         let storage: Storage = get_local_storage()?;
         let stored_text: String = storage.get_item(&get_storage_key(key)).ok()??;
-        let bytes: Vec<u8> = decode_hexadecimal(&stored_text)?;
+        let bytes: Vec<u8> = hexadecimal::decode_hexadecimal(&stored_text)?;
 
         SettingValue::from_bytes(&bytes)
     }
@@ -27,7 +27,7 @@ impl SettingsStore for LocalStorageSettingsStore {
         };
 
         let stored: Result<(), JsValue> =
-            storage.set_item(&get_storage_key(key), &encode_hexadecimal(&value.to_bytes()));
+            storage.set_item(&get_storage_key(key), &hexadecimal::encode_hexadecimal(&value.to_bytes()));
 
         if let Err(error) = stored {
             log::warn!("storing a setting failed; [key={} error={error:?}]", key.storage_key());
@@ -41,26 +41,6 @@ fn get_local_storage() -> Option<Storage> {
 
 fn get_storage_key<K: SettingKey>(key: K) -> String {
     format!("{STORAGE_KEY_PREFIX}{}", key.storage_key())
-}
-
-fn encode_hexadecimal(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut text, byte| {
-        let _ = write!(text, "{byte:02x}");
-
-        text
-    })
-}
-
-/// `None` for an odd length or a character outside hexadecimal.
-fn decode_hexadecimal(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
-        return None;
-    }
-
-    (0..text.len())
-        .step_by(2)
-        .map(|index| u8::from_str_radix(text.get(index..index + 2)?, 16).ok())
-        .collect()
 }
 
 #[cfg(all(test, target_arch = "wasm32"))] // reads and writes the browser's localStorage

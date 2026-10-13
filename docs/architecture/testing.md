@@ -7,23 +7,23 @@
 - Border rule: rectangle and ellipse, offset and shrunk worlds, both birth and death.
 - Collision: `|dx| <= 6 && |dy| <= 6` inclusive across unaligned lattices.
 - Growth state selection (XOR), frozen and immortal skips.
-- Every ability: activation, durations, cooldown expiry ticks, key priority, shot miss keeps the carried ability Ready, pop applies once per target, neutralize protection, teammate immunity, self acid, toxin owner skip.
+- Every ability: activation, durations, cooldown expiry ticks, key priority, shot miss keeps the carried ability Ready, pop applies once per target, neutralize protection against spore and shot acid, teammate immunity, self acid, toxin owner skip.
 - Shot target selection with wraparound cases and the zero-aim no-op.
 - Spore launch: progressive centroid directions, a zero-offset spore removed without a projectile, the last spore of an organism with no enclosed cells.
 - Projectile flight: total distance equals nominal speed times duration (24 moves of 10752 subpixels for spores, 21 of 8960 for shots).
 - Ability predicates: a Compress or Freeze caster's Active timer is neither Extended nor Immortal.
 - Kill credit: last removal wins; suicide; departed hitter; teammate and neutralized hits do not record.
-- Rounds: every transition, cancel, force spawn cap, survivor win, simultaneous deaths with no winner, world restore.
-- Spawn: hazards, attempt limit.
+- Rounds: every transition, cancel, force spawn cap, survivor win (once per round), simultaneous deaths with no winner, world restore.
+- Spawn: hazards, every organism checked, attempt limit.
 - Team balance and smallest-team candidates.
 - Leaderboard ordering per mode.
 - `Pcg32` against the published PCG32 reference vectors and a committed golden sequence; `from_parts` rejects an even increment.
 - Growth chance tables: golden digest.
 
 ## Determinism tests
-- Same seed and bundles stepped twice in process give identical checksums every tick for 10,000 ticks with 16 scripted players using every ability.
+- `shared/tests/determinism.rs`: same seed and bundles stepped twice in process give identical checksums every tick for 10,000 ticks with 16 scripted players using every ability.
 - Golden checksum sequence for a committed scripted game (`shared/tests/fixtures/scripted_game.replay` + `.checksums`).
-- Snapshot round trip: at tick t, `GameStateSerialOut::from`, encode, decode, `GameState::try_from`; continue both copies, checksums equal.
+- Snapshot round trip (`shared/tests/determinism.rs`): at tick t, `GameStateSerialOut::from`, encode, decode, `GameState::try_from`; continue both copies, checksums equal.
 - `shared/tests/forbidden_operations.rs`: scans `shared/src` (outside `render/`, `play/`) for std float calls (`.ln(`, `.sin(`, `f64::powf` and the rest of [forbidden operations](./determinism.md#forbidden-operations)), `mul_add`, `HashMap`, `HashSet`; `libm::` paths are allowed. The same test fails on `bitcode` named anywhere in `shared/src` outside `protocol/`.
 - `scripts/test/check-wasm.sh`: `cargo check --target wasm32-unknown-unknown` for `shared` (with and without `render`) and `web` (`hydrate`).
 - `scripts/test/test-replay-wasm.sh`: builds `shared/tests/replay.rs` for `wasm32-wasip1` and runs it under wasmtime, comparing the committed checksum files; covers 32-bit `usize` arithmetic and wasm float behaviour without a browser.
@@ -34,6 +34,7 @@
 - A file whose version prefix differs from `PROTOCOL_VERSION` gives `ReplayReadError::ProtocolVersionMismatch` ([wire types](./protocol.md#wire-types)).
 - Replaying: `GameState::new(settings, seed)` (no members, tick 0), then every bundle in order; creators join through bundle 1 like everyone else ([lifecycle](./server.md#lifecycle)).
 - `shared/tests/replay.rs`: every fixture in `shared/tests/fixtures/*.replay` re-run, compared with its committed checksum file.
+- `shared/tests/helpers/replay_fixture.rs`: reads `scripted_game.replay` into a `ReplayLog`.
 - Fixtures and checksums regenerated deliberately after a rule change or any wire-type change (`PROTOCOL_VERSION` bump):
   - `scripted_game.replay`: rebuilt from the scripted players of [determinism tests](#determinism-tests) by the `#[ignore]` test `regenerate_scripted_game_fixture` in `shared/tests/replay.rs`;
   - every `.checksums`: rewritten from its `.replay` with `protocol_dump replay --checksums`;

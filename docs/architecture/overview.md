@@ -270,6 +270,8 @@ game/             game_state.rs          GameState
                   input_bundle.rs        InputBundle, PlayerTickInput, MemberEvent (as consumed by step)
                   player_input.rs        PlayerInput (converted from PlayerInputSerialIn)
                   simulation_event.rs    SimulationEvent, SpawnRejectionKind
+                  tick.rs                Tick, TICK_PERIOD_MILLISECONDS, millisecond and second conversions
+                  test_fixture.rs        (test, feature test-support) settings, members and states for tests
 protocol/         protocol.rs            PROTOCOL_VERSION; encode/decode of messages, replay records and game state (the only bitcode calls)
                   message_in.rs          MessageSerialIn, GameSettingsSerialIn, JoinerSerialIn, TeamChoiceKindSerialIn, PlayerInputSerialIn
                   message_out.rs         MessageSerialOut, GameSnapshotSerialOut
@@ -344,6 +346,7 @@ game/        game_registry.rs     statics GAMES, GAME_TITLES, NEXT_GAME_ID, GAME
              bundle_builder.rs    pending commands to InputBundle
              recipients.rs        per-connection fan-out, slow-consumer policy
              replay_capture.rs    optional replay record stream, writer task
+             test_fixture.rs      (test) settings, joiners, members, game handles and temporary directories
 lobby/       lobby_broadcast.rs   static LOBBY_SUBSCRIBERS: LazyLock<DashMap<ConnectionId, mpsc::Sender<Bytes>>>, lobby task
              game_list.rs         `GameList` construction from each `GameHandle.summary`
 password/    password.rs          hash/verify on web::block, static PASSWORD_CHECK_SEMAPHORE

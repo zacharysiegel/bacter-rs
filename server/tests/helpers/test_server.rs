@@ -255,6 +255,7 @@ pub fn start_test_server(customize_config: impl FnOnce(&mut ServerConfig)) -> Te
         allowed_origins: vec![String::from(TEST_ORIGIN)],
         replay_capture_directory: None,
         tls_files: None,
+        trusted_proxy_addresses: Vec::new(),
         empty_game_grace_period: Duration::from_secs(10),
         tick_period: Duration::from_millis(70),
     };

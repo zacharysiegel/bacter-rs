@@ -14,6 +14,7 @@ pub const ALLOWED_ORIGINS_VARIABLE: &str = "BACTER_ALLOWED_ORIGINS";
 pub const REPLAY_CAPTURE_DIRECTORY_VARIABLE: &str = "BACTER_REPLAY_CAPTURE_DIRECTORY";
 pub const TLS_CERTIFICATE_PATH_VARIABLE: &str = "BACTER_TLS_CERTIFICATE_PATH";
 pub const TLS_PRIVATE_KEY_PATH_VARIABLE: &str = "BACTER_TLS_PRIVATE_KEY_PATH";
+pub const TRUSTED_PROXY_ADDRESSES_VARIABLE: &str = "BACTER_TRUSTED_PROXY_ADDRESSES";
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3100;
 /// The web crate's `site-addr`.
@@ -31,6 +32,8 @@ pub struct ServerConfig {
     pub replay_capture_directory: Option<PathBuf>,
     /// None binds plain HTTP.
     pub tls_files: Option<TlsFiles>,
+    /// Peers whose `CF-Connecting-IP` header is read as the client address; empty reads it from no peer.
+    pub trusted_proxy_addresses: Vec<IpAddr>,
     pub empty_game_grace_period: Duration,
     pub tick_period: Duration,
 }
@@ -57,6 +60,10 @@ impl ServerConfig {
             get_set_variable(TLS_CERTIFICATE_PATH_VARIABLE),
             get_set_variable(TLS_PRIVATE_KEY_PATH_VARIABLE),
         )?;
+        let trusted_proxy_addresses: Vec<IpAddr> = match get_set_variable(TRUSTED_PROXY_ADDRESSES_VARIABLE) {
+            Some(trusted_proxy_addresses_text) => split_trusted_proxy_addresses(&trusted_proxy_addresses_text)?,
+            None => Vec::new(),
+        };
 
         Ok(ServerConfig {
             bind_address,
@@ -65,6 +72,7 @@ impl ServerConfig {
             allowed_origins: split_origins(&allowed_origins_text),
             replay_capture_directory: get_set_variable(REPLAY_CAPTURE_DIRECTORY_VARIABLE).map(PathBuf::from),
             tls_files,
+            trusted_proxy_addresses,
             empty_game_grace_period: EMPTY_GAME_GRACE_PERIOD,
             tick_period: Duration::from_millis(u64::from(tick::TICK_PERIOD_MILLISECONDS)),
         })
@@ -113,11 +121,20 @@ fn split_origins(allowed_origins_text: &str) -> Vec<String> {
         .collect()
 }
 
+fn split_trusted_proxy_addresses(trusted_proxy_addresses_text: &str) -> Result<Vec<IpAddr>, AppError> {
+    trusted_proxy_addresses_text
+        .split(',')
+        .map(|trusted_proxy_address_text: &str| {
+            parse_variable::<IpAddr>(TRUSTED_PROXY_ADDRESSES_VARIABLE, trusted_proxy_address_text)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     fn from_pairs(pairs: &[(&str, &str)]) -> Result<ServerConfig, AppError> {
         let variables: BTreeMap<String, String> =
@@ -142,6 +159,7 @@ mod tests {
                 ],
                 replay_capture_directory: None,
                 tls_files: None,
+                trusted_proxy_addresses: Vec::new(),
                 empty_game_grace_period: Duration::from_secs(10),
                 tick_period: Duration::from_millis(70),
             },
@@ -161,6 +179,7 @@ mod tests {
             (REPLAY_CAPTURE_DIRECTORY_VARIABLE, "/tmp/bacter/replays"),
             (TLS_CERTIFICATE_PATH_VARIABLE, "/etc/bacter/chain.pem"),
             (TLS_PRIVATE_KEY_PATH_VARIABLE, "/etc/bacter/key.pem"),
+            (TRUSTED_PROXY_ADDRESSES_VARIABLE, " 127.0.0.1 , ::1"),
         ])
         .unwrap();
 
@@ -185,6 +204,10 @@ mod tests {
                 private_key_path: PathBuf::from("/etc/bacter/key.pem"),
             }),
         );
+        assert_eq!(
+            config.trusted_proxy_addresses,
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST), IpAddr::V6(Ipv6Addr::LOCALHOST)],
+        );
     }
 
     #[test]
@@ -205,6 +228,13 @@ mod tests {
     fn from_variables_rejects_an_invalid_port_or_address() {
         assert!(from_pairs(&[(PORT_VARIABLE, "70000")]).is_err());
         assert!(from_pairs(&[(BIND_ADDRESS_VARIABLE, "localhost")]).is_err());
+    }
+
+    #[test]
+    fn from_variables_rejects_an_invalid_trusted_proxy_address() {
+        assert!(from_pairs(&[(TRUSTED_PROXY_ADDRESSES_VARIABLE, "127.0.0.1,localhost")]).is_err());
+        assert!(from_pairs(&[(TRUSTED_PROXY_ADDRESSES_VARIABLE, "127.0.0.1,,::1")]).is_err());
+        assert!(from_pairs(&[(TRUSTED_PROXY_ADDRESSES_VARIABLE, "127.0.0.0/8")]).is_err());
     }
 
     #[test]

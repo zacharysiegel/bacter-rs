@@ -1343,6 +1343,16 @@ Each bullet is a ledger entry (or a group of entries with one resolution) and th
 
 ### Automated suites
 
+- `cargo test --workspace`: PASS, 18 `test result: ok.` lines, the counts and order of Task 10 Step 1 (`shared` unit tests 509 passed, 1 ignored); no warning.
+- `cargo test -p web --features ssr --test prerender`: PASS, 4 passed.
+- `./scripts/test/test-shaders.sh`: PASS, 1 passed, 509 filtered out.
+- `./scripts/test/test-slow-consumer.sh`: PASS, 1 passed, 13 filtered out, in 45.5 s.
+- `./scripts/test/test-growth-statistics.sh`: PASS, 1 passed.
+- `./scripts/test/test-replay-wasm.sh`: PASS under wasmtime, 1 passed, 1 ignored (`regenerate_scripted_game_fixture`), in 8.7 s.
+- `./scripts/test/check-wasm.sh`: PASS, three `Finished` lines, no warning or error.
+- `cargo fmt --all -- --check`: PASS, no output.
+- `./scripts/test/test-wasm.sh`: not run. ChromeDriver 154.0.8037.98 against Google Chrome 155.0.8059.40, checked at the start of Task 10 and again before its last step; the `LocalStorageSettingsStore` browser tests are left to the owner once a matching chromedriver is installed.
+
 ### Growth statistics
 
 - `./scripts/test/test-growth-statistics.sh`: PASS, every state's means within 10% (cells) and 15% (changes per tick) of the reference table in `testing.md`:
@@ -1435,3 +1445,16 @@ Run against `./scripts/dev/server.sh` and `./scripts/dev/web.sh` in Chrome throu
 - Packet loss: not emulated; the presets shape latency and throughput only.
 - Hidden page: the first page stayed hidden for several minutes while the second page ran the tutorial and the renderer checks; on return it was still in the game, in step, with no warning.
 - Departure on navigation: navigating a page to another URL (`127.0.0.1` to `localhost`, `/` to `/?renderer=webgl2`) left the previous document's WebSocket open (three established connections from Chrome, "Online Clients: 3"); its member stayed in the game, so rejoining with the same screen name was rejected with "Name matches that of another player". The member left only when the tab was closed (server `member left` for both members at once). A reload closed the socket and removed the member at once. Likely cause: Chrome kept the previous document in its back/forward cache with the socket open, and the client does not close its socket on `pagehide`.
+
+## Deviations from the plan
+
+- Task 2: the shared exit status is `MISSING_PRECONDITION_EXIT_STATUS`, not `MISSING_PROGRAM_EXIT_STATUS`, since `require_rust_target` in `test-replay-wasm.sh` exits with it too; Tasks 1 and 2 of this file were updated to match.
+- Task 6: the structural claim about timers was narrowed to "no game rule depends on a wall-clock timer", in place of a list of the server's timers.
+- Task 9:
+  - pages were opened at `http://localhost:3011`, not `http://127.0.0.1:3011`: Chrome kept a 110% zoom for `127.0.0.1`, which turned the emulated ratio 1 into 1.1;
+  - the in-page crosshair measurement returned a `whitePixelCount` of 0, so the speed came from two `take_screenshot`s per hold, as the step allows;
+  - the first throttling run left the first page's visibility unrecorded before two conditions and did not instrument crosshair jumps; a second run replaced it for the per-condition records;
+  - the network presets did not shape the WebSocket traffic in this Chrome (press-to-dial delay about the same with and without them), so latency, resync and clamp behaviour were not exercised; CPU throttling 20 did not reach the backlog resync path either;
+  - not run: Safari (left to the owner) and packet loss (not emulated);
+  - a defect found: navigating a page to another URL leaves the previous document's WebSocket open and its member in the game until the tab closes, likely through Chrome's back/forward cache, since the client does not close its socket on `pagehide`. Recorded only; no fix in this phase.
+- Task 10: `./scripts/test/test-wasm.sh` not run, ChromeDriver 154 against Chrome 155 (the planning run saw 149 against 154). Self-review of the phase's diff found nothing to fix, so there is no separate review commit. Every other output matched the plan.

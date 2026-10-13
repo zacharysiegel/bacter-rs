@@ -24,18 +24,43 @@ pub struct NameLabelView {
 
 #[component]
 pub fn NameLabels(name_labels: Signal<Vec<NameLabelView>>) -> impl IntoView {
-    move || {
-        name_labels
-            .get()
-            .into_iter()
-            .map(|name_label| {
-                let label_style: String =
-                    format!("left: {}px; top: {}px", name_label.position.x, name_label.position.y);
+    let member_ids = move || {
+        name_labels.with(|name_label_views| {
+            name_label_views.iter().map(|name_label| name_label.member_id).collect::<Vec<MemberId>>()
+        })
+    };
 
-                view! { <p class="name-label" style=label_style>{name_label.text}</p> }
-            })
-            .collect_view()
+    view! {
+        <For
+            each=member_ids
+            key=|member_id: &MemberId| member_id.0
+            children=move |member_id: MemberId| view! { <NameLabel name_labels=name_labels member_id=member_id /> }
+        />
     }
+}
+
+#[component]
+fn NameLabel(name_labels: Signal<Vec<NameLabelView>>, member_id: MemberId) -> impl IntoView {
+    let name_label: Memo<Option<NameLabelView>> = Memo::new(move |_| find_name_label(name_labels, member_id));
+    let text: Memo<String> =
+        Memo::new(move |_| name_label.get().map(|name_label_view| name_label_view.text).unwrap_or_default());
+    let position_style: Memo<String> = Memo::new(move |_| {
+        name_label
+            .get()
+            .map(|name_label_view| get_position_style(name_label_view.position))
+            .unwrap_or_default()
+    });
+
+    view! { <p class="name-label" style=move || position_style.get()>{move || text.get()}</p> }
+}
+
+fn find_name_label(name_labels: Signal<Vec<NameLabelView>>, member_id: MemberId) -> Option<NameLabelView> {
+    name_labels
+        .with(|name_label_views| name_label_views.iter().find(|name_label| name_label.member_id == member_id).cloned())
+}
+
+pub fn get_position_style(position: ViewPoint) -> String {
+    format!("--name-label-x: {}px; --name-label-y: {}px", position.x, position.y)
 }
 
 /// Under every organism's centroid, at the radius of a disc of its cell area.
@@ -133,6 +158,16 @@ mod tests {
                     y: 200.0 + disc_radius_pixels + 20.0 - 20.0,
                 },
             }],
+        );
+    }
+
+    #[test]
+    fn get_position_style_sets_the_label_point_in_view_pixels() {
+        let position: ViewPoint = ViewPoint { x: 53.0, y: 20.5 };
+
+        assert_eq!(
+            get_position_style(position),
+            "--name-label-x: 53px; --name-label-y: 20.5px"
         );
     }
 

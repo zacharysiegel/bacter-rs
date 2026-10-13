@@ -1,10 +1,18 @@
+$name-label-vertical-padding: 0.3em;
+
 /* Centred on the shown text, its baseline at the label point. */
 .name-label {
     position: absolute;
+    left: 0;
+    top: 0;
     color: var(--color-world-border);
     font-family: var(--font-overlay);
     font-size: 10px;
     line-height: 1;
+    /* Room for glyph ink beyond the 1 em line box. */
+    padding: $name-label-vertical-padding 0;
     white-space: pre;
-    transform: translate(-50%, -80%);
+    /* The baseline sits 0.8 em below the top of the line box. */
+    transform: translate(var(--name-label-x), var(--name-label-y)) translate(-50%, calc(-0.8em - #{$name-label-vertical-padding}));
+    will-change: transform;
 }

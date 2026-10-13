@@ -13,7 +13,6 @@ use crate::registries::ServerRegistries;
 
 pub const FIRST_CONNECTION_ID: u64 = 1;
 pub const MEMBERSHIP_CHANNEL_CAPACITY: usize = 256;
-pub const NORMAL_CLOSURE_CODE: u16 = 1000;
 
 pub static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(FIRST_CONNECTION_ID);
 
@@ -67,7 +66,7 @@ impl CloseCauseKind {
         match self {
             CloseCauseKind::Reason(close_reason) => close_reason.close_code(),
             CloseCauseKind::ProtocolViolation(_) => CloseReasonKind::ProtocolViolation.close_code(),
-            CloseCauseKind::ClientClosed => NORMAL_CLOSURE_CODE,
+            CloseCauseKind::ClientClosed => protocol::NORMAL_CLOSURE_CODE,
         }
     }
 

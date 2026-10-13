@@ -29,7 +29,7 @@ use crate::canvas::scene_camera;
 use crate::canvas::{DriverCommandKind, KeyDefaultActionKind, SceneOverlay, SceneView};
 use crate::client;
 use crate::client::{GameSocket, LocalStorageSettingsStore};
-use crate::connection::{ConnectionStatusKind, PageShowEffectKind};
+use crate::connection::{ConnectionStatusKind, PageHideClosureKind, PageShowEffectKind, PageShowKind};
 use crate::hud;
 use crate::hud::NameLabelView;
 use crate::menu::RequestRejection;
@@ -79,6 +79,7 @@ struct Driver {
     socket: Option<GameSocket>,
     /// Kept until the next close: its own close handler is running when it closes.
     retired_socket: Option<GameSocket>,
+    page_hide_closure: PageHideClosureKind,
     signals: AppSignals,
     settings_store: LocalStorageSettingsStore,
     render_scene: Option<RenderScene>,
@@ -352,13 +353,23 @@ impl Driver {
 
     /// The back/forward cache keeps a hidden page's socket open.
     fn page_hidden(&mut self) {
-        if let Some(socket) = self.socket.take() {
-            socket.close_normally();
-        }
+        let hidden_socket: Option<GameSocket> = self.socket.take();
+
+        self.page_hide_closure = match hidden_socket {
+            Some(socket) => {
+                socket.close_normally();
+
+                PageHideClosureKind::SocketClosed
+            }
+            None => PageHideClosureKind::NoSocket,
+        };
     }
 
-    fn page_shown(&mut self, page_show_effect: PageShowEffectKind) {
-        match page_show_effect {
+    fn page_shown(&mut self, page_show: PageShowKind) {
+        let page_hide_closure: PageHideClosureKind =
+            std::mem::replace(&mut self.page_hide_closure, PageHideClosureKind::NoSocket);
+
+        match page_show.get_effect(page_hide_closure) {
             PageShowEffectKind::ConnectionLost => self.socket_closed(close_reason::NORMAL_CLOSURE_CODE),
             PageShowEffectKind::Unchanged => {}
         }
@@ -612,6 +623,7 @@ async fn create_driver(canvas: HtmlCanvasElement, signals: AppSignals) -> Result
         controls: PlayerControls::new(),
         socket: None,
         retired_socket: None,
+        page_hide_closure: PageHideClosureKind::NoSocket,
         signals,
         settings_store,
         render_scene: None,
@@ -744,9 +756,9 @@ fn install_browser_listeners() -> Result<(), AppError> {
         with_driver(Driver::page_hidden)
     })?;
     add_window_listener(&window, PAGESHOW_EVENT, |event: Event| {
-        let page_show_effect: PageShowEffectKind = client::get_page_show_effect(&event);
+        let page_show: PageShowKind = client::get_page_show(&event);
 
-        with_driver(|driver: &mut Driver| driver.page_shown(page_show_effect));
+        with_driver(|driver: &mut Driver| driver.page_shown(page_show));
     })?;
 
     Ok(())

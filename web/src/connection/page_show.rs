@@ -1,6 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageShowEffectKind {
-    /// The page left the back/forward cache, and its `pagehide` closed the connection.
+    /// The page was restored from the back/forward cache.
     ConnectionLost,
     Unchanged,
 }

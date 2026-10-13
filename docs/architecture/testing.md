@@ -90,7 +90,7 @@
 - `lobby/lobby_broadcast.rs`: revision on summary and client-count changes, at most one list per second.
 - `web` (host `#[test]`, `cargo test -p web --lib`):
   - `screen/screen.rs`: input focus, backdrop, back screens, own-state and connection-loss transitions, lobby notices;
-  - `connection/`: notices, Reconnect offer, socket URL;
+  - `connection/`: notices, Reconnect offer, socket URL, page show effect;
   - `settings/hexadecimal.rs`: round trip, odd length, characters outside hexadecimal;
   - `menu/menu_form.rs`: issue placement, rejection fields, number input, radio toggling;
   - `menu/create_menu.rs`, `join_menu.rs`, `spectate_menu.rs`, `respawn_menu.rs`, `pause_menu.rs`: defaults, validation and the requests built;

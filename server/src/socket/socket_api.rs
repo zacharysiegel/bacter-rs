@@ -16,12 +16,13 @@ use crate::lobby::lobby_broadcast;
 use crate::registries::ServerRegistries;
 use crate::shutdown::ServerRunState;
 use crate::socket::{CloseCauseKind, Connection, ConnectionId, ConnectionLimitReached, WriterCommand};
-use crate::socket::{connection, connection_limit, connection_model, socket_writer};
+use crate::socket::{client_address, connection, connection_limit, connection_model, socket_writer};
 
 /// Shared by every connection of one server.
 pub struct SocketContext {
     pub registries: ServerRegistries,
     pub allowed_origins: Vec<String>,
+    pub trusted_proxy_addresses: Vec<IpAddr>,
     pub game_config: GameTaskConfig,
     pub run_state: watch::Receiver<ServerRunState>,
 }
@@ -45,8 +46,6 @@ async fn open_socket(
     }
 
     let (response, session, stream): (HttpResponse, Session, MessageStream) = actix_ws::handle(&request, body)?;
-    let peer_ip: IpAddr =
-        request.peer_addr().map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |peer_address| peer_address.ip());
     let protocol_version: Option<u16> = get_protocol_version(request.query_string());
 
     if protocol_version != Some(protocol::PROTOCOL_VERSION) {
@@ -55,8 +54,12 @@ async fn open_socket(
         return Ok(response);
     }
 
+    let peer_ip: IpAddr =
+        request.peer_addr().map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |peer_address| peer_address.ip());
+    let client_ip: IpAddr =
+        client_address::resolve_client_ip(peer_ip, &context.trusted_proxy_addresses, request.headers());
     let reservation: Result<(), ConnectionLimitReached> =
-        connection_limit::reserve_connection(context.registries, peer_ip);
+        connection_limit::reserve_connection(context.registries, client_ip);
 
     if reservation.is_err() {
         close_after_upgrade(session, CloseReasonKind::ServerFull);
@@ -64,7 +67,7 @@ async fn open_socket(
         return Ok(response);
     }
 
-    start_connection(&context, session, stream, peer_ip);
+    start_connection(&context, session, stream, client_ip);
 
     Ok(response)
 }
@@ -84,7 +87,7 @@ fn get_protocol_version(query_string: &str) -> Option<u16> {
 }
 
 /// The read task and the writer task, both on the accepting worker.
-fn start_connection(context: &SocketContext, session: Session, stream: MessageStream, peer_ip: IpAddr) {
+fn start_connection(context: &SocketContext, session: Session, stream: MessageStream, client_ip: IpAddr) {
     let connection_id: ConnectionId = connection_model::allocate_connection_id(context.registries);
     let (writer_sender, writer_receiver): (mpsc::Sender<WriterCommand>, mpsc::Receiver<WriterCommand>) =
         mpsc::channel(socket_writer::WRITER_COMMAND_CHANNEL_CAPACITY);
@@ -94,7 +97,7 @@ fn start_connection(context: &SocketContext, session: Session, stream: MessageSt
 
     let connection: Connection = Connection::new(
         connection_id,
-        peer_ip,
+        client_ip,
         context.registries,
         context.game_config.clone(),
         writer_sender,
@@ -114,7 +117,7 @@ fn start_connection(context: &SocketContext, session: Session, stream: MessageSt
     ));
 
     log::debug!(
-        "connection opened; [connection_id={} peer_ip={peer_ip}]",
+        "connection opened; [connection_id={} client_ip={client_ip}]",
         connection_id.0
     );
 }

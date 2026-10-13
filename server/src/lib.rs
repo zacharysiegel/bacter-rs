@@ -49,6 +49,7 @@ pub fn create_server(config: ServerConfig, registries: ServerRegistries) -> Resu
     let socket_context: web::Data<SocketContext> = web::Data::new(SocketContext {
         registries,
         allowed_origins: config.allowed_origins.clone(),
+        trusted_proxy_addresses: config.trusted_proxy_addresses.clone(),
         game_config: GameTaskConfig::from_server_config(&config),
         run_state: run_state_receiver,
     });

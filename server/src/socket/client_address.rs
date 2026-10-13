@@ -22,7 +22,7 @@ impl ClientAddressHeaderErrorKind {
     }
 }
 
-/// The address every per-IP limit counts against: the `CF-Connecting-IP` header only when the peer is a trusted proxy.
+/// The `CF-Connecting-IP` address when the peer is a trusted proxy and sent it exactly once; otherwise the peer.
 pub fn resolve_client_ip(peer_ip: IpAddr, trusted_proxy_addresses: &[IpAddr], headers: &HeaderMap) -> IpAddr {
     let is_peer_trusted: bool = is_trusted_proxy(trusted_proxy_addresses, peer_ip);
 

@@ -63,16 +63,12 @@ impl TestClient {
         origin: Option<&str>,
         protocol_version: Option<u16>,
     ) -> Result<TestClient, WebSocketError> {
-        let query: String = protocol_version.map_or(String::new(), |version| {
-            format!("?{}={version}", protocol::PROTOCOL_VERSION_QUERY_PARAMETER)
-        });
-        let mut request: Request =
-            format!("ws://{}{}{query}", test_server.address, protocol::WEBSOCKET_PATH).into_client_request()?;
+        let request: Request = create_socket_request(test_server, origin, protocol_version)?;
 
-        if let Some(origin) = origin {
-            request.headers_mut().insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
-        }
+        TestClient::try_connect_request(request).await
+    }
 
+    pub async fn try_connect_request(request: Request) -> Result<TestClient, WebSocketError> {
         let (stream, _): (TestSocket, Response) = tokio_tungstenite::connect_async(request).await?;
 
         Ok(TestClient { stream })
@@ -244,6 +240,24 @@ impl TestPlayer {
     pub fn applied_tick(&self) -> Tick {
         self.state.tick
     }
+}
+
+pub fn create_socket_request(
+    test_server: &TestServer,
+    origin: Option<&str>,
+    protocol_version: Option<u16>,
+) -> Result<Request, WebSocketError> {
+    let query: String = protocol_version.map_or(String::new(), |version| {
+        format!("?{}={version}", protocol::PROTOCOL_VERSION_QUERY_PARAMETER)
+    });
+    let mut request: Request =
+        format!("ws://{}{}{query}", test_server.address, protocol::WEBSOCKET_PATH).into_client_request()?;
+
+    if let Some(origin) = origin {
+        request.headers_mut().insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
+    }
+
+    Ok(request)
 }
 
 /// Binds a free port with fresh registries; must run inside an actix system.

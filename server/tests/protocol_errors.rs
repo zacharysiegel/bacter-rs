@@ -1,5 +1,9 @@
 mod helpers;
 
+use std::net::{IpAddr, Ipv4Addr};
+
+use tokio_tungstenite::tungstenite::handshake::client::Request;
+use tokio_tungstenite::tungstenite::http::{HeaderName, HeaderValue};
 use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
 
 use helpers::test_server;
@@ -16,8 +20,40 @@ use shared::protocol::{
     TeamKindSerial,
 };
 
+const FORWARDED_CLIENT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 7));
+const OTHER_FORWARDED_CLIENT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 8));
+
 fn rejection(request: RequestKindSerialOut, reason: RejectionKindSerialOut) -> MessageSerialOut {
     MessageSerialOut::RequestRejected { request, reason }
+}
+
+async fn connect_with_client_address_header(test_server: &TestServer, client_ip: IpAddr) -> TestClient {
+    let mut request: Request = test_server::create_socket_request(
+        test_server,
+        Some(test_server::TEST_ORIGIN),
+        Some(protocol::PROTOCOL_VERSION),
+    )
+    .unwrap();
+    let header_name: HeaderName = HeaderName::from_bytes(socket::CLIENT_ADDRESS_HEADER.as_str().as_bytes()).unwrap();
+
+    request.headers_mut().insert(header_name, HeaderValue::from_str(&client_ip.to_string()).unwrap());
+
+    TestClient::try_connect_request(request).await.unwrap()
+}
+
+/// Each client has received a game list, so its connection is counted.
+async fn fill_per_ip_limit_with_client_address_header(test_server: &TestServer, client_ip: IpAddr) -> Vec<TestClient> {
+    let mut clients: Vec<TestClient> = Vec::new();
+
+    for _ in 0..protocol_limits::CONNECTION_LIMIT_PER_IP {
+        let mut client: TestClient = connect_with_client_address_header(test_server, client_ip).await;
+        client.send(&MessageSerialIn::SubscribeGameList).await;
+
+        client.receive().await;
+        clients.push(client);
+    }
+
+    clients
 }
 
 #[actix_web::test]
@@ -132,6 +168,56 @@ async fn open_socket_closes_connections_beyond_the_per_ip_limit_with_server_full
     let mut extra_client: TestClient = TestClient::connect(&test_server).await;
 
     assert_eq!(extra_client.receive_close().await, (4006, String::from("server full")));
+}
+
+#[actix_web::test]
+async fn open_socket_counts_a_trusted_proxy_connection_against_its_client_address_header() {
+    let test_server: TestServer = test_server::start_test_server(|config| {
+        config.trusted_proxy_addresses = vec![IpAddr::V4(Ipv4Addr::LOCALHOST)];
+    });
+    let _clients: Vec<TestClient> =
+        fill_per_ip_limit_with_client_address_header(&test_server, FORWARDED_CLIENT_IP).await;
+
+    let mut same_ip_client: TestClient = connect_with_client_address_header(&test_server, FORWARDED_CLIENT_IP).await;
+
+    assert_eq!(
+        same_ip_client.receive_close().await,
+        (4006, String::from("server full"))
+    );
+
+    let mut other_ip_client: TestClient =
+        connect_with_client_address_header(&test_server, OTHER_FORWARDED_CLIENT_IP).await;
+    other_ip_client.send(&MessageSerialIn::SubscribeGameList).await;
+
+    assert!(matches!(
+        other_ip_client.receive().await,
+        MessageSerialOut::GameList { .. }
+    ));
+    assert_eq!(
+        *test_server.registries.connections_per_ip.get(&FORWARDED_CLIENT_IP).unwrap(),
+        protocol_limits::CONNECTION_LIMIT_PER_IP,
+    );
+    assert_eq!(
+        *test_server.registries.connections_per_ip.get(&OTHER_FORWARDED_CLIENT_IP).unwrap(),
+        1
+    );
+    assert!(!test_server.registries.connections_per_ip.contains_key(&IpAddr::V4(Ipv4Addr::LOCALHOST)));
+}
+
+#[actix_web::test]
+async fn open_socket_ignores_the_client_address_header_without_a_trusted_proxy() {
+    let test_server: TestServer = test_server::start_test_server(|_| {});
+    let _clients: Vec<TestClient> =
+        fill_per_ip_limit_with_client_address_header(&test_server, FORWARDED_CLIENT_IP).await;
+
+    let mut other_ip_client: TestClient =
+        connect_with_client_address_header(&test_server, OTHER_FORWARDED_CLIENT_IP).await;
+
+    assert_eq!(
+        other_ip_client.receive_close().await,
+        (4006, String::from("server full"))
+    );
+    assert!(!test_server.registries.connections_per_ip.contains_key(&FORWARDED_CLIENT_IP));
 }
 
 #[actix_web::test]

@@ -286,7 +286,7 @@ async fn check_game_password(
 
     let attempt: PasswordAttemptKind = password_failure_limit::check_attempt(
         connection.registries.password_failures_per_ip,
-        connection.peer_ip,
+        connection.client_ip,
         Instant::now(),
     );
 
@@ -309,7 +309,7 @@ async fn check_game_password(
 async fn record_password_failure(connection: &mut Connection, request_kind: RequestKind) -> ConnectionFlow {
     password_failure_limit::record_failure(
         connection.registries.password_failures_per_ip,
-        connection.peer_ip,
+        connection.client_ip,
         Instant::now(),
     );
     connection.password_failure_count += 1;

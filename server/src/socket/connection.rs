@@ -30,7 +30,8 @@ pub const INBOUND_TIMEOUT: Duration = Duration::from_secs(30);
 /// The state of one socket, owned by its read task.
 pub struct Connection {
     pub connection_id: ConnectionId,
-    pub peer_ip: IpAddr,
+    /// The TCP peer, or the client address a trusted proxy reported.
+    pub client_ip: IpAddr,
     pub registries: ServerRegistries,
     pub game_config: GameTaskConfig,
     /// None in the lobby.
@@ -47,7 +48,7 @@ pub struct Connection {
 impl Connection {
     pub fn new(
         connection_id: ConnectionId,
-        peer_ip: IpAddr,
+        client_ip: IpAddr,
         registries: ServerRegistries,
         game_config: GameTaskConfig,
         writer: mpsc::Sender<WriterCommand>,
@@ -57,7 +58,7 @@ impl Connection {
 
         Connection {
             connection_id,
-            peer_ip,
+            client_ip,
             registries,
             game_config,
             joined_game: None,
@@ -285,7 +286,7 @@ async fn finish_connection(connection: &Connection) {
     }
 
     lobby_broadcast::unsubscribe(connection.registries, connection.connection_id);
-    connection_limit::release_connection(connection.registries, connection.peer_ip);
+    connection_limit::release_connection(connection.registries, connection.client_ip);
 
     log::debug!(
         "connection closed; [connection_id={} dropped_inputs={}]",

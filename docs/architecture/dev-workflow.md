@@ -7,7 +7,7 @@
 - The default branch is `master` (owner decision; [`docs/conventions/`](#docsconventions)). Git scripts read it once: `default_ref=$(git symbolic-ref --short refs/remotes/origin/HEAD)` (`origin/master`), then `DEFAULT_BRANCH="${default_ref#origin/}"`.
 
 ## Scripts
-- `setup.sh`: check `cargo`, `cargo-leptos`, `jq`; `rustup target add wasm32-unknown-unknown wasm32-wasip1`; optional checks for `wasm-pack`, `chromedriver` and `wasmtime`; create `.env` from `template.env` when absent. No secrets.
+- `setup.sh`: check `cargo`, `cargo-leptos`, `jq`, `wasmtime`; `rustup target add wasm32-unknown-unknown wasm32-wasip1`; optional checks for `wasm-pack` and `chromedriver`; create `.env` from `template.env` when absent. No secrets. The full list is [system dependencies](../system-dependencies.md).
 - `scripts/dev/server.sh`: `cargo run -p server` with `.env`.
 - `scripts/dev/web.sh`: `cd web && cargo leptos watch`.
 - `scripts/run/run-release-server.sh`: loads `.env`, checks that `BACTER_BIND_ADDRESS`, `BACTER_PORT`, `BACTER_SITE_ROOT` and `BACTER_ALLOWED_ORIGINS` are set and that the site root holds `index.html`; checks that `BACTER_TLS_CERTIFICATE_PATH` and `BACTER_TLS_PRIVATE_KEY_PATH` are both set or both unset and, when set, that both files are readable; then runs `target/release/server`.

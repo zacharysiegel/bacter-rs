@@ -14,6 +14,7 @@ Guidance for Claude Code when working in this repository.
 - Architecture: `docs/architecture/`, indexed by `docs/architecture/README.md`. Binding; plans elaborate it and do not reopen its decisions.
 - Conventions: `docs/conventions/`, indexed by `docs/conventions/README.md`, including `git-workflow.md` and `testing.md`. Read the relevant doc before writing code in that area.
 - Plans: `docs/plans/`.
+- System dependencies: `docs/system-dependencies.md`; `./setup.sh` checks them. A new required program is added to both.
 
 ## Determinism contract
 

@@ -49,12 +49,12 @@ function main {
     require_program "cargo" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     require_program "cargo-leptos" "cargo install --locked cargo-leptos"
     require_program "jq" "brew install jq"
+    require_program "wasmtime" "brew install wasmtime"
 
     rustup target add wasm32-unknown-unknown wasm32-wasip1
 
     recommend_program "wasm-pack" "the headless browser tests" "cargo install wasm-pack"
     recommend_program "chromedriver" "the headless browser tests" "a build matching the installed Chrome major version, on PATH"
-    recommend_program "wasmtime" "the wasm32-wasip1 replay test" "brew install wasmtime"
 
     create_environment_file
 

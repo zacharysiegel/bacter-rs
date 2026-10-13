@@ -24,7 +24,11 @@
 3. On the host, fill in `BACTER_ALLOWED_ORIGINS` in `~/bacter-rs/.env` with `https://<public hostname>`.
 4. In the Cloudflare Zero Trust dashboard, confirm that the tunnel's published application route for the public hostname points to `http://localhost:12001` (`BACTER_PORT`).
 5. Confirm automatic login for `zachary` on the host.
-6. Deploy:
+6. On the host, stop the previous game's service, then confirm that nothing listens on port 12001 (`BACTER_PORT`); this prints nothing:
+   ```sh
+   lsof -nP -iTCP:12001 -sTCP:LISTEN
+   ```
+7. Deploy:
    ```sh
    ./scripts/deploy/deploy-remote.sh
    ```

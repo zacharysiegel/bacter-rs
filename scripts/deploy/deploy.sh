@@ -18,6 +18,8 @@ readonly PRODUCTION_VARIABLES=(
 # Internal: marks the re-run of the pulled copy of this script.
 readonly AFTER_PULL_OPTION="--after-pull"
 readonly BOOTOUT_TIMEOUT_SECONDS=10
+# EINPROGRESS; launchctl bootout returns it while the job is still exiting.
+readonly BOOTOUT_IN_PROGRESS_STATUS=36
 readonly HEALTH_TIMEOUT_SECONDS=30
 
 function require_deploy_branch {
@@ -104,7 +106,14 @@ function stop_launch_agent {
 
     local service_target
     service_target=$(read_launch_agent_service_target)
-    launchctl bootout "${service_target}"
+
+    local bootout_output
+    local bootout_status=0
+    bootout_output=$(launchctl bootout "${service_target}" 2>&1) || bootout_status=$?
+
+    if test "${bootout_status}" -ne 0 && test "${bootout_status}" -ne "${BOOTOUT_IN_PROGRESS_STATUS}"; then
+        fail "launchctl bootout ${service_target} failed with status ${bootout_status}; ${bootout_output}"
+    fi
 
     local deadline=$((SECONDS + BOOTOUT_TIMEOUT_SECONDS))
 

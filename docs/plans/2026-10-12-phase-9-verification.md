@@ -1345,6 +1345,18 @@ Each bullet is a ledger entry (or a group of entries with one resolution) and th
 
 ### Growth statistics
 
+- `./scripts/test/test-growth-statistics.sh`: PASS, every state's means within 10% (cells) and 15% (changes per tick) of the reference table in `testing.md`:
+
+```text
+Default Still: cells 64.0 (reference 64.0), changes per tick 6.22 (reference 6.2)
+Default Moving: cells 42.6 (reference 42.5), changes per tick 7.78 (reference 7.7)
+Compress Still: cells 37.7 (reference 37.8), changes per tick 0.79 (reference 0.8)
+Compress Moving: cells 23.5 (reference 23.0), changes per tick 4.46 (reference 4.4)
+Extend Still: cells 124.1 (reference 124.8), changes per tick 7.97 (reference 7.8)
+Extend Moving: cells 82.3 (reference 81.2), changes per tick 10.42 (reference 10.4)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.68s
+```
+
 ### Bug-fix ledger walk-through
 
 - Mapping check (`/tmp/bacter-phase9-check-ledger-tests.sh`): `98 tests named, 0 problems`.

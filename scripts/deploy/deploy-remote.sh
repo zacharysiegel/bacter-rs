@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-readonly DEFAULT_SSH_HOST="zachary@zach.ro"
+readonly DEFAULT_SSH_HOST="zachary@ssh.zach.ro"
 readonly DEFAULT_REMOTE_REPOSITORY='~/bacter-rs'
 readonly REPOSITORY_URL="https://github.com/zacharysiegel/bacter-rs.git"
 readonly USAGE_EXIT_STATUS=64

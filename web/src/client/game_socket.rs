@@ -4,6 +4,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use shared::error::AppError;
+use shared::protocol::close_reason;
 
 use crate::client::js_error;
 
@@ -62,6 +63,15 @@ impl GameSocket {
 
         if let Err(error) = sent {
             log::warn!("sending to the game server failed; [error={error:?}]");
+        }
+    }
+
+    /// Its own close handler does not run.
+    pub fn close_normally(self) {
+        let closed: Result<(), JsValue> = self.websocket.close_with_code(close_reason::NORMAL_CLOSURE_CODE);
+
+        if let Err(error) = closed {
+            log::warn!("closing the game socket failed; [error={error:?}]");
         }
     }
 

@@ -16,6 +16,7 @@
   - Title and tutorial never need it: the title scene and tutorial run locally ([tutorial and title](#tutorial-and-title)).
   - Title notice line: "Connecting to the game server" until open; after a close, the client notice of its `CloseReasonKind` ([server to client](./protocol.md#server-to-client)) plus a Reconnect button (accepted by the owner; none for `ProtocolVersionMismatch`, whose notice asks for a reload). Host and Join are disabled while not connected.
   - Close or error on any screen other than Title or Tutorial: `ConnectionLost` returns to Title with that notice; the tutorial continues undisturbed.
+  - `pagehide` closes the socket normally (code 1000); a `pageshow` with `persisted` set (back/forward cache) is handled as that close, through `ConnectionLost`.
 - `LeftGame` returns to Browser; `GameEnded` returns to Browser with the notice "The game has closed"; `SynchronisationLost` returns to Title with "Lost synchronisation with the game".
   - The browser shows its notice under the table; the title shows it on the notice line while connected.
 - The browser subscribes to the game list each time it opens while connected (an accepted create, join or spectate ends the subscription); the client never unsubscribes.

@@ -16,6 +16,7 @@ use shared::play::{
     TransientMessageKind,
 };
 use shared::protocol::CloseReasonKind;
+use shared::protocol::close_reason;
 use shared::render::{GameRenderer, PhysicalSize, RenderScene, RendererBackendKind, ViewPoint, ViewportSize};
 use shared::title::TitleScene;
 use shared::tutorial::Tutorial;
@@ -28,7 +29,7 @@ use crate::canvas::scene_camera;
 use crate::canvas::{DriverCommandKind, KeyDefaultActionKind, SceneOverlay, SceneView};
 use crate::client;
 use crate::client::{GameSocket, LocalStorageSettingsStore};
-use crate::connection::ConnectionStatusKind;
+use crate::connection::{ConnectionStatusKind, PageShowEffectKind};
 use crate::hud;
 use crate::hud::NameLabelView;
 use crate::menu::RequestRejection;
@@ -49,6 +50,8 @@ const KEYUP_EVENT: &str = "keyup";
 const MOUSEMOVE_EVENT: &str = "mousemove";
 const RESIZE_EVENT: &str = "resize";
 const BLUR_EVENT: &str = "blur";
+const PAGEHIDE_EVENT: &str = "pagehide";
+const PAGESHOW_EVENT: &str = "pageshow";
 
 #[derive(Clone, Copy, Debug)]
 struct TransientMessage {
@@ -345,6 +348,20 @@ impl Driver {
         };
 
         self.handle_effects(effects);
+    }
+
+    /// The back/forward cache keeps a hidden page's socket open.
+    fn page_hidden(&mut self) {
+        if let Some(socket) = self.socket.take() {
+            socket.close_normally();
+        }
+    }
+
+    fn page_shown(&mut self, page_show_effect: PageShowEffectKind) {
+        match page_show_effect {
+            PageShowEffectKind::ConnectionLost => self.socket_closed(close_reason::NORMAL_CLOSURE_CODE),
+            PageShowEffectKind::Unchanged => {}
+        }
     }
 
     fn store_client_settings(&mut self, client_settings: ClientSettings) {
@@ -722,6 +739,14 @@ fn install_browser_listeners() -> Result<(), AppError> {
     add_window_listener(&window, RESIZE_EVENT, |_event: Event| with_driver(Driver::resize))?;
     add_window_listener(&window, BLUR_EVENT, |_event: Event| {
         with_driver(Driver::release_all_keys)
+    })?;
+    add_window_listener(&window, PAGEHIDE_EVENT, |_event: Event| {
+        with_driver(Driver::page_hidden)
+    })?;
+    add_window_listener(&window, PAGESHOW_EVENT, |event: Event| {
+        let page_show_effect: PageShowEffectKind = client::get_page_show_effect(&event);
+
+        with_driver(|driver: &mut Driver| driver.page_shown(page_show_effect));
     })?;
 
     Ok(())

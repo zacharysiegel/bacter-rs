@@ -40,6 +40,13 @@ impl LeaderboardView {
 
         LeaderboardView { columns, rows }
     }
+
+    /// The custom property the table width is computed from.
+    pub fn get_size_style(&self) -> String {
+        let score_column_count: usize = self.columns.iter().filter(|column| !is_subject_column(**column)).count();
+
+        format!("--leaderboard-score-column-count: {score_column_count}")
+    }
 }
 
 #[component]
@@ -48,10 +55,11 @@ pub fn Leaderboard(leaderboard: Signal<Option<LeaderboardView>>) -> impl IntoVie
         leaderboard.get().map(|leaderboard_view| {
             let heading_views: Vec<AnyView> =
                 leaderboard_view.columns.iter().map(|column| render_heading(*column)).collect();
+            let size_style: String = leaderboard_view.get_size_style();
             let row_views: Vec<AnyView> = leaderboard_view.rows.into_iter().map(render_row).collect();
 
             view! {
-                <table class="leaderboard">
+                <table class="leaderboard" style=size_style>
                     <thead>
                         <tr>{heading_views}</tr>
                     </thead>
@@ -81,6 +89,16 @@ fn get_row_class(emphasis: RowEmphasisKind) -> &'static str {
     match emphasis {
         RowEmphasisKind::Own => "leaderboard-row leaderboard-row-own",
         RowEmphasisKind::Other => "leaderboard-row",
+    }
+}
+
+fn is_subject_column(column: LeaderboardColumnKind) -> bool {
+    match column {
+        LeaderboardColumnKind::Player | LeaderboardColumnKind::Team => true,
+        LeaderboardColumnKind::Kills
+        | LeaderboardColumnKind::Deaths
+        | LeaderboardColumnKind::KillDeathRatio
+        | LeaderboardColumnKind::Wins => false,
     }
 }
 
@@ -216,6 +234,24 @@ mod tests {
                 (String::from("Blue"), RowEmphasisKind::Own),
             ],
         );
+    }
+
+    #[test]
+    fn get_size_style_counts_the_columns_after_the_subject_column() {
+        let free_for_all_view: LeaderboardView = LeaderboardView::from_state(
+            &create_state_with_two_participants(GameModeKind::FreeForAll),
+            OWN_MEMBER_ID,
+        );
+        let survival_view: LeaderboardView = LeaderboardView::from_state(
+            &create_state_with_two_participants(GameModeKind::Survival),
+            OWN_MEMBER_ID,
+        );
+
+        assert_eq!(
+            free_for_all_view.get_size_style(),
+            "--leaderboard-score-column-count: 3"
+        );
+        assert_eq!(survival_view.get_size_style(), "--leaderboard-score-column-count: 2");
     }
 
     #[test]

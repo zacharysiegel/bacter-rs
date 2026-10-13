@@ -1,11 +1,14 @@
+$leaderboard-name-column-width: 170px;
+$leaderboard-score-column-width: 46px;
+
 .leaderboard {
     position: absolute;
     top: 13px;
     right: 15px;
     border-collapse: collapse;
     table-layout: fixed;
-    /* Fixed layout sizes the table to the sum of its column widths. */
-    width: 0;
+    /* The sum of the column widths; WebKit does not grow a fixed-layout table to fit its columns. */
+    width: calc(#{$leaderboard-name-column-width} + var(--leaderboard-score-column-count) * #{$leaderboard-score-column-width});
     color: var(--color-black);
     font-family: var(--font-overlay);
     font-size: 11px;
@@ -13,7 +16,7 @@
 
     th,
     td {
-        width: 46px;
+        width: $leaderboard-score-column-width;
         height: 22px;
         padding: 0 5px;
         text-align: left;
@@ -24,7 +27,7 @@
 
     th:first-child,
     td:first-child {
-        width: 170px;
+        width: $leaderboard-name-column-width;
     }
 
     th {

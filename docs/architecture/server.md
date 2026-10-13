@@ -8,6 +8,8 @@
   - `BACTER_ALLOWED_ORIGINS` (comma list; dev default `http://127.0.0.1:3011,http://localhost:3011`, matching the web `site-addr`).
   - `BACTER_REPLAY_CAPTURE_DIRECTORY` (optional), `RUST_LOG`.
   - `BACTER_TLS_CERTIFICATE_PATH`, `BACTER_TLS_PRIVATE_KEY_PATH` (optional, PEM): both set binds with TLS; neither set binds plain HTTP; only one set is a startup error.
+  - `BACTER_TRUSTED_PROXY_ADDRESSES` (optional comma list of IP addresses; an invalid entry is a startup error; default empty, the header is never read): peers whose `CF-Connecting-IP` header is the client address.
+- Client address (`socket/client_address.rs`, the only reader of the peer address for the per-IP limits and connection logs): the peer address, unless the peer is a trusted proxy, then the `CF-Connecting-IP` value when it appears exactly once and parses as an `IpAddr`, else the peer address with a warning. Owner decision: any client can set the header, so no other peer's is read; behind a Cloudflare Tunnel every peer is the local cloudflared.
 - TLS (`config/tls.rs`, owner decision): rustls inside actix-web, `HttpServer::bind_rustls_0_23` with a `rustls::ServerConfig` built by `rustls::ServerConfig::builder().with_no_client_auth().with_single_cert(chain, key)`; chain and key read with `CertificateDer::pem_file_iter` and `PrivateKeyDer::from_pem_file` (`rustls::pki_types::pem::PemObject`). Otherwise `HttpServer::bind`.
 - Cloudflare may proxy in front: its Full (strict) mode connects to the origin over TLS (needs the TLS variables, with a Cloudflare origin certificate or any trusted one); Flexible connects over plain HTTP. The mode is chosen at deploy time.
 - `/ws` rejects a handshake whose `Origin` is not allowed (actix does not check it).
@@ -145,7 +147,7 @@ game supervisor (1 per game) awaits the game task's JoinHandle
 - Verified once per join or spectate request.
 - Limits:
   - `PASSWORD_FAILURE_LIMIT = 5` failures per connection closes it (`PasswordFailureLimit`, 4003).
-  - 20 failures per IP per 10 minutes ([limits](./protocol.md#limits)): further attempts from that IP get `RateLimited` without hashing.
+  - 20 failures per IP per 10 minutes ([limits](./protocol.md#limits)): further attempts from that IP get `RateLimited` without hashing. The IP is the client address ([process](#process)).
 
 ## Rate limits
 - Module: `socket/rate_limit.rs`.
@@ -154,7 +156,7 @@ game supervisor (1 per game) awaits the game task's JoinHandle
   - Requests (create, join, spectate, respawn, appearance, leave): 4/s, burst 8.
 - `RequestSnapshot` has no bucket: the game task coalesces repeats and enforces the minimum interval itself ([checksums and resync](./protocol.md#checksums-and-resync)).
 - Exceeding: inputs dropped; requests answered `RateLimited`; sustained abuse (bucket empty for 10 s) closes the connection (`RateLimitAbuse`, 4004).
-- Connection limits per server and per IP ([limits](./protocol.md#limits)) are checked at upgrade ([registries](#registries)).
+- Connection limits per server and per IP ([limits](./protocol.md#limits)) are checked at upgrade ([registries](#registries)); per IP means per client address ([process](#process)).
 
 ## Failure isolation
 - Decode, conversion or validation errors affect only that connection (`ProtocolViolation`, 1008); request payload conversions are the exception and answer `RequestRejected` ([wire types](./protocol.md#wire-types)).

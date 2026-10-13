@@ -329,6 +329,7 @@ registries/  registries.rs   ServerRegistries (Copy struct of `&'static` referen
 config/      config.rs       ServerConfig
              tls.rs          optional rustls ServerConfig from the PEM certificate chain and private key (server.md#process)
 socket/      socket_api.rs   configurer(): GET /ws, Origin check, actix_ws::handle
+             client_address.rs    client address for the per-IP limits, CF-Connecting-IP from trusted proxies only
              connection.rs   per-connection read/control task
              socket_writer.rs     per-connection writer task, write timeout
              connection_model.rs  ConnectionId, ConnectionPhase, ConnectionControl, Membership

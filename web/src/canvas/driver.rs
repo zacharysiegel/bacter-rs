@@ -16,7 +16,6 @@ use shared::play::{
     TransientMessageKind,
 };
 use shared::protocol::CloseReasonKind;
-use shared::protocol::close_reason;
 use shared::render::{GameRenderer, PhysicalSize, RenderScene, RendererBackendKind, ViewPoint, ViewportSize};
 use shared::title::TitleScene;
 use shared::tutorial::Tutorial;
@@ -226,6 +225,16 @@ impl Driver {
     fn lose_connection(&mut self, close_reason: Option<CloseReasonKind>) {
         log::info!("game server connection lost; [close_reason={close_reason:?}]");
 
+        self.end_connection(ConnectionStatusKind::Closed { close_reason });
+    }
+
+    fn end_connection_closed_by_client(&mut self) {
+        log::info!("game server connection closed by the page");
+
+        self.end_connection(ConnectionStatusKind::ClosedByClient);
+    }
+
+    fn end_connection(&mut self, closed_connection_status: ConnectionStatusKind) {
         self.retired_socket = self.socket.take();
         self.lobby_session = None;
 
@@ -233,7 +242,7 @@ impl Driver {
             self.replace_active_scene(ActiveScene::Title(self.create_title_scene()));
         }
 
-        self.signals.connection_status.set(ConnectionStatusKind::Closed { close_reason });
+        self.signals.connection_status.set(closed_connection_status);
 
         let screen: Screen = self.signals.screen.get_untracked();
         let next_screen: Screen = screen.after_connection_lost();
@@ -370,7 +379,7 @@ impl Driver {
             std::mem::replace(&mut self.page_hide_closure, PageHideClosureKind::NoSocket);
 
         match page_show.get_effect(page_hide_closure) {
-            PageShowEffectKind::ConnectionLost => self.socket_closed(close_reason::NORMAL_CLOSURE_CODE),
+            PageShowEffectKind::ConnectionClosedByClient => self.end_connection_closed_by_client(),
             PageShowEffectKind::Unchanged => {}
         }
     }

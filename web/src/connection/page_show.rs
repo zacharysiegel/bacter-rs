@@ -17,7 +17,7 @@ impl PageShowKind {
     pub fn get_effect(self, page_hide_closure: PageHideClosureKind) -> PageShowEffectKind {
         match (self, page_hide_closure) {
             (PageShowKind::RestoredFromBackForwardCache, PageHideClosureKind::SocketClosed) => {
-                PageShowEffectKind::ConnectionLost
+                PageShowEffectKind::ConnectionClosedByClient
             }
             (PageShowKind::RestoredFromBackForwardCache, PageHideClosureKind::NoSocket)
             | (PageShowKind::Loaded, PageHideClosureKind::SocketClosed | PageHideClosureKind::NoSocket) => {
@@ -36,7 +36,7 @@ pub enum PageHideClosureKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageShowEffectKind {
-    ConnectionLost,
+    ConnectionClosedByClient,
     Unchanged,
 }
 
@@ -54,10 +54,10 @@ mod tests {
     }
 
     #[test]
-    fn get_effect_loses_the_connection_only_for_a_restore_whose_page_hide_closed_the_socket() {
+    fn get_effect_closes_the_connection_only_for_a_restore_whose_page_hide_closed_the_socket() {
         assert_eq!(
             PageShowKind::RestoredFromBackForwardCache.get_effect(PageHideClosureKind::SocketClosed),
-            PageShowEffectKind::ConnectionLost,
+            PageShowEffectKind::ConnectionClosedByClient,
         );
         assert_eq!(
             PageShowKind::RestoredFromBackForwardCache.get_effect(PageHideClosureKind::NoSocket),

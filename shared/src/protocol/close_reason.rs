@@ -3,7 +3,7 @@ use crate::protocol;
 pub const NORMAL_CLOSURE_CODE: u16 = 1000;
 /// For an abnormal close, a failed open, or a close code no close reason uses.
 pub const UNREACHABLE_CLIENT_NOTICE: &str = "Cannot reach the game server";
-const DISCONNECTED_CLIENT_NOTICE: &str = "Disconnected from the game server";
+pub const DISCONNECTED_CLIENT_NOTICE: &str = "Disconnected from the game server";
 const CLOSE_REASON_KINDS: [CloseReasonKind; 9] = [
     CloseReasonKind::ServerShutdown,
     CloseReasonKind::ProtocolViolation,

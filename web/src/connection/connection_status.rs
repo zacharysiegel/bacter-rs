@@ -11,6 +11,7 @@ pub enum ConnectionStatusKind {
     Closed {
         close_reason: Option<CloseReasonKind>,
     },
+    ClosedByClient,
 }
 
 impl ConnectionStatusKind {
@@ -18,7 +19,9 @@ impl ConnectionStatusKind {
     pub fn lobby_access(self) -> LobbyAccessKind {
         match self {
             ConnectionStatusKind::Open => LobbyAccessKind::Enabled,
-            ConnectionStatusKind::Connecting | ConnectionStatusKind::Closed { .. } => LobbyAccessKind::Disabled,
+            ConnectionStatusKind::Connecting
+            | ConnectionStatusKind::Closed { .. }
+            | ConnectionStatusKind::ClosedByClient => LobbyAccessKind::Disabled,
         }
     }
 
@@ -30,6 +33,7 @@ impl ConnectionStatusKind {
             ConnectionStatusKind::Closed { close_reason } => {
                 Some(close_reason.map_or(close_reason::UNREACHABLE_CLIENT_NOTICE, CloseReasonKind::client_notice))
             }
+            ConnectionStatusKind::ClosedByClient => Some(close_reason::DISCONNECTED_CLIENT_NOTICE),
         }
     }
 
@@ -41,7 +45,7 @@ impl ConnectionStatusKind {
             }
             | ConnectionStatusKind::Connecting
             | ConnectionStatusKind::Open => ReconnectOfferKind::NotOffered,
-            ConnectionStatusKind::Closed { .. } => ReconnectOfferKind::Offered,
+            ConnectionStatusKind::Closed { .. } | ConnectionStatusKind::ClosedByClient => ReconnectOfferKind::Offered,
         }
     }
 }
@@ -73,6 +77,10 @@ mod tests {
             ConnectionStatusKind::Closed { close_reason: None }.lobby_access(),
             LobbyAccessKind::Disabled,
         );
+        assert_eq!(
+            ConnectionStatusKind::ClosedByClient.lobby_access(),
+            LobbyAccessKind::Disabled,
+        );
     }
 
     #[test]
@@ -92,6 +100,10 @@ mod tests {
             }
             .notice_text(),
             Some("Disconnected: the connection could not keep up"),
+        );
+        assert_eq!(
+            ConnectionStatusKind::ClosedByClient.notice_text(),
+            Some("Disconnected from the game server"),
         );
     }
 
@@ -114,6 +126,10 @@ mod tests {
             }
             .reconnect_offer(),
             ReconnectOfferKind::NotOffered,
+        );
+        assert_eq!(
+            ConnectionStatusKind::ClosedByClient.reconnect_offer(),
+            ReconnectOfferKind::Offered,
         );
         assert_eq!(
             ConnectionStatusKind::Connecting.reconnect_offer(),

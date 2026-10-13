@@ -23,6 +23,7 @@
 - `scripts/test/regenerate-replay-fixtures.sh`: runs `regenerate_scripted_game_fixture`, then `protocol_dump replay --checksums` for every fixture ([replay tests](./testing.md#replay-tests)).
 - `scripts/git/branch-init.sh`, `pr-integrate.sh`, `cleanup-merged.sh`: adapted from eafora; `pr-integrate.sh` has no `--budget` mode (bacter-rs has no site budget script).
 - `scripts/git/git-preconditions.sh`: the git scripts' shared checks; sourced, not run directly.
+- `scripts/deploy/deploy.sh`, `deploy-remote.sh`, `server-status.sh`, `deploy-shared.sh`: deployment to the production host ([deployment](../deployment.md#scripts)).
 
 ## Running locally
 ```sh
@@ -34,6 +35,7 @@
 - Browse `http://127.0.0.1:3011`; the page connects to `ws://127.0.0.1:3100/ws` from the committed `game-server.json`.
 
 ## Production
+- The production host and its deploy: [deployment](../deployment.md).
 ```sh
 ./scripts/build/build-release.sh
 ```

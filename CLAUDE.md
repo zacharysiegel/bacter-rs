@@ -15,6 +15,7 @@ Guidance for Claude Code when working in this repository.
 - Conventions: `docs/conventions/`, indexed by `docs/conventions/README.md`, including `git-workflow.md` and `testing.md`. Read the relevant doc before writing code in that area.
 - Plans: `docs/plans/`.
 - System dependencies: `docs/system-dependencies.md`; `./setup.sh` checks them. A new required program is added to both.
+- Deployment: `docs/deployment.md`.
 
 ## Determinism contract
 

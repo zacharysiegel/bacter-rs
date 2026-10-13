@@ -415,6 +415,14 @@ tests/   prerender.rs         #![cfg(feature = "ssr")]
 - `protocol_dump frame --direction client-to-server|server-to-client [--hex|--base64] [FILE]`: decodes one frame (stdin or file) and prints the `Debug` form.
 - `protocol_dump replay FILE [--checksums]`: decodes a `ReplayLog`, prints bundles, optionally the per-tick checksums from re-running it.
 - Frames come from browser devtools (copied as base64) or from server replay capture.
+- Module tree (`tools/protocol_dump/src/`):
+
+```
+main.rs              clap command, subcommand dispatch, output writing
+frame_dump.rs        DirectionKind, dump_frame
+frame_encoding.rs    FrameEncodingKind, decode_frame_input (binary, hex, base64)
+replay_dump.rs       ReplayOutputKind, dump_replay
+```
 
 ### `scripts/` and `docs/`
 - `scripts/`: [scripts](./dev-workflow.md#scripts).

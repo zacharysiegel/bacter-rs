@@ -4,21 +4,30 @@
 - One route `/`; the screen is Leptos state, not a URL (prerender guard allows only `/`).
 - `Screen { Title, Browser, CreateMenu, JoinMenu { origin: JoinMenuOrigin }, SpectateMenu { game_id }, Playing, Spectating, RespawnMenu, PauseGame, PauseSpectate, Tutorial, PauseTutorial }`.
 - `JoinMenuOrigin { Create { settings: GameSettingsSerialIn, password: Option<String> }, Browser { game_id: GameId } }`.
-- `app.rs`: `shell()` (ssr) renders head with `HashedStylesheet`, `AutoReload`, `HydrationScripts`; body holds `<App/>`: canvas layer (z -2), shade (white 0.5, z -1) behind menus, UI (z 1).
+- `app.rs`: `shell()` (ssr) renders head with a preload of `/fonts/bacter.ttf` (`as="font"`, `crossorigin`), `HashedStylesheet`, `AutoReload`, `HydrationScripts`; body holds `<App/>`: prerendered title world (z -3), canvas layer (z -2), shade (white 0.5, z -1) behind menus, UI (z 1).
+- Prerendered title world (`title/prerendered_title_world.rs`): a CSS box drawing the title scene's world from the renderer's constants (inset `LOCAL_WORLD_MARGIN_PIXELS`, black body, `WORLD_BORDER_COLOR` border of `WORLD_BORDER_WIDTH_PIXELS` centred on the edge, `SHADOW_COLOR` shadow at `RECTANGLE_WORLD_SHADOW_OFFSET`), passed as custom properties in its `style`.
+  - Hidden once `AppSignals::first_frame` is `Drawn`, which the driver sets after the first `draw_frame` returning `FramePresentationKind::Presented`; kept when no renderer can be created.
 - `client/hydrate.rs`: panic hook, `console_log` at Debug, `leptos::mount::hydrate_body(App)`.
 - Escape: create/browser to title; join menu to browser (or back to create when creating); spectate menu to browser; playing to pause; spectating to pause; tutorial to pause; pause/respawn menus back to play.
 - Creating: create menu then join menu (screen name, loadout); its submit sends one `CreateGame`; Back from that join step returns to the create menu with nothing created.
 - `alert()` replaced by the message box or inline form errors.
 - A renderer which cannot be created is logged (`the game cannot be drawn in this browser`); the menus keep working.
-- The title notice line sits centred below the title box.
+- The title status box sits centred below the title box: the title box's fill and 1 px white border, its line in `_bacter`.
 - Connection (`client/game_socket.rs`):
   - One socket at a time; opened after hydration, when `game-server.json` has been read, and again only by the Reconnect button; no automatic reconnect.
   - Title and tutorial never need it: the title scene and tutorial run locally ([tutorial and title](#tutorial-and-title)).
-  - Title notice line: "Connecting to the game server" until open; after a close, the client notice of its `CloseReasonKind` ([server to client](./protocol.md#server-to-client)) plus a Reconnect button (accepted by the owner; none for `ProtocolVersionMismatch`, whose notice asks for a reload). Host and Join are disabled while not connected.
+  - `ConnectionStatusKind { Loading, Connecting, Open, Closed { close_reason }, ClosedByClient }` (`connection/connection_status.rs`); `Loading` until the driver starts after hydration, then `Connecting`.
+  - `ConnectionStatusKind::status_box` maps every state to the title status box (`StatusBoxView`: text, activity indicator, Reconnect offer):
+    - `Loading`: "Loading" with the activity indicator.
+    - `Connecting`: "Connecting to the game server" with the activity indicator.
+    - `Open`: no box.
+    - After a close: the client notice of its `CloseReasonKind` ([server to client](./protocol.md#server-to-client)) plus a Reconnect button (accepted by the owner; none for `ProtocolVersionMismatch`, whose notice asks for a reload).
+  - Activity indicator: 6 px white cells (`CELL_WIDTH_PIXELS`) appearing one at a time until the row is full, then again; CSS animation only, so it runs before the client bundle starts.
+  - Host and Join are enabled only while `Open`; Tutorial is disabled only while `Loading`; a disabled button ignores clicks.
   - Close or error on any screen other than Title or Tutorial: `ConnectionLost` returns to Title with that notice; the tutorial continues undisturbed.
   - `pagehide` closes the socket normally (code 1000); a `pageshow` with `persisted` set (back/forward cache) returns to Title with the notice "Disconnected from the game server" and a Reconnect button, only when that `pagehide` closed a socket; an earlier close keeps its notice.
 - `LeftGame` returns to Browser; `GameEnded` returns to Browser with the notice "The game has closed"; `SynchronisationLost` returns to Title with "Lost synchronisation with the game".
-  - The browser shows its notice under the table; the title shows it on the notice line while connected.
+  - The browser shows its notice under the table; the title shows it in the status box while connected.
 - The browser subscribes to the game list each time it opens while connected (an accepted create, join or spectate ends the subscription); the client never unsubscribes.
 
 ## Screens
@@ -127,7 +136,7 @@ Browser part (`web/src/canvas/driver.rs`, hydrate):
   - Transient texts ([client session, frame pacing and driving](#client-session-frame-pacing-and-driving)) replace these for 3 s.
   - Tutorial task texts verbatim from `Message.js`.
   - The box shrinks to its text, so its width is the DOM's measure of the text, not a character count.
-- Font: `@font-face` `_bacter` from `/fonts/bacter.ttf`; Verdana, Georgia, Helvetica, Consolas elsewhere as the original.
+- Font: `@font-face` `_bacter` from `/fonts/bacter.ttf` with `font-display: block`, preloaded by the shell; Verdana, Georgia, Helvetica, Consolas elsewhere as the original.
 
 ## Prediction seam
 - The client simulates exactly the server's bundles; only the crosshair is predicted.

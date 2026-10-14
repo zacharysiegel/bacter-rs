@@ -90,7 +90,8 @@
 - `lobby/lobby_broadcast.rs`: revision on summary and client-count changes, at most one list per second.
 - `web` (host `#[test]`, `cargo test -p web --lib`):
   - `screen/screen.rs`: input focus, backdrop, back screens, own-state and connection-loss transitions, lobby notices;
-  - `connection/`: notices, Reconnect offer, socket URL, page show effect;
+  - `connection/`: status box per connection state (text, activity indicator, Reconnect offer, box shown), Host, Join and Tutorial access, socket URL, page show effect;
+  - `title/prerendered_title_world.rs`: the renderer's title world values as custom properties;
   - `settings/hexadecimal.rs`: round trip, odd length, characters outside hexadecimal;
   - `menu/menu_form.rs`: issue placement, rejection fields, number input, radio toggling;
   - `menu/create_menu.rs`, `join_menu.rs`, `spectate_menu.rs`, `respawn_menu.rs`, `pause_menu.rs`: defaults, validation and the requests built;
@@ -101,7 +102,7 @@
   - `tutorial/tutorial_view.rs`, `app.rs`: tutorial overlay, client settings, back navigation.
 
 ## Other tests
-- `web/tests/prerender.rs` (ssr): prerendered document contains the canvas root, the title screen, `/pkg/`, `.wasm`, `.css`, `<title>`.
+- `web/tests/prerender.rs` (ssr): prerendered document contains the canvas root, the title screen, `/pkg/`, `.wasm`, `.css`, `<title>`, the "Loading" status box with its activity indicator, Host, Join and Tutorial disabled, the prerendered title world shown, the title font preload.
 - `LocalStorageSettingsStore`: `#[wasm_bindgen_test]` (browser-only behaviour), via `scripts/test/test-wasm.sh`.
 - Shader pipelines: `#[ignore]` test building every pipeline on a headless device, via `scripts/test/test-shaders.sh`.
 

@@ -1,6 +1,6 @@
 # Settings and functions shared by the scripts in scripts/deploy/; sourced from the repository root, not run.
 
-readonly LAUNCH_AGENT_LABEL="rs.bacter.server"
+readonly LAUNCH_AGENT_LABEL="ro.zach.bacter.server"
 readonly LAUNCH_AGENT_TEMPLATE_PATH="./scripts/deploy/${LAUNCH_AGENT_LABEL}.template.plist"
 readonly LAUNCH_AGENT_PLIST_PATH="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_LABEL}.plist"
 readonly SERVER_LOG_PATH="${HOME}/Library/Logs/bacter/server.log"

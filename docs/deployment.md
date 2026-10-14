@@ -4,7 +4,7 @@
 - ssh reaches the host through the tunnel's `ssh.zach.ro` route (`ssh://localhost:22`); the client needs `cloudflared` and an `~/.ssh/config` entry with `ProxyCommand cloudflared access ssh --hostname %h`.
 - The build runs on the host, from its clone of this repository on `master`.
 - A Cloudflare Tunnel (`cloudflared` on the host) terminates TLS and forwards `bacter.zach.ro` to `http://localhost:12001`; the server binds `127.0.0.1` and reads `CF-Connecting-IP` only from the local `cloudflared` (`BACTER_TRUSTED_PROXY_ADDRESSES=127.0.0.1,::1`).
-- The server runs as the LaunchAgent `rs.bacter.server` (`~/Library/LaunchAgents/rs.bacter.server.plist`, from `scripts/deploy/rs.bacter.server.template.plist`), running `./scripts/run/run-release-server.sh` from the repository root, restarted by launchd when it exits.
+- The server runs as the LaunchAgent `ro.zach.bacter.server` (`~/Library/LaunchAgents/ro.zach.bacter.server.plist`, from `scripts/deploy/ro.zach.bacter.server.template.plist`), running `./scripts/run/run-release-server.sh` from the repository root, restarted by launchd when it exits.
 - Log: `~/Library/Logs/bacter/server.log`.
 - A LaunchAgent runs only while its user is logged in: the host needs automatic login for `zachary`, or the agent moved to a LaunchDaemon.
 

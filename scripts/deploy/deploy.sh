@@ -168,6 +168,7 @@ function main {
 
     source ./scripts/git/git-preconditions.sh
     source ./scripts/deploy/deploy-shared.sh
+    source ./scripts/build/program-paths.sh
 
     local pull_state="pending"
 
@@ -191,6 +192,11 @@ function main {
     require_production_settings
 
     ./setup.sh
+
+    # setup.sh's PATH additions stay in its own process.
+    add_homebrew_programs_to_path
+    add_cargo_programs_to_path
+
     ./scripts/build/build-release.sh
 
     install_launch_agent_plist "${repository_root}"

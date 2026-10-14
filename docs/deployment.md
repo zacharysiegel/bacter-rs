@@ -7,7 +7,7 @@
 - The server runs as the LaunchAgent `ro.zach.bacter.server` (`~/Library/LaunchAgents/ro.zach.bacter.server.plist`, from `scripts/deploy/ro.zach.bacter.server.template.plist`), running `./scripts/run/run-release-server.sh` from the repository root, restarted by launchd when it exits.
 - Log: `~/Library/Logs/bacter/server.log`.
 - A LaunchAgent runs only while its user is logged in: the host needs automatic login for `zachary`, or the agent moved to a LaunchDaemon.
-- After a reboot with automatic login, launchd loads the agent from `~/Library/LaunchAgents` into the GUI login session itself (`RunAtLoad`); from an ssh session without a GUI login, `deploy.sh` loads it into the user domain `user/<uid>`.
+- After a reboot with automatic login, launchd loads the agent from `~/Library/LaunchAgents` into the GUI login session itself (`RunAtLoad`); from an ssh session without a GUI login, `deploy.sh` loads it into the user domain `user/<uid>`, which admits it because its `LimitLoadToSessionType` lists `Background` as well as `Aqua`.
 
 ## Scripts
 

@@ -10,6 +10,12 @@
     </array>
     <key>WorkingDirectory</key>
     <string>__REPOSITORY_ROOT__</string>
+    <!-- launchd refuses to bootstrap an agent into user/<uid> unless Background is listed. -->
+    <key>LimitLoadToSessionType</key>
+    <array>
+        <string>Aqua</string>
+        <string>Background</string>
+    </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

@@ -143,6 +143,7 @@ Browser part (`web/src/canvas/driver.rs`, hydrate):
 - Tasks: move, fullscreen (skipped if fullscreen; F11 or 3.5 s), survive (4.5 s, enables Extend), extend, immortality, neutralize, shoot (enables Compress and Freeze, 10 s), compress (bot placed), freeze, toxin, spore (pauses stepping at half the flight until secrete), done.
 - One ability enabled at a time, as the original's per-task `activated` toggles:
   - `Tutorial` keeps `enabled_abilities: AbilityPressSet` per task and masks the sampled presses with it before building each local bundle, so a disabled ability never activates.
+  - The tutorial overlay passes the same set to `AbilityBarView::from_state`, which draws only the enabled slots, each at its usual position; an online game passes `AbilityPressSet::ALL`.
   - Loadout changes between tasks (for example Compress and Freeze from the shoot task on, Toxin for the toxin task) are written to the player's `Member.loadout` directly between steps; the local game has no server to agree with.
 - Bot: placed at a uniform random point inside the world at least `TUTORIAL_BOT_MINIMUM_DISTANCE_PIXELS = 80` (default range plus 30, faithful) from the player's cursor; random palette colour except Sun and Lime, skin None.
 - Every tutorial organism (player and bot) that reaches zero cells is placed again as one cell at its own cursor before the next step (the original's per-organism intent; self acid, spore removal and the survive task rely on it).

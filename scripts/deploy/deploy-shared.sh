@@ -24,19 +24,32 @@ function read_environment_value {
     )
 }
 
-# gui/<uid> while the user has a GUI login session, otherwise user/<uid>.
-function read_launch_agent_domain {
+function read_gui_launch_agent_domain {
     local user_id
     user_id=$(id -u)
 
-    local gui_domain="gui/${user_id}"
+    echo "gui/${user_id}"
+}
+
+function read_user_launch_agent_domain {
+    local user_id
+    user_id=$(id -u)
+
+    echo "user/${user_id}"
+}
+
+# gui/<uid> while the user has a GUI login session, otherwise user/<uid>.
+function read_launch_agent_domain {
+    local gui_domain
+    gui_domain=$(read_gui_launch_agent_domain)
+
     local print_status=0
     launchctl print "${gui_domain}" > /dev/null 2>&1 || print_status=$?
 
     if test "${print_status}" -eq 0; then
         echo "${gui_domain}"
     else
-        echo "user/${user_id}"
+        read_user_launch_agent_domain
     fi
 }
 

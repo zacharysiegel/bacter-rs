@@ -148,7 +148,14 @@ function restart_launch_agent {
     launch_agent_domain=$(read_launch_agent_domain)
     echo "using the launchd domain ${launch_agent_domain}"
 
-    stop_launch_agent "${launch_agent_domain}"
+    local gui_domain user_domain
+    gui_domain=$(read_gui_launch_agent_domain)
+    user_domain=$(read_user_launch_agent_domain)
+
+    # A copy can be loaded in either domain, whichever this deploy chose.
+    stop_launch_agent "${gui_domain}"
+    stop_launch_agent "${user_domain}"
+
     start_launch_agent "${launch_agent_domain}"
 }
 

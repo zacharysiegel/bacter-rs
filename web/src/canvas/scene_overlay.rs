@@ -1,3 +1,4 @@
+use shared::ability::AbilityPressSet;
 use shared::play::{ActiveScene, ClientSession};
 
 use crate::hud::AbilityBarView;
@@ -45,7 +46,7 @@ impl SceneOverlay {
         };
 
         SceneOverlay {
-            ability_bar: AbilityBarView::from_state(state, own_member_id),
+            ability_bar: AbilityBarView::from_state(state, own_member_id, AbilityPressSet::ALL),
             leaderboard: Some(LeaderboardView::from_state(state, own_member_id)),
             message_text,
             game_menu: GameMenuView::from_state(state, own_member_id),
@@ -100,7 +101,11 @@ mod tests {
 
         let overlay: SceneOverlay = SceneOverlay::from_active_scene(&active_scene);
 
-        assert_eq!(overlay.ability_bar, AbilityBarView::from_state(&state, OWN_MEMBER_ID));
+        assert_eq!(
+            overlay.ability_bar,
+            AbilityBarView::from_state(&state, OWN_MEMBER_ID, AbilityPressSet::ALL),
+        );
+        assert!(overlay.ability_bar.unwrap().slots.iter().all(Option::is_some));
         assert_eq!(
             overlay.leaderboard,
             Some(LeaderboardView::from_state(&state, OWN_MEMBER_ID)),

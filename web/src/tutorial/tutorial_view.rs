@@ -4,10 +4,14 @@ use shared::tutorial::Tutorial;
 use crate::canvas::SceneOverlay;
 use crate::hud::AbilityBarView;
 
-/// The task text, and the ability bar once the task shows it.
+/// The task text, and the ability bar's enabled slots once the task shows it.
 pub fn get_tutorial_overlay(tutorial: &Tutorial) -> SceneOverlay {
     let ability_bar: Option<AbilityBarView> = if tutorial.is_hud_visible() {
-        AbilityBarView::from_state(tutorial.state(), tutorial::TUTORIAL_PLAYER_ID)
+        AbilityBarView::from_state(
+            tutorial.state(),
+            tutorial::TUTORIAL_PLAYER_ID,
+            tutorial.enabled_abilities(),
+        )
     } else {
         None
     };
@@ -48,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn get_tutorial_overlay_shows_the_ability_bar_from_the_fullscreen_task() {
+    fn get_tutorial_overlay_shows_the_ability_bar_without_slots_from_the_fullscreen_task() {
         let mut controls: PlayerControls = PlayerControls::new();
         let mut tutorial: Tutorial = Tutorial::new(WINDOW_SIZE, SEED, DisplayModeKind::Windowed, &mut controls);
         controls
@@ -64,7 +68,7 @@ mod tests {
         let overlay: SceneOverlay = get_tutorial_overlay(&tutorial);
 
         assert_eq!(tutorial.task(), TutorialTaskKind::Fullscreen);
-        assert!(overlay.ability_bar.is_some());
+        assert!(overlay.ability_bar.unwrap().slots.iter().all(Option::is_none));
         assert_eq!(overlay.leaderboard, None);
     }
 }

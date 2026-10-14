@@ -2,8 +2,8 @@ use leptos::prelude::*;
 
 use shared::ability::ability_constants;
 use shared::ability::{
-    AbilityIconKind, AbilityPhase, FirstAbilityKind, Loadout, OrganismAbilities, SecondAbilityKind, ShotEffectKind,
-    ShotPhase, SporePhase, ThirdAbilityKind,
+    AbilityIconKind, AbilityPhase, AbilityPressSet, FirstAbilityKind, Loadout, OrganismAbilities, SecondAbilityKind,
+    ShotEffectKind, ShotPhase, SporePhase, ThirdAbilityKind,
 };
 use shared::game::{GameState, Tick};
 use shared::member::{Member, MemberId};
@@ -53,24 +53,30 @@ pub struct AbilitySlotView {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AbilityBarView {
-    pub slots: [AbilitySlotView; ABILITY_SLOT_COUNT],
+    /// `None` for a hidden slot; the shown slots keep their positions.
+    pub slots: [Option<AbilitySlotView>; ABILITY_SLOT_COUNT],
 }
 
 impl AbilityBarView {
     /// `None` without an own organism.
-    pub fn from_state(state: &GameState, own_member_id: MemberId) -> Option<AbilityBarView> {
+    pub fn from_state(
+        state: &GameState,
+        own_member_id: MemberId,
+        shown_ability_slots: AbilityPressSet,
+    ) -> Option<AbilityBarView> {
         let own_member: &Member = state.members.get(&own_member_id)?;
         let loadout: &Loadout = own_member.loadout.as_ref()?;
         let organism: &Organism = own_member.organism.as_ref()?;
         let abilities: &OrganismAbilities = &organism.abilities;
         let tick: Tick = state.tick;
+        let is_slot_shown = |slot_press: AbilityPressSet| shown_ability_slots.contains(slot_press);
 
         Some(AbilityBarView {
             slots: [
-                get_first_slot(abilities, loadout, tick),
-                get_second_slot(abilities, loadout, tick),
-                get_third_slot(abilities, loadout, tick),
-                get_fourth_slot(abilities, tick),
+                is_slot_shown(AbilityPressSet::FIRST).then(|| get_first_slot(abilities, loadout, tick)),
+                is_slot_shown(AbilityPressSet::SECOND).then(|| get_second_slot(abilities, loadout, tick)),
+                is_slot_shown(AbilityPressSet::THIRD).then(|| get_third_slot(abilities, loadout, tick)),
+                is_slot_shown(AbilityPressSet::FOURTH).then(|| get_fourth_slot(abilities, tick)),
             ],
         })
     }
@@ -84,7 +90,7 @@ pub fn AbilityBar(ability_bar: Signal<Option<AbilityBarView>>) -> impl IntoView 
                 .slots
                 .into_iter()
                 .enumerate()
-                .map(|(slot_index, slot)| render_slot(slot_index, slot))
+                .filter_map(|(slot_index, slot)| slot.map(|shown_slot| render_slot(slot_index, shown_slot)))
                 .collect();
 
             view! { <div class="ability-bar">{slot_views}</div> }
@@ -332,6 +338,7 @@ mod tests {
     use shared::game::GameModeKind;
     use shared::game::test_fixture;
     use shared::geometry::WorldPoint;
+    use shared::tutorial::TutorialTaskKind;
     use shared::world::WorldShapeKind;
 
     const OWN_MEMBER_ID: MemberId = MemberId(0);
@@ -351,21 +358,77 @@ mod tests {
         &mut test_fixture::get_organism_mut(state, OWN_MEMBER_ID).abilities
     }
 
+    fn get_ability_bar_with_every_slot(state: &GameState) -> AbilityBarView {
+        AbilityBarView::from_state(state, OWN_MEMBER_ID, AbilityPressSet::ALL).unwrap()
+    }
+
+    fn get_shown_slot(ability_bar: &AbilityBarView, slot_index: usize) -> &AbilitySlotView {
+        ability_bar.slots[slot_index].as_ref().unwrap()
+    }
+
+    fn get_shown_slot_indexes(ability_bar: &AbilityBarView) -> Vec<usize> {
+        ability_bar
+            .slots
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.is_some())
+            .map(|(slot_index, _)| slot_index)
+            .collect()
+    }
+
+    #[test]
+    fn from_state_shows_every_slot_for_every_ability() {
+        let state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
+
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
+
+        assert_eq!(get_shown_slot_indexes(&ability_bar), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn from_state_shows_only_the_slots_each_tutorial_task_enables() {
+        let state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
+        let task_shown_slot_indexes: [(TutorialTaskKind, Vec<usize>); 12] = [
+            (TutorialTaskKind::Move, vec![]),
+            (TutorialTaskKind::Fullscreen, vec![]),
+            (TutorialTaskKind::Survive, vec![]),
+            (TutorialTaskKind::Extend, vec![0]),
+            (TutorialTaskKind::Immortality, vec![1]),
+            (TutorialTaskKind::Neutralize, vec![2]),
+            (TutorialTaskKind::Shoot, vec![0, 1]),
+            (TutorialTaskKind::Compress, vec![0]),
+            (TutorialTaskKind::Freeze, vec![1]),
+            (TutorialTaskKind::Toxin, vec![2]),
+            (TutorialTaskKind::Spore, vec![3]),
+            (TutorialTaskKind::Done, vec![]),
+        ];
+
+        for (task, expected_shown_slot_indexes) in task_shown_slot_indexes {
+            let ability_bar: AbilityBarView =
+                AbilityBarView::from_state(&state, OWN_MEMBER_ID, task.enabled_abilities()).unwrap();
+
+            assert_eq!(get_shown_slot_indexes(&ability_bar), expected_shown_slot_indexes);
+        }
+    }
+
     #[test]
     fn from_state_is_none_without_an_own_organism() {
         let mut state: GameState = test_fixture::create_state(GameModeKind::FreeForAll, WorldShapeKind::Rectangle, 800);
         test_fixture::insert_member(&mut state, test_fixture::create_participant(OWN_MEMBER_ID));
 
-        assert_eq!(AbilityBarView::from_state(&state, OWN_MEMBER_ID), None);
+        assert_eq!(
+            AbilityBarView::from_state(&state, OWN_MEMBER_ID, AbilityPressSet::ALL),
+            None,
+        );
     }
 
     #[test]
     fn from_state_shows_ready_abilities_as_full_dials_with_the_loadout_icons() {
         let state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
-        let icons: Vec<AbilityIconKind> = ability_bar.slots.iter().map(|slot| slot.icon).collect();
-        let key_labels: Vec<&str> = ability_bar.slots.iter().map(|slot| slot.key_label).collect();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
+        let icons: Vec<AbilityIconKind> = ability_bar.slots.iter().flatten().map(|slot| slot.icon).collect();
+        let key_labels: Vec<&str> = ability_bar.slots.iter().flatten().map(|slot| slot.key_label).collect();
 
         assert_eq!(
             icons,
@@ -377,8 +440,8 @@ mod tests {
             ],
         );
         assert_eq!(key_labels, vec!["X", "C", "V", "_"]);
-        assert!(ability_bar.slots.iter().all(|slot| slot.dial == AbilityDialKind::Full));
-        assert!(ability_bar.slots.iter().all(|slot| slot.shot_dial.is_none()));
+        assert!(ability_bar.slots.iter().flatten().all(|slot| slot.dial == AbilityDialKind::Full));
+        assert!(ability_bar.slots.iter().flatten().all(|slot| slot.shot_dial.is_none()));
     }
 
     #[test]
@@ -394,22 +457,25 @@ mod tests {
             ready_at: Tick(100).plus(immortality_cooldown_ticks / 4),
         };
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
         assert_eq!(
-            ability_bar.slots[0].dial,
+            get_shown_slot(&ability_bar, 0).dial,
             AbilityDialKind::Partial {
                 filled_proportion: (extend_active_ticks / 2) as f32 / extend_active_ticks as f32,
             },
         );
         assert_eq!(
-            ability_bar.slots[1].dial,
+            get_shown_slot(&ability_bar, 1).dial,
             AbilityDialKind::Partial {
                 filled_proportion: 1.0 - (immortality_cooldown_ticks / 4) as f32 / immortality_cooldown_ticks as f32,
             },
         );
-        assert_eq!(ability_bar.slots[0].effect_dots, vec![EffectDotKind::OwnEffect]);
-        assert!(ability_bar.slots[1].effect_dots.is_empty());
+        assert_eq!(
+            get_shown_slot(&ability_bar, 0).effect_dots,
+            vec![EffectDotKind::OwnEffect]
+        );
+        assert!(get_shown_slot(&ability_bar, 1).effect_dots.is_empty());
     }
 
     #[test]
@@ -423,12 +489,12 @@ mod tests {
             shot: test_fixture::PROJECTILE,
         };
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert_eq!(ability_bar.slots[0].icon, AbilityIconKind::Compress);
-        assert_eq!(ability_bar.slots[0].shot_dial, Some(AbilityDialKind::Full));
+        assert_eq!(get_shown_slot(&ability_bar, 0).icon, AbilityIconKind::Compress);
+        assert_eq!(get_shown_slot(&ability_bar, 0).shot_dial, Some(AbilityDialKind::Full));
         assert_eq!(
-            ability_bar.slots[1].shot_dial,
+            get_shown_slot(&ability_bar, 1).shot_dial,
             Some(AbilityDialKind::Partial { filled_proportion: 0.0 }),
         );
     }
@@ -442,10 +508,13 @@ mod tests {
         abilities.first = AbilityPhase::Active { ends_at: Tick(130) };
         abilities.frozen_until = Some(Tick(120));
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert!(ability_bar.slots[0].effect_dots.is_empty());
-        assert_eq!(ability_bar.slots[1].effect_dots, vec![EffectDotKind::EnemyEffect]);
+        assert!(get_shown_slot(&ability_bar, 0).effect_dots.is_empty());
+        assert_eq!(
+            get_shown_slot(&ability_bar, 1).effect_dots,
+            vec![EffectDotKind::EnemyEffect]
+        );
     }
 
     #[test]
@@ -456,11 +525,11 @@ mod tests {
             spores: Vec::new(),
         };
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert_eq!(ability_bar.slots[3].icon, AbilityIconKind::Secrete);
+        assert_eq!(get_shown_slot(&ability_bar, 3).icon, AbilityIconKind::Secrete);
         assert_eq!(
-            ability_bar.slots[3].dial,
+            get_shown_slot(&ability_bar, 3).dial,
             AbilityDialKind::Partial { filled_proportion: 0.0 },
         );
     }
@@ -470,9 +539,12 @@ mod tests {
         let mut state: GameState = create_state_with_own_organism(test_fixture::create_loadout());
         get_own_abilities_mut(&mut state).third = AbilityPhase::Active { ends_at: Tick(130) };
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert_eq!(ability_bar.slots[2].effect_dots, vec![EffectDotKind::OwnEffect]);
+        assert_eq!(
+            get_shown_slot(&ability_bar, 2).effect_dots,
+            vec![EffectDotKind::OwnEffect]
+        );
     }
 
     #[test]
@@ -482,10 +554,13 @@ mod tests {
         let mut state: GameState = create_state_with_own_organism(loadout);
         get_own_abilities_mut(&mut state).third = AbilityPhase::Active { ends_at: Tick(130) };
 
-        let ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert_eq!(ability_bar.slots[2].icon, AbilityIconKind::Toxin);
-        assert_eq!(ability_bar.slots[2].effect_dots, vec![EffectDotKind::EnemyEffect]);
+        assert_eq!(get_shown_slot(&ability_bar, 2).icon, AbilityIconKind::Toxin);
+        assert_eq!(
+            get_shown_slot(&ability_bar, 2).effect_dots,
+            vec![EffectDotKind::EnemyEffect]
+        );
     }
 
     #[test]
@@ -498,24 +573,24 @@ mod tests {
             spores: Vec::new(),
         };
 
-        let flying_ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let flying_ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
         get_own_abilities_mut(&mut state).spore = SporePhase::Cooling {
             ready_at: Tick(100).plus(spore_cooldown_ticks / 4),
         };
 
-        let cooling_ability_bar: AbilityBarView = AbilityBarView::from_state(&state, OWN_MEMBER_ID).unwrap();
+        let cooling_ability_bar: AbilityBarView = get_ability_bar_with_every_slot(&state);
 
-        assert_eq!(flying_ability_bar.slots[3].icon, AbilityIconKind::Spore);
+        assert_eq!(get_shown_slot(&flying_ability_bar, 3).icon, AbilityIconKind::Spore);
         assert_eq!(
-            flying_ability_bar.slots[3].dial,
+            get_shown_slot(&flying_ability_bar, 3).dial,
             AbilityDialKind::Partial {
                 filled_proportion: (spore_flight_ticks / 2) as f32 / spore_flight_ticks as f32,
             },
         );
-        assert_eq!(cooling_ability_bar.slots[3].icon, AbilityIconKind::Spore);
+        assert_eq!(get_shown_slot(&cooling_ability_bar, 3).icon, AbilityIconKind::Spore);
         assert_eq!(
-            cooling_ability_bar.slots[3].dial,
+            get_shown_slot(&cooling_ability_bar, 3).dial,
             AbilityDialKind::Partial {
                 filled_proportion: 1.0 - (spore_cooldown_ticks / 4) as f32 / spore_cooldown_ticks as f32,
             },

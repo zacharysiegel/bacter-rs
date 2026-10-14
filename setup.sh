@@ -103,6 +103,18 @@ function create_environment_file {
     echo "created ./.env from ./template.env"
 }
 
+function read_pinned_toolchain_channel {
+    local toolchain_channel
+    toolchain_channel=$(sed -n 's/^channel *= *"\(.*\)"$/\1/p' ./rust-toolchain.toml)
+
+    if test -z "${toolchain_channel}"; then
+        echo "error: ./rust-toolchain.toml names no channel" >&2
+        exit 1
+    fi
+
+    echo "${toolchain_channel}"
+}
+
 function main {
     local repository_root
     repository_root=$(git rev-parse --show-toplevel)
@@ -115,9 +127,11 @@ function main {
     add_cargo_programs_to_path
     install_rustup_when_missing
 
-    # Installs the channel pinned in ./rust-toolchain.toml; needs rustup 1.28 or later.
-    rustup toolchain install --no-update --no-self-update
-    rustup target add "${RUST_TARGETS[@]}"
+    local toolchain_channel
+    toolchain_channel=$(read_pinned_toolchain_channel)
+
+    rustup toolchain install "${toolchain_channel}" --no-self-update
+    rustup target add --toolchain "${toolchain_channel}" "${RUST_TARGETS[@]}"
 
     install_program_when_missing "jq" brew install jq
     install_program_when_missing "wasmtime" brew install wasmtime

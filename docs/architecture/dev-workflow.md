@@ -7,7 +7,7 @@
 - The default branch is `master` (owner decision; [`docs/conventions/`](#docsconventions)). Git scripts read it once: `default_ref=$(git symbolic-ref --short refs/remotes/origin/HEAD)` (`origin/master`), then `DEFAULT_BRANCH="${default_ref#origin/}"`.
 
 ## Scripts
-- `setup.sh`: require Homebrew; install `rustup` (official installer), `jq` and `wasmtime` (`brew install`) and `cargo-leptos` (`cargo install --locked`) when missing, reporting each program installed or kept; `rustup toolchain install --no-update --no-self-update` (the `rust-toolchain.toml` channel); `rustup target add wasm32-unknown-unknown wasm32-wasip1`; optional checks for `wasm-pack` and `chromedriver`; create `.env` from `template.env` when absent. No secrets. The full list is [system dependencies](../system-dependencies.md).
+- `setup.sh`: require Homebrew; install `rustup` (official installer), `jq` and `wasmtime` (`brew install`) and `cargo-leptos` (`cargo install --locked`) when missing, reporting each program installed or kept; `rustup toolchain install <channel> --no-self-update` (the channel read from `rust-toolchain.toml`); `rustup target add wasm32-unknown-unknown wasm32-wasip1`; optional checks for `wasm-pack` and `chromedriver`; create `.env` from `template.env` when absent. No secrets. The full list is [system dependencies](../system-dependencies.md).
 - `scripts/build/program-paths.sh`: puts `/opt/homebrew/bin` (when `brew` is not on `PATH`) and `~/.cargo/bin` (through `~/.cargo/env`) on `PATH`; sourced by `setup.sh` and `deploy.sh`, not run directly.
 - `scripts/dev/server.sh`: `cargo run -p server` with `.env`.
 - `scripts/dev/web.sh`: `cd web && cargo leptos watch`.

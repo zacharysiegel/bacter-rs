@@ -127,6 +127,9 @@ mod ssr {
 
     use super::App;
 
+    /// The `_bacter` `@font-face` source; preloading any other URL fetches the font twice.
+    const TITLE_FONT_PATH: &str = "/fonts/bacter.ttf";
+
     pub fn shell(options: LeptosOptions) -> impl IntoView {
         view! {
             <!DOCTYPE html>
@@ -137,6 +140,7 @@ mod ssr {
                     <meta name="theme-color" content="#000000" />
                     <title>Bacter</title>
                     <link rel="icon" href="/favicon.ico" />
+                    <link rel="preload" href=TITLE_FONT_PATH r#as="font" type="font/ttf" crossorigin="" />
                     <HashedStylesheet options=options.clone() id="leptos" />
                     <AutoReload options=options.clone() />
                     <HydrationScripts options />

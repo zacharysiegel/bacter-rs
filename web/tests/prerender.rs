@@ -66,6 +66,15 @@ async fn prerender_document_draws_the_title_world() {
 }
 
 #[tokio::test]
+async fn prerender_document_preloads_the_title_font() {
+    let document: String = get_prerendered_document().await;
+
+    assert!(
+        document.contains(r#"<link rel="preload" href="/fonts/bacter.ttf" as="font" type="font/ttf" crossorigin="">"#)
+    );
+}
+
+#[tokio::test]
 async fn prerender_document_contains_the_canvas_root() {
     let document: String = get_prerendered_document().await;
 

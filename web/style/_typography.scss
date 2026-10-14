@@ -1,6 +1,8 @@
 @font-face {
     font-family: _bacter;
     src: url("/fonts/bacter.ttf");
+    /* Preloaded in the page head, so a fallback font is never shown. */
+    font-display: block;
 }
 
 body {

@@ -600,7 +600,10 @@ impl Driver {
     }
 }
 
+/// Runs once the page has hydrated.
 pub fn start(canvas: HtmlCanvasElement, signals: AppSignals) {
+    signals.connection_status.set(ConnectionStatusKind::Connecting);
+
     leptos::task::spawn_local(async move {
         let created: Result<(), AppError> = create_driver(canvas, signals).await;
 

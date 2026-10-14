@@ -33,7 +33,28 @@ async fn prerender_document_opens_on_the_title_screen() {
     let document: String = get_prerendered_document().await;
 
     assert!(document.contains(r#"<div class="title-menu">"#));
-    assert!(document.contains("Connecting to the game server"));
+}
+
+#[tokio::test]
+async fn prerender_document_shows_the_loading_status_box() {
+    let document: String = get_prerendered_document().await;
+
+    assert!(document.contains(r#"<div class="title-status"><span class="title-status-text">Loading</span>"#));
+    assert!(document.contains(r#"<span class="activity-indicator""#));
+    assert!(!document.contains("Connecting to the game server"));
+    assert!(!document.contains(r#"class="title-reconnect""#));
+}
+
+#[tokio::test]
+async fn prerender_document_disables_every_title_menu_button() {
+    let document: String = get_prerendered_document().await;
+
+    for button_text in ["Host", "Join", "Tutorial"] {
+        let disabled_button: String =
+            format!(r#"<div class="title-menu-button title-menu-button-disabled">{button_text}</div>"#);
+
+        assert!(document.contains(&disabled_button));
+    }
 }
 
 #[tokio::test]

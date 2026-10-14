@@ -45,7 +45,7 @@ impl AppSignals {
     pub fn new() -> AppSignals {
         AppSignals {
             screen: RwSignal::new(Screen::Title),
-            connection_status: RwSignal::new(ConnectionStatusKind::Connecting),
+            connection_status: RwSignal::new(ConnectionStatusKind::Loading),
             lobby_notice: RwSignal::new(None),
             game_list: RwSignal::new(GameListView::empty()),
             request_rejection: RwSignal::new(None),

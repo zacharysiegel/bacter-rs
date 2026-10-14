@@ -235,6 +235,10 @@ impl Tutorial {
         self.task.is_hud_visible()
     }
 
+    pub fn enabled_abilities(&self) -> AbilityPressSet {
+        self.task.enabled_abilities()
+    }
+
     pub fn display_mode_changed(&mut self, display_mode: DisplayModeKind) {
         self.display_mode = display_mode;
     }
@@ -341,7 +345,7 @@ impl Tutorial {
     }
 
     fn step_tick(&mut self, controls: &mut PlayerControls) {
-        let sample: AbilityPressSample = controls.keyboard.take_ability_presses().masked(self.task.enabled_abilities());
+        let sample: AbilityPressSample = controls.keyboard.take_ability_presses().masked(self.enabled_abilities());
         let player_cursor: WorldPoint = controls.crosshair.position().to_rounded_world_point();
         let player_input: PlayerTickInput = PlayerTickInput {
             member_id: TUTORIAL_PLAYER_ID,

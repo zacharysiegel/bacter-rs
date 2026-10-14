@@ -324,6 +324,9 @@ impl AbilityPressSet {
     pub const SECOND: AbilityPressSet = AbilityPressSet { bits: 1 << 1 };
     pub const THIRD: AbilityPressSet = AbilityPressSet { bits: 1 << 2 };
     pub const FOURTH: AbilityPressSet = AbilityPressSet { bits: 1 << 3 };
+    pub const ALL: AbilityPressSet = AbilityPressSet {
+        bits: AbilityPressSet::KNOWN_BITS,
+    };
     const KNOWN_BITS: u8 = 0b1111;
 
     /// `None` when any bit other than the four press bits is set.
@@ -518,6 +521,16 @@ mod tests {
         assert!(presses.contains(AbilityPressSet::FOURTH));
         assert!(!presses.contains(AbilityPressSet::SECOND));
         assert_eq!(presses.bits(), 0b1001);
+    }
+
+    #[test]
+    fn all_contains_every_press() {
+        let every_press: AbilityPressSet = AbilityPressSet::FIRST
+            .with(AbilityPressSet::SECOND)
+            .with(AbilityPressSet::THIRD)
+            .with(AbilityPressSet::FOURTH);
+
+        assert_eq!(AbilityPressSet::ALL, every_press);
     }
 
     #[test]

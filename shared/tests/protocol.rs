@@ -441,10 +441,7 @@ fn read_replay_never_panics_on_a_malformed_replay() {
 }
 
 fn create_pressing_bundle(player_count: u32) -> InputBundle {
-    let every_press: AbilityPressSet = AbilityPressSet::FIRST
-        .with(AbilityPressSet::SECOND)
-        .with(AbilityPressSet::THIRD)
-        .with(AbilityPressSet::FOURTH);
+    let every_press: AbilityPressSet = AbilityPressSet::ALL;
     let player_inputs: Vec<PlayerTickInput> = (0..player_count)
         .map(|player_index| {
             let offset: i32 = i32::try_from(player_index).unwrap();

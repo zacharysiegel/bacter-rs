@@ -116,7 +116,7 @@ function main {
     install_rustup_when_missing
 
     # Installs the channel pinned in ./rust-toolchain.toml; needs rustup 1.28 or later.
-    rustup toolchain install --no-update
+    rustup toolchain install --no-update --no-self-update
     rustup target add "${RUST_TARGETS[@]}"
 
     install_program_when_missing "jq" brew install jq

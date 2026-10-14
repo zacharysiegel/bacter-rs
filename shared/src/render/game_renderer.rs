@@ -30,6 +30,13 @@ pub enum RendererBackendKind {
     ForceGl,
 }
 
+/// Whether a frame reached the surface; a skipped frame leaves it as it was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FramePresentationKind {
+    Presented,
+    Skipped,
+}
+
 /// `!Send`: wgpu resources on wasm32 belong to the thread which created them.
 pub struct GameRenderer {
     adapter: Adapter,
@@ -135,10 +142,10 @@ impl GameRenderer {
     }
 
     /// Draws the last uploaded tick layer under the scene's frame layer.
-    pub fn draw_frame(&mut self, render_scene: &RenderScene) -> Result<(), AppError> {
+    pub fn draw_frame(&mut self, render_scene: &RenderScene) -> Result<FramePresentationKind, AppError> {
         let acquired_surface_texture: Option<SurfaceTexture> = self.acquire_surface_texture()?;
         let Some(surface_texture) = acquired_surface_texture else {
-            return Ok(());
+            return Ok(FramePresentationKind::Skipped);
         };
 
         self.write_frame_layer(&render_scene.frame_layer);
@@ -154,7 +161,7 @@ impl GameRenderer {
         self.queue.submit([encoder.finish()]);
         self.queue.present(surface_texture);
 
-        Ok(())
+        Ok(FramePresentationKind::Presented)
     }
 
     /// `None` for a frame to skip.

@@ -103,3 +103,20 @@
         background: var(--color-control-pressed);
     }
 }
+
+/* Behind the canvas, which covers it once the renderer draws. */
+.prerendered-title-world {
+    position: fixed;
+    inset: var(--title-world-inset);
+    z-index: var(--z-prerendered-world);
+    background: var(--title-world-body-color);
+    box-shadow: var(--title-world-shadow-offset-x) var(--title-world-shadow-offset-y) 0 var(--title-world-shadow-color);
+    /* The renderer centres the border on the world's edge. */
+    outline: var(--title-world-border-width) solid var(--title-world-border-color);
+    outline-offset: calc(var(--title-world-border-width) / -2);
+    pointer-events: none;
+}
+
+.prerendered-title-world-hidden {
+    display: none;
+}

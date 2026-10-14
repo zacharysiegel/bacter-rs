@@ -20,9 +20,9 @@ pub const SHOT_SECRETION_RADIUS_PIXELS: f32 = SPORE_SECRETION_RADIUS_PIXELS / 2.
 /// The square root of `ability_constants::FIELD_RADIUS_SQUARED_PIXELS`.
 pub const FIELD_RADIUS_PIXELS: f32 = 60.0;
 const FIELD_RING_WIDTH_PIXELS: f32 = 3.0;
-const WORLD_BORDER_WIDTH_PIXELS: f32 = 1.0;
+pub const WORLD_BORDER_WIDTH_PIXELS: f32 = 1.0;
 const GHOST_SECRETION_RING_WIDTH_PIXELS: f32 = 2.0;
-const RECTANGLE_WORLD_SHADOW_OFFSET: InterpolatedPoint = InterpolatedPoint { x: 7.0, y: 6.0 };
+pub const RECTANGLE_WORLD_SHADOW_OFFSET: InterpolatedPoint = InterpolatedPoint { x: 7.0, y: 6.0 };
 const ELLIPSE_WORLD_SHADOW_OFFSET: InterpolatedPoint = InterpolatedPoint { x: 5.0, y: 4.0 };
 const CROSSHAIR_HALF_LENGTH_PIXELS: f32 = 4.0;
 const CROSSHAIR_HALF_THICKNESS_PIXELS: f32 = 0.5;

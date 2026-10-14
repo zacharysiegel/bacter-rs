@@ -16,7 +16,7 @@ use crate::menu::{
 };
 use crate::message::MessageBox;
 use crate::screen::{LobbyNoticeKind, Screen, ScreenBackdropKind};
-use crate::title::TitleMenu;
+use crate::title::{PrerenderedTitleWorld, TitleMenu};
 
 #[cfg(feature = "ssr")] // a browser build renders no document
 pub use ssr::shell;
@@ -26,6 +26,7 @@ pub use ssr::shell;
 pub struct AppSignals {
     pub screen: RwSignal<Screen>,
     pub connection_status: RwSignal<ConnectionStatusKind>,
+    pub first_frame: RwSignal<FirstFrameKind>,
     pub lobby_notice: RwSignal<Option<LobbyNoticeKind>>,
     pub game_list: RwSignal<GameListView>,
     pub request_rejection: RwSignal<Option<RequestRejection>>,
@@ -46,6 +47,7 @@ impl AppSignals {
         AppSignals {
             screen: RwSignal::new(Screen::Title),
             connection_status: RwSignal::new(ConnectionStatusKind::Loading),
+            first_frame: RwSignal::new(FirstFrameKind::NotDrawn),
             lobby_notice: RwSignal::new(None),
             game_list: RwSignal::new(GameListView::empty()),
             request_rejection: RwSignal::new(None),
@@ -81,6 +83,13 @@ impl AppSignals {
             self.navigate(back_screen);
         }
     }
+}
+
+/// Whether the renderer has drawn a frame on the canvas yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FirstFrameKind {
+    NotDrawn,
+    Drawn,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +159,7 @@ pub fn App() -> impl IntoView {
     let is_shaded = move || screen.get().backdrop() == ScreenBackdropKind::Shaded;
 
     view! {
+        <PrerenderedTitleWorld />
         <GameCanvas />
         <div class="overlay-layer">
             <NameLabels name_labels=signals.name_labels.into() />

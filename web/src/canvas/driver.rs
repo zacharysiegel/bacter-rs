@@ -16,12 +16,14 @@ use shared::play::{
     TransientMessageKind,
 };
 use shared::protocol::CloseReasonKind;
-use shared::render::{GameRenderer, PhysicalSize, RenderScene, RendererBackendKind, ViewPoint, ViewportSize};
+use shared::render::{
+    FramePresentationKind, GameRenderer, PhysicalSize, RenderScene, RendererBackendKind, ViewPoint, ViewportSize,
+};
 use shared::title::TitleScene;
 use shared::tutorial::Tutorial;
 
 use crate::app;
-use crate::app::{AppSignals, ClientSettings};
+use crate::app::{AppSignals, ClientSettings, FirstFrameKind};
 use crate::browser::GameListView;
 use crate::canvas::keyboard;
 use crate::canvas::scene_camera;
@@ -538,10 +540,14 @@ impl Driver {
             return;
         };
 
-        let drawn: Result<(), AppError> = renderer.draw_frame(render_scene);
+        let drawn: Result<FramePresentationKind, AppError> = renderer.draw_frame(render_scene);
 
-        if let Err(error) = drawn {
-            log::error!("drawing a frame failed; [error={error}]");
+        match drawn {
+            Ok(FramePresentationKind::Presented) => {
+                app::set_if_changed(self.signals.first_frame, FirstFrameKind::Drawn)
+            }
+            Ok(FramePresentationKind::Skipped) => {}
+            Err(error) => log::error!("drawing a frame failed; [error={error}]"),
         }
     }
 

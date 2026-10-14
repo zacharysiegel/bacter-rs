@@ -58,6 +58,14 @@ async fn prerender_document_disables_every_title_menu_button() {
 }
 
 #[tokio::test]
+async fn prerender_document_draws_the_title_world() {
+    let document: String = get_prerendered_document().await;
+
+    assert!(document.contains(r#"<div class="prerendered-title-world" style="#));
+    assert!(!document.contains("prerendered-title-world-hidden"));
+}
+
+#[tokio::test]
 async fn prerender_document_contains_the_canvas_root() {
     let document: String = get_prerendered_document().await;
 

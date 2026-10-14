@@ -6,6 +6,8 @@ set -euo pipefail
 readonly MISSING_PROGRAM_EXIT_STATUS=1
 readonly HOMEBREW_INSTALL_HINT='/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" (https://brew.sh)'
 readonly RUSTUP_INSTALLER_URL="https://sh.rustup.rs"
+# Cargo-installed programs build with the latest stable Rust, not the project's pinned channel.
+readonly PROGRAM_TOOLCHAIN="stable"
 readonly RUST_TARGETS=(
     wasm32-unknown-unknown
     wasm32-wasip1
@@ -133,11 +135,13 @@ function main {
     rustup toolchain install "${toolchain_channel}" --no-self-update
     rustup target add --toolchain "${toolchain_channel}" "${RUST_TARGETS[@]}"
 
+    rustup toolchain install "${PROGRAM_TOOLCHAIN}" --no-self-update
+
     install_program_when_missing "jq" brew install jq
     install_program_when_missing "wasmtime" brew install wasmtime
-    install_program_when_missing "cargo-leptos" cargo install --locked cargo-leptos
+    install_program_when_missing "cargo-leptos" cargo "+${PROGRAM_TOOLCHAIN}" install --locked cargo-leptos
 
-    recommend_program "wasm-pack" "the headless browser tests" "cargo install wasm-pack"
+    recommend_program "wasm-pack" "the headless browser tests" "cargo +${PROGRAM_TOOLCHAIN} install wasm-pack"
     recommend_program "chromedriver" "the headless browser tests" "a build matching the installed Chrome major version, on PATH"
 
     create_environment_file

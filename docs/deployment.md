@@ -10,14 +10,14 @@
 
 ## Scripts
 
-- `scripts/deploy/deploy.sh` (on the host): refuses unless on `master` with a clean working tree; `git pull --ff-only`, then re-runs the pulled copy of itself; creates `./.env` from `scripts/deploy/production.template.env` when absent; refuses while a production setting is unset or holds a `<...>` placeholder; `./setup.sh`; `./scripts/build/build-release.sh`; installs the LaunchAgent property list (checked with `plutil -lint`); `launchctl bootout` when loaded, `launchctl bootstrap gui/<uid>`, `launchctl kickstart -k`; fails unless `http://127.0.0.1:<BACTER_PORT>/health` answers 200 within 30 s.
+- `scripts/deploy/deploy.sh` (on the host): refuses unless on `master` with a clean working tree; `git pull --ff-only`, then re-runs the pulled copy of itself; creates `./.env` from `scripts/deploy/production.template.env` when absent; refuses while a production setting is unset or holds a `<...>` placeholder; `./setup.sh`, which installs the missing required programs; puts the Homebrew and cargo program directories on `PATH`; `./scripts/build/build-release.sh`; installs the LaunchAgent property list (checked with `plutil -lint`); `launchctl bootout` when loaded, `launchctl bootstrap gui/<uid>`, `launchctl kickstart -k`; fails unless `http://127.0.0.1:<BACTER_PORT>/health` answers 200 within 30 s.
 - `scripts/deploy/deploy-remote.sh [--bootstrap] [<ssh host>]` (on the owner's other computer): one ssh call running `deploy.sh` on the host in a login shell; host default `zachary@ssh.zach.ro`; repository path `BACTER_REMOTE_REPOSITORY`, default `~/bacter-rs`; `--bootstrap` clones `https://github.com/zacharysiegel/bacter-rs.git` there first when the path does not exist.
 - `scripts/deploy/server-status.sh` (on the host): `launchctl print` of the agent, the last 50 log lines, the health check; exits non-zero unless healthy.
 - `scripts/deploy/deploy-shared.sh`: the label, paths and functions the scripts above share; sourced, not run.
 
 ## First deploy
 
-1. Install the programs of [system dependencies](./system-dependencies.md) on the host; `deploy.sh` runs `./setup.sh`, which checks them.
+1. Install Homebrew on the host (https://brew.sh); `deploy.sh` runs `./setup.sh`, which installs the other [system dependencies](./system-dependencies.md).
 2. Confirm automatic login for `zachary` on the host.
 3. On the host, stop the previous game's service, then confirm that nothing listens on port 12001 (`BACTER_PORT`); this prints nothing:
    ```sh

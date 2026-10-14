@@ -9,8 +9,9 @@ set -euo pipefail
 readonly LOG_LINE_COUNT=50
 
 function print_launch_agent_state {
-    local service_target
-    service_target=$(read_launch_agent_service_target)
+    local launch_agent_domain service_target
+    launch_agent_domain=$(read_launch_agent_domain)
+    service_target=$(read_launch_agent_service_target "${launch_agent_domain}")
 
     echo "== launchd: ${service_target}"
 

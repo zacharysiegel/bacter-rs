@@ -97,15 +97,17 @@ function install_launch_agent_plist {
 }
 
 function stop_launch_agent {
+    local launch_agent_domain="$1"
+
     local launch_agent_state
-    launch_agent_state=$(read_launch_agent_state)
+    launch_agent_state=$(read_launch_agent_state "${launch_agent_domain}")
 
     if test "${launch_agent_state}" != "loaded"; then
         return 0
     fi
 
     local service_target
-    service_target=$(read_launch_agent_service_target)
+    service_target=$(read_launch_agent_service_target "${launch_agent_domain}")
 
     local bootout_output
     local bootout_status=0
@@ -118,7 +120,7 @@ function stop_launch_agent {
     local deadline=$((SECONDS + BOOTOUT_TIMEOUT_SECONDS))
 
     while test "${SECONDS}" -lt "${deadline}"; do
-        launch_agent_state=$(read_launch_agent_state)
+        launch_agent_state=$(read_launch_agent_state "${launch_agent_domain}")
 
         if test "${launch_agent_state}" != "loaded"; then
             return 0
@@ -127,17 +129,27 @@ function stop_launch_agent {
         sleep 1
     done
 
-    fail "${LAUNCH_AGENT_LABEL} is still loaded ${BOOTOUT_TIMEOUT_SECONDS} s after launchctl bootout"
+    fail "${service_target} is still loaded ${BOOTOUT_TIMEOUT_SECONDS} s after launchctl bootout"
 }
 
 function start_launch_agent {
-    local launch_agent_domain service_target
-    launch_agent_domain=$(read_launch_agent_domain)
-    service_target=$(read_launch_agent_service_target)
+    local launch_agent_domain="$1"
+
+    local service_target
+    service_target=$(read_launch_agent_service_target "${launch_agent_domain}")
 
     launchctl bootstrap "${launch_agent_domain}" "${LAUNCH_AGENT_PLIST_PATH}"
     launchctl kickstart -k "${service_target}"
     echo "started ${service_target}"
+}
+
+function restart_launch_agent {
+    local launch_agent_domain
+    launch_agent_domain=$(read_launch_agent_domain)
+    echo "using the launchd domain ${launch_agent_domain}"
+
+    stop_launch_agent "${launch_agent_domain}"
+    start_launch_agent "${launch_agent_domain}"
 }
 
 function wait_for_health {
@@ -200,8 +212,7 @@ function main {
     ./scripts/build/build-release.sh
 
     install_launch_agent_plist "${repository_root}"
-    stop_launch_agent
-    start_launch_agent
+    restart_launch_agent
     wait_for_health
 }
 

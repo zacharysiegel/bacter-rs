@@ -7,12 +7,13 @@
 - The server runs as the LaunchAgent `ro.zach.bacter.server` (`~/Library/LaunchAgents/ro.zach.bacter.server.plist`, from `scripts/deploy/ro.zach.bacter.server.template.plist`), running `./scripts/run/run-release-server.sh` from the repository root, restarted by launchd when it exits.
 - Log: `~/Library/Logs/bacter/server.log`.
 - A LaunchAgent runs only while its user is logged in: the host needs automatic login for `zachary`, or the agent moved to a LaunchDaemon.
+- After a reboot with automatic login, launchd loads the agent from `~/Library/LaunchAgents` into the GUI login session itself (`RunAtLoad`); from an ssh session without a GUI login, `deploy.sh` loads it into the user domain `user/<uid>`.
 
 ## Scripts
 
-- `scripts/deploy/deploy.sh` (on the host): refuses unless on `master` with a clean working tree; `git pull --ff-only`, then re-runs the pulled copy of itself; creates `./.env` from `scripts/deploy/production.template.env` when absent; refuses while a production setting is unset or holds a `<...>` placeholder; `./setup.sh`, which installs the missing required programs; puts the Homebrew and cargo program directories on `PATH`; `./scripts/build/build-release.sh`; installs the LaunchAgent property list (checked with `plutil -lint`); `launchctl bootout` when loaded, `launchctl bootstrap gui/<uid>`, `launchctl kickstart -k`; fails unless `http://127.0.0.1:<BACTER_PORT>/health` answers 200 within 30 s.
+- `scripts/deploy/deploy.sh` (on the host): refuses unless on `master` with a clean working tree; `git pull --ff-only`, then re-runs the pulled copy of itself; creates `./.env` from `scripts/deploy/production.template.env` when absent; refuses while a production setting is unset or holds a `<...>` placeholder; `./setup.sh`, which installs the missing required programs; puts the Homebrew and cargo program directories on `PATH`; `./scripts/build/build-release.sh`; installs the LaunchAgent property list (checked with `plutil -lint`); in the launchd domain `gui/<uid>` when `launchctl print gui/<uid>` succeeds (a GUI login session exists), otherwise `user/<uid>`, and prints the domain used: `launchctl bootout` when loaded, `launchctl bootstrap`, `launchctl kickstart -k`; fails unless `http://127.0.0.1:<BACTER_PORT>/health` answers 200 within 30 s.
 - `scripts/deploy/deploy-remote.sh [--bootstrap] [<ssh host>]` (on the owner's other computer): one ssh call running `deploy.sh` on the host in a login shell; host default `zachary@ssh.zach.ro`; repository path `BACTER_REMOTE_REPOSITORY`, default `~/bacter-rs`; `--bootstrap` clones `https://github.com/zacharysiegel/bacter-rs.git` there first when the path does not exist.
-- `scripts/deploy/server-status.sh` (on the host): `launchctl print` of the agent, the last 50 log lines, the health check; exits non-zero unless healthy.
+- `scripts/deploy/server-status.sh` (on the host): `launchctl print` of the agent in the domain `deploy.sh` would use, the last 50 log lines, the health check; exits non-zero unless healthy.
 - `scripts/deploy/deploy-shared.sh`: the label, paths and functions the scripts above share; sourced, not run.
 
 ## First deploy
